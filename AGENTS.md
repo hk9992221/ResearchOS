@@ -17,15 +17,15 @@ git -C F:/projects/ResearchOS worktree add F:/projects/ResearchOS-Worktree/spec-
 `scripts/snapshot-docs.sh` 生成快照）。`.gitignore` 已忽略 `docs/specs/` 与
 `docs/功能说明.md`；其余任何 `docs/` 内容也**不得**被 `git add` 或提交进 `main`。
 
-## 3. 本地 CI
+## 3. 本地验收
 
-唯一的本地质量门禁是：
+没有 CI 脚本，也没有 GitHub Actions。本地验收只跑：
 
 ```bash
-bash scripts/ci.sh
+gofmt -l .        # 必须无输出
+go vet ./...
+go build ./...
+go test ./... -count=1
 ```
 
-依次执行 gofmt 检查（不干净则列出文件并失败）、`go vet ./...`、`go build ./...`、
-`go test ./... -count=1`，最后打印 `CI OK`。模块内还没有任何 Go 包时会跳过
-vet/build/test。GitHub Actions（`.github/workflows/ci.yml`）运行的也是这个脚本，
-所以本地通过即视为 CI 通过。
+提交前确保 gofmt 干净、`go vet ./...` 通过、全部测试通过。
