@@ -106,6 +106,15 @@ func TestAC02Baseline(t *testing.T) {
 			if version != 1 || name != "core" {
 				t.Fatalf("baseline row = (%d, %q), want (1, \"core\")", version, name)
 			}
+			// user_version is deliberately unused: schema state lives only in
+			// schema_migrations.
+			var userVersion int
+			if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
+				t.Fatal(err)
+			}
+			if userVersion != 0 {
+				t.Fatalf("PRAGMA user_version = %d, want 0 (unused)", userVersion)
+			}
 
 			// No AUTOINCREMENT anywhere.
 			rows, err := db.Query(`SELECT name, sql FROM sqlite_master WHERE type = 'table'`)
@@ -597,30 +606,11 @@ func schemaNames(t *testing.T, db *sql.DB) []string {
 
 func dumpSchema(t *testing.T, db *sql.DB) string {
 	t.Helper()
-	rows, err := db.Query(`SELECT type, name, sql FROM sqlite_master ORDER BY name`)
+	got, err := DumpSchema(context.Background(), db)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("DumpSchema: %v", err)
 	}
-	defer rows.Close()
-	var b strings.Builder
-	for rows.Next() {
-		var typ, name string
-		var text sql.NullString
-		if err := rows.Scan(&typ, &name, &text); err != nil {
-			t.Fatal(err)
-		}
-		b.WriteString("-- " + typ + " " + name + "\n")
-		if text.Valid {
-			b.WriteString(text.String)
-		} else {
-			b.WriteString("<internal index>")
-		}
-		b.WriteString("\n\n")
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return b.String()
+	return got
 }
 
 func mustMigrationText(t *testing.T, kind Kind, version int) string {

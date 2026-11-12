@@ -165,3 +165,23 @@ func validateKey(key string) error {
 func escapeLike(prefix string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)
 }
+
+// ResolvePriority reads a setting with the §5.5 precedence: the project store
+// first, then the workspace compatibility key "project.<projectID>.<key>", then
+// not-found. Only the export keys defined by SPEC-03 use this path; callers
+// write to the project store.
+func ResolvePriority(ctx context.Context, project, workspace *Store, projectID, key string) (string, bool, error) {
+	if err := validateKey(key); err != nil {
+		return "", false, err
+	}
+	if project != nil {
+		if value, ok, err := project.Get(ctx, key); err != nil || ok {
+			return value, ok, err
+		}
+	}
+	if workspace != nil {
+		compat := "project." + projectID + "." + key
+		return workspace.Get(ctx, compat)
+	}
+	return "", false, nil
+}

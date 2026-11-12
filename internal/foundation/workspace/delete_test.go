@@ -395,3 +395,42 @@ func TestDeleteProjectWithoutConfirmService(t *testing.T) {
 		t.Fatalf("project was deleted without confirmation: %v", err)
 	}
 }
+
+func TestDeleteProjectRequiresProjectDatabase(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	opts, _ := testOptions(t, base)
+	ws, err := Init(ctx, filepath.Join(base, "ws"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	projectStore := projects.New(ws.Global().DB(), opts.Clock)
+	projectID := mustCreateProject(t, ctx, ws, projectStore, "P")
+	handle, err := ws.Project(ctx, projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handle.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(ws.Root(), "projects", projectID, "project.db")
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Remove(dbPath + suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove %s: %v", suffix, err)
+		}
+	}
+
+	_, err = ws.DeleteProjectData(ctx, DeleteProjectRequest{ProjectID: projectID, Confirm: issueDelete(t, opts, projectID)})
+	if err == nil {
+		t.Fatal("DeleteProjectData succeeded without a project.db")
+	}
+	if _, err := projectStore.Get(ctx, projectID); err != nil {
+		t.Fatalf("registration was removed: %v", err)
+	}
+	projectDir, _ := ws.Paths().Abs(ws.Paths().ProjectDir(projectID))
+	if info, err := os.Stat(projectDir); err != nil || !info.IsDir() {
+		t.Fatalf("project directory was removed: %v", err)
+	}
+}

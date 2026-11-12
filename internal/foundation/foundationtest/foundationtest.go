@@ -9,8 +9,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"researchos/internal/foundation/clock"
@@ -18,10 +21,13 @@ import (
 	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/papers"
 	"researchos/internal/foundation/projectpapers"
 	"researchos/internal/foundation/projects"
 	"researchos/internal/foundation/relations"
 	"researchos/internal/foundation/schema"
+	"researchos/internal/foundation/settings"
+	"researchos/internal/foundation/storage"
 	"researchos/internal/foundation/trash"
 	"researchos/internal/foundation/workspace"
 )
@@ -68,6 +74,9 @@ type Fixture struct {
 	Confirm confirm.Service
 	// BackupRoot is the migration backup root.
 	BackupRoot string
+	// ProjectID and Project are the default project created by NewWithProject.
+	ProjectID string
+	Project   *workspace.ProjectHandle
 }
 
 // New builds a workspace under <dir>/workspace together with an isolated config
@@ -201,4 +210,154 @@ func (f *Fixture) Relations(handle *workspace.ProjectHandle) *relations.Service 
 // Trash returns the trash service of handle.
 func (f *Fixture) Trash(handle *workspace.ProjectHandle) *trash.Service {
 	return trash.New(handle.ID, handle.DB(), f.Workspace.Paths(), handle.Events(), f.Confirm, f.Clock)
+}
+
+// NewWithProject builds a zero-config fixture with one default project, ready
+// for wave-2 module tests. The project's handle is cached on the fixture.
+func NewWithProject(dir string, opts Options) (*Fixture, error) {
+	f, err := New(dir, opts)
+	if err != nil {
+		return nil, err
+	}
+	id, handle, err := f.NewProject(context.Background(), "Fixture", "", "")
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	f.ProjectID = id
+	f.Project = handle
+	return f, nil
+}
+
+// Papers returns a store over the fixture's global papers table.
+func (f *Fixture) Papers() *papers.Store {
+	return papers.New(f.Workspace.Global().DB(), f.Clock)
+}
+
+// Settings returns the workspace-level settings store.
+func (f *Fixture) Settings() *settings.Store {
+	return settings.NewWorkspace(f.Workspace.Global().DB()).WithClock(f.Clock)
+}
+
+// ProjectSettings returns the settings store of one project.
+func (f *Fixture) ProjectSettings(handle *workspace.ProjectHandle) *settings.Store {
+	return settings.NewProject(handle.DB()).WithClock(f.Clock)
+}
+
+// SeedPaper inserts a paper with a local copy path and creates its directory.
+func (f *Fixture) SeedPaper(ctx context.Context, key string) (string, error) {
+	store := f.Papers()
+	var id string
+	if err := f.Workspace.Global().InTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		id, _, err = store.Upsert(ctx, tx, papers.Paper{ZoteroKey: key})
+		if err != nil {
+			return err
+		}
+		return store.UpdateFile(ctx, tx, id, f.Workspace.Paths().PaperPDF(id), "hash-"+key, 1, schema.PaperFileOK)
+	}); err != nil {
+		return "", err
+	}
+	dir, err := f.Workspace.Paths().Abs(f.Workspace.Paths().PaperDir(id))
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// LinkProjectPaper associates a paper with the fixture's default project.
+func (f *Fixture) LinkProjectPaper(ctx context.Context, paperID string) error {
+	if f.Project == nil {
+		return errors.New("foundationtest: fixture has no default project")
+	}
+	store := f.ProjectPapers(f.Project)
+	return f.Project.InTx(ctx, func(tx *sql.Tx) error {
+		_, err := store.Link(ctx, tx, projectpapers.Link{
+			ProjectID: f.ProjectID, PaperID: paperID, LinkedBy: schema.ActorUser,
+		})
+		return err
+	})
+}
+
+// SeedNotes inserts n synthetic notes directly (test-only fast path); the first
+// softDeleted rows are placed in the trash. Each note gets a unique file path.
+func (f *Fixture) SeedNotes(ctx context.Context, handle *workspace.ProjectHandle, n, softDeleted int) error {
+	if n < 0 || softDeleted < 0 || softDeleted > n {
+		return fmt.Errorf("foundationtest: invalid note counts n=%d softDeleted=%d", n, softDeleted)
+	}
+	if n == 0 {
+		return nil
+	}
+	return handle.InTx(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx,
+			`INSERT INTO notes(id, title, file_path, kind, created_at, updated_at, file_hash, file_state, deleted_at)
+			 VALUES (?, 'seed', ?, 'scratchpad', ?, ?, '', 'ok', ?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		at := clock.Format(f.Clock.Now())
+		for i := range n {
+			noteID := ids.MustNew(f.Clock)
+			var deleted any
+			if i < softDeleted {
+				deleted = at
+			}
+			rel := fmt.Sprintf("projects/%s/notes/%s.md", handle.ID, noteID)
+			if _, err := stmt.ExecContext(ctx, noteID, rel, at, at, deleted); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// CompareSchema checks a live database against a golden schema file produced by
+// storage.DumpSchema.
+func (f *Fixture) CompareSchema(ctx context.Context, db *sql.DB, goldenPath string) error {
+	got, err := storage.DumpSchema(ctx, db)
+	if err != nil {
+		return err
+	}
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		return err
+	}
+	if string(want) != got {
+		return fmt.Errorf("foundationtest: schema differs from %s", goldenPath)
+	}
+	return nil
+}
+
+// RunConcurrentInTx runs fn in goroutines × rounds, each call with its own
+// context (the pattern InTx requires for concurrent operations). It returns a
+// joined error or nil.
+func RunConcurrentInTx(ctx context.Context, global *workspace.GlobalHandle, goroutines, rounds int, fn func(ctx context.Context, tx *sql.Tx, g, r int) error) error {
+	type key struct{}
+	errCh := make(chan error, goroutines*rounds)
+	var wg sync.WaitGroup
+	for g := range goroutines {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			gctx := context.WithValue(ctx, key{}, g)
+			for r := range rounds {
+				if err := global.InTx(gctx, func(tx *sql.Tx) error {
+					return fn(gctx, tx, g, r)
+				}); err != nil {
+					errCh <- err
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errCh)
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }

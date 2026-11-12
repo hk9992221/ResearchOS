@@ -65,6 +65,9 @@ func (p Paths) AttachmentsDir(projectID, noteID string) string {
 // ProjectDir returns projects/<projectID>.
 func (p Paths) ProjectDir(projectID string) string { return "projects/" + projectID }
 
+// NotesDir returns projects/<projectID>/notes.
+func (p Paths) NotesDir(projectID string) string { return p.ProjectDir(projectID) + "/notes" }
+
 // ProjectDB returns projects/<projectID>/project.db.
 func (p Paths) ProjectDB(projectID string) string { return p.ProjectDir(projectID) + "/project.db" }
 

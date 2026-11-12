@@ -2,6 +2,8 @@ package foundationtest
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -89,5 +91,71 @@ func TestNewProjectAndSeedActivities(t *testing.T) {
 	}
 	if err := fx.SeedActivities(ctx, handle, -1); err == nil {
 		t.Fatal("SeedActivities(-1) succeeded")
+	}
+}
+
+func TestZeroConfigFixture(t *testing.T) {
+	ctx := context.Background()
+	fx, err := NewWithProject(t.TempDir(), Options{})
+	if err != nil {
+		t.Fatalf("NewWithProject: %v", err)
+	}
+	defer fx.Close()
+	if fx.Project == nil || fx.ProjectID == "" {
+		t.Fatal("fixture has no default project")
+	}
+	if err := fx.SeedNotes(ctx, fx.Project, 10, 3); err != nil {
+		t.Fatalf("SeedNotes: %v", err)
+	}
+	var notes, trash int
+	if err := fx.Project.DB().QueryRow(`SELECT count(*) FROM notes`).Scan(&notes); err != nil {
+		t.Fatal(err)
+	}
+	if err := fx.Project.DB().QueryRow(`SELECT count(*) FROM v_trash`).Scan(&trash); err != nil {
+		t.Fatal(err)
+	}
+	if notes != 10 || trash != 3 {
+		t.Fatalf("notes=%d trash=%d, want 10/3", notes, trash)
+	}
+	paperID, err := fx.SeedPaper(ctx, "K1")
+	if err != nil {
+		t.Fatalf("SeedPaper: %v", err)
+	}
+	if err := fx.LinkProjectPaper(ctx, paperID); err != nil {
+		t.Fatalf("LinkProjectPaper: %v", err)
+	}
+	var links int
+	if err := fx.Project.DB().QueryRow(`SELECT count(*) FROM project_papers`).Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if links != 1 {
+		t.Fatalf("project_papers = %d", links)
+	}
+
+	// Golden schema comparison utility.
+	golden := filepath.Join("..", "storage", "testdata", "schema", "project_v1.golden.sql")
+	if err := fx.CompareSchema(ctx, fx.Project.DB(), golden); err != nil {
+		t.Fatalf("CompareSchema: %v", err)
+	}
+	if err := fx.CompareSchema(ctx, fx.Global().DB(), filepath.Join("..", "storage", "testdata", "schema", "global_v1.golden.sql")); err != nil {
+		t.Fatalf("CompareSchema(global): %v", err)
+	}
+
+	// Concurrency helper.
+	if err := RunConcurrentInTx(ctx, fx.Global(), 2, 5, func(gctx context.Context, tx *sql.Tx, g, r int) error {
+		_, err := tx.ExecContext(gctx,
+			`INSERT INTO settings(key, value, updated_at) VALUES (?, 'v', ?)
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+			fmt.Sprintf("test.g%d.r%d", g, r), "2026-01-02T03:04:05.000Z")
+		return err
+	}); err != nil {
+		t.Fatalf("RunConcurrentInTx: %v", err)
+	}
+	var settingsCount int
+	if err := fx.Global().DB().QueryRow(`SELECT count(*) FROM settings WHERE key LIKE 'test.%'`).Scan(&settingsCount); err != nil {
+		t.Fatal(err)
+	}
+	if settingsCount != 10 {
+		t.Fatalf("settings = %d, want 10", settingsCount)
 	}
 }

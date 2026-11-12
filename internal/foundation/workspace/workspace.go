@@ -234,6 +234,22 @@ func (w *Workspace) Root() string {
 	return w.root
 }
 
+// Clock returns the workspace clock. Services that need timestamps (reconcile,
+// diagnostics) use it so tests keep deterministic time.
+func (w *Workspace) Clock() clock.Clock {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.opts.Clock
+}
+
+// Config returns the injected application config store (nil when the workspace
+// was created without one).
+func (w *Workspace) Config() config.Store {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.opts.Config
+}
+
 // Paths returns the workspace path resolver.
 func (w *Workspace) Paths() paths.Paths {
 	w.mu.Lock()

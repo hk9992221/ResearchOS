@@ -226,3 +226,43 @@ func TestJSONAndDelete(t *testing.T) {
 		t.Fatalf("Delete(missing) = %v, want nil", err)
 	}
 }
+
+func TestAC23ReadPriority(t *testing.T) {
+	ctx := context.Background()
+	projectDB := openProjectDB(t, storage.KindProject)
+	globalDB := openProjectDB(t, storage.KindGlobal)
+	projectStore := NewProject(projectDB).WithClock(fixed)
+	workspaceStore := NewWorkspace(globalDB).WithClock(fixed)
+	const projectID = "0192f0c8-1234-7000-8000-000000000001"
+
+	if err := workspaceStore.Set(ctx, nil, "export.dir", "/workspace"); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok, err := ResolvePriority(ctx, projectStore, workspaceStore, projectID, "export.dir"); err != nil || ok || value != "" {
+		t.Fatalf("ResolvePriority(neither) = %q, %v, %v", value, ok, err)
+	}
+	compatKey := "project." + projectID + ".export.dir"
+	if err := workspaceStore.Set(ctx, nil, compatKey, "/compat"); err != nil {
+		t.Fatal(err)
+	}
+	if err := projectStore.Set(ctx, nil, "export.dir", "/project"); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok, err := ResolvePriority(ctx, projectStore, workspaceStore, projectID, "export.dir"); err != nil || !ok || value != "/project" {
+		t.Fatalf("ResolvePriority(project first) = %q, %v, %v", value, ok, err)
+	}
+	if err := projectStore.Delete(ctx, nil, "export.dir"); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok, err := ResolvePriority(ctx, projectStore, workspaceStore, projectID, "export.dir"); err != nil || !ok || value != "/compat" {
+		t.Fatalf("ResolvePriority(compat) = %q, %v, %v", value, ok, err)
+	}
+	if err := workspaceStore.Delete(ctx, nil, compatKey); err != nil {
+		t.Fatal(err)
+	}
+	// The workspace-level key without the project prefix is not part of the
+	// project read path.
+	if value, ok, err := ResolvePriority(ctx, projectStore, workspaceStore, projectID, "export.dir"); err != nil || ok || value != "" {
+		t.Fatalf("ResolvePriority(workspace only) = %q, %v, %v", value, ok, err)
+	}
+}

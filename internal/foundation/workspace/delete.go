@@ -83,13 +83,15 @@ func (w *Workspace) DeleteProjectData(ctx context.Context, req DeleteProjectRequ
 	if err != nil {
 		return res, fmt.Errorf("workspace: delete project %s: %w", req.ProjectID, err)
 	}
-	var candidates []string
+	// A missing database aborts the whole deletion: §5.9 requires the candidate
+	// set to be read from the project database before anything is touched.
 	dbPath := filepath.Join(projectDir, "project.db")
-	if fileExists(dbPath) {
-		candidates, err = candidatePapers(ctx, dbPath, opts.storageOptions())
-		if err != nil {
-			return res, fmt.Errorf("workspace: delete project %s: read project database: %w", req.ProjectID, err)
-		}
+	if !fileExists(dbPath) {
+		return res, fmt.Errorf("workspace: delete project %s: project.db is missing", req.ProjectID)
+	}
+	candidates, err := candidatePapers(ctx, dbPath, opts.storageOptions())
+	if err != nil {
+		return res, fmt.Errorf("workspace: delete project %s: read project database: %w", req.ProjectID, err)
 	}
 
 	// Step 2: delete the directory. On failure the registration row stays, so
