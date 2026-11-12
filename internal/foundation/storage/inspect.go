@@ -73,6 +73,13 @@ func Inspect(ctx context.Context, path string, kind Kind, opt Options) (Inspecti
 	return ins, nil
 }
 
+// OpenReadOnly opens an existing database with mode=ro and without write
+// pragmas. It is used by diagnostics and by the paper reference counter, which
+// must not migrate or modify other projects' databases.
+func OpenReadOnly(ctx context.Context, path string) (*sql.DB, error) {
+	return openReadOnly(ctx, path)
+}
+
 // openReadOnly opens a database with mode=ro and without write pragmas.
 func openReadOnly(ctx context.Context, path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", sqliteDSN(path, true))

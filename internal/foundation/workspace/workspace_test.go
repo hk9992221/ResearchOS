@@ -17,6 +17,7 @@ import (
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/errs"
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
@@ -35,7 +36,13 @@ func testOptions(t *testing.T, base string) (Options, config.Store) {
 	if err != nil {
 		t.Fatalf("config.NewStoreAt: %v", err)
 	}
-	return Options{Clock: fixedClock(), SkipBackup: true, Config: cfg}, cfg
+	clock := fixedClock()
+	return Options{
+		Clock:      clock,
+		SkipBackup: true,
+		Config:     cfg,
+		Confirm:    confirm.New(confirm.Options{Clock: clock}),
+	}, cfg
 }
 
 func TestAC01InitLayoutAndIdempotency(t *testing.T) {

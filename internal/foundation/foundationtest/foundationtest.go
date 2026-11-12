@@ -15,10 +15,14 @@ import (
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/projectpapers"
 	"researchos/internal/foundation/projects"
+	"researchos/internal/foundation/relations"
 	"researchos/internal/foundation/schema"
+	"researchos/internal/foundation/trash"
 	"researchos/internal/foundation/workspace"
 )
 
@@ -39,6 +43,9 @@ type Options struct {
 	// Config overrides the config store; by default one is created under
 	// <dir>/config/config.json.
 	Config config.Store
+	// Confirm overrides the confirmation service; by default an in-memory
+	// service bound to the fixture clock is created.
+	Confirm confirm.Service
 	// BackupRoot overrides the backup directory; by default
 	// <dir>/cache/backups.
 	BackupRoot string
@@ -57,6 +64,8 @@ type Fixture struct {
 	Clock *clock.Fixed
 	// Config is the injected application config store.
 	Config config.Store
+	// Confirm is the injected confirmation service.
+	Confirm confirm.Service
 	// BackupRoot is the migration backup root.
 	BackupRoot string
 }
@@ -83,6 +92,10 @@ func New(dir string, opts Options) (*Fixture, error) {
 	if backupRoot == "" {
 		backupRoot = filepath.Join(dir, "cache", "backups")
 	}
+	conf := opts.Confirm
+	if conf == nil {
+		conf = confirm.New(confirm.Options{Clock: fixed})
+	}
 	root := filepath.Join(dir, "workspace")
 	ws, err := workspace.Init(context.Background(), root, workspace.Options{
 		Clock:        fixed,
@@ -91,6 +104,7 @@ func New(dir string, opts Options) (*Fixture, error) {
 		MaxOpenConns: opts.MaxOpenConns,
 		Logger:       opts.Logger,
 		Config:       cfg,
+		Confirm:      conf,
 	})
 	if err != nil {
 		return nil, err
@@ -101,6 +115,7 @@ func New(dir string, opts Options) (*Fixture, error) {
 		Workspace:  ws,
 		Clock:      fixed,
 		Config:     cfg,
+		Confirm:    conf,
 		BackupRoot: backupRoot,
 	}, nil
 }
@@ -170,4 +185,20 @@ func (f *Fixture) SeedActivities(ctx context.Context, handle *workspace.ProjectH
 		}
 		return nil
 	})
+}
+
+// ProjectPapers returns a project_papers store bound to handle.
+func (f *Fixture) ProjectPapers(handle *workspace.ProjectHandle) *projectpapers.Store {
+	return projectpapers.New(handle.ID, handle.DB(), handle.Events(), f.Clock)
+}
+
+// Relations returns the relation service of handle, resolving global entities
+// through the fixture's global database.
+func (f *Fixture) Relations(handle *workspace.ProjectHandle) *relations.Service {
+	return relations.New(handle.DB(), f.Workspace.Global().DB(), handle.Events(), f.Clock)
+}
+
+// Trash returns the trash service of handle.
+func (f *Fixture) Trash(handle *workspace.ProjectHandle) *trash.Service {
+	return trash.New(handle.ID, handle.DB(), f.Workspace.Paths(), handle.Events(), f.Confirm, f.Clock)
 }

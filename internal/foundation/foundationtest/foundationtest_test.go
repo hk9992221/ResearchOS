@@ -30,6 +30,9 @@ func TestFixtureBuildsIsolatedWorkspace(t *testing.T) {
 	if fx.Global() == nil {
 		t.Fatal("Global() = nil")
 	}
+	if fx.Confirm == nil {
+		t.Fatal("Confirm = nil")
+	}
 	if _, err := fx.Global().DB().ExecContext(context.Background(), `SELECT 1`); err != nil {
 		t.Fatalf("query global: %v", err)
 	}

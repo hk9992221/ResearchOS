@@ -14,6 +14,7 @@ import (
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/errs"
 	"researchos/internal/foundation/ids"
 	"researchos/internal/foundation/paths"
@@ -46,6 +47,9 @@ type Options struct {
 	// Config is the application config store used by Repoint. Nil means
 	// config.NewStore() is resolved on demand.
 	Config config.Store
+	// Confirm issues and consumes destructive-operation tokens. Nil makes
+	// confirm-gated operations fail with ErrUserConfirmationRequired.
+	Confirm confirm.Service
 	// Migrations registers extra migrations per database kind (module packages
 	// and tests).
 	Migrations map[storage.Kind][]storage.Migration
