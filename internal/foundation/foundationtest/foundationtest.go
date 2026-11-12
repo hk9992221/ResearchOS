@@ -7,12 +7,18 @@ package foundationtest
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/events"
+	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/projects"
+	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/workspace"
 )
 
@@ -104,3 +110,64 @@ func (f *Fixture) Global() *workspace.GlobalHandle { return f.Workspace.Global()
 
 // Close closes the workspace.
 func (f *Fixture) Close() error { return f.Workspace.Close() }
+
+// NewProject registers a project in global.db, creates its data directory and
+// database, and returns the cached project handle.
+func (f *Fixture) NewProject(ctx context.Context, name, summary, goals string) (string, *workspace.ProjectHandle, error) {
+	store := projects.New(f.Workspace.Global().DB(), f.Clock)
+	var id string
+	if err := f.Workspace.Global().InTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		id, err = store.Create(ctx, tx, name, summary, goals)
+		return err
+	}); err != nil {
+		return "", nil, err
+	}
+	if err := f.Workspace.CreateProjectData(ctx, id); err != nil {
+		return "", nil, err
+	}
+	handle, err := f.Workspace.Project(ctx, id)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, handle, nil
+}
+
+// SeedActivities inserts n synthetic entity.created rows in one transaction
+// without going through the events writer. Tests use it to build realistic
+// activity volumes (for example the AC-15 latency baseline).
+func (f *Fixture) SeedActivities(ctx context.Context, handle *workspace.ProjectHandle, n int) error {
+	if n < 0 {
+		return fmt.Errorf("foundationtest: negative activity count %d", n)
+	}
+	if n == 0 {
+		return nil
+	}
+	return handle.InTx(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx,
+			`INSERT INTO activities(id, event_type, entity_type, entity_id, payload, actor, merge_key, created_at)
+			 VALUES (?, 'entity.created', 'task', ?, ?, 'user', NULL, ?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		at := clock.Format(f.Clock.Now())
+		for range n {
+			eventID := ids.MustNew(f.Clock)
+			entityID := ids.MustNew(f.Clock)
+			body, err := json.Marshal(events.Payload{
+				EntityType: schema.EntityTask,
+				EntityID:   entityID,
+				Summary:    "seed",
+				Actor:      schema.ActorUser,
+			})
+			if err != nil {
+				return err
+			}
+			if _, err := stmt.ExecContext(ctx, eventID, entityID, string(body), at); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

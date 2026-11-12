@@ -55,3 +55,36 @@ func TestFixtureBuildsIsolatedWorkspace(t *testing.T) {
 		t.Fatalf("clock = %v, want %v", fx.Clock.Now(), DefaultTime)
 	}
 }
+
+func TestNewProjectAndSeedActivities(t *testing.T) {
+	ctx := context.Background()
+	fx, err := New(t.TempDir(), Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer fx.Close()
+
+	id, handle, err := fx.NewProject(ctx, "Alpha", "summary", "goals")
+	if err != nil {
+		t.Fatalf("NewProject: %v", err)
+	}
+	if handle.ID != id {
+		t.Fatalf("handle id = %q, want %q", handle.ID, id)
+	}
+	if err := fx.SeedActivities(ctx, handle, 7); err != nil {
+		t.Fatalf("SeedActivities: %v", err)
+	}
+	var count int
+	if err := handle.DB().QueryRow(`SELECT count(*) FROM activities`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 7 {
+		t.Fatalf("activities = %d, want 7", count)
+	}
+	if err := fx.SeedActivities(ctx, handle, 0); err != nil {
+		t.Fatalf("SeedActivities(0): %v", err)
+	}
+	if err := fx.SeedActivities(ctx, handle, -1); err == nil {
+		t.Fatal("SeedActivities(-1) succeeded")
+	}
+}

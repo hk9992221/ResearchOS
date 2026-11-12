@@ -18,6 +18,7 @@ import (
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
 	"researchos/internal/foundation/errs"
+	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
 	"researchos/internal/foundation/papers"
 	"researchos/internal/foundation/projects"
@@ -689,4 +690,47 @@ func contains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func TestProjectEventsWiring(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	opts, _ := testOptions(t, base)
+	ws, err := Init(ctx, filepath.Join(base, "ws"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	projectID := ids.MustNew(opts.Clock)
+	if err := ws.CreateProjectData(ctx, projectID); err != nil {
+		t.Fatalf("CreateProjectData: %v", err)
+	}
+	handle, err := ws.Project(ctx, projectID)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	entityID := ids.MustNew(opts.Clock)
+	ev := events.Event{
+		Type:       schema.EventEntityCreated,
+		EntityType: schema.EntityTask,
+		EntityID:   entityID,
+		Summary:    "created",
+		Actor:      schema.ActorUser,
+	}
+	if err := handle.InTx(ctx, func(tx *sql.Tx) error {
+		return handle.Events().Emit(ctx, tx, ev)
+	}); err != nil {
+		t.Fatalf("Emit through handle: %v", err)
+	}
+	list, err := handle.Reader().List(ctx, events.Query{EntityID: entityID})
+	if err != nil {
+		t.Fatalf("Reader.List: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("Reader.List returned %d rows, want 1", len(list))
+	}
+	if !list[0].CreatedAt.Equal(opts.Clock.Now()) {
+		t.Fatalf("CreatedAt = %v, want %v", list[0].CreatedAt, opts.Clock.Now())
+	}
 }

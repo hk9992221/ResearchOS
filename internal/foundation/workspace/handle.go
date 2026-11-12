@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"reflect"
 	"sync"
+
+	"researchos/internal/foundation/clock"
+	"researchos/internal/foundation/events"
 )
 
 // txState is one open transaction together with the database it belongs to.
@@ -115,16 +118,23 @@ type ProjectHandle struct {
 	// ID is the project UUID.
 	ID string
 
-	db *sql.DB
-	tx txCarrier
+	db     *sql.DB
+	tx     txCarrier
+	events *events.Service
 }
 
-func newProjectHandle(id string, db *sql.DB) *ProjectHandle {
-	return &ProjectHandle{ID: id, db: db}
+func newProjectHandle(id string, db *sql.DB, c clock.Clock) *ProjectHandle {
+	return &ProjectHandle{ID: id, db: db, events: events.New(db, events.Options{Clock: c})}
 }
 
 // DB returns the underlying connection pool.
 func (h *ProjectHandle) DB() *sql.DB { return h.db }
+
+// Events returns the activity writer bound to this project database.
+func (h *ProjectHandle) Events() events.Writer { return h.events }
+
+// Reader returns the activity reader bound to this project database.
+func (h *ProjectHandle) Reader() events.Reader { return h.events }
 
 // InTx runs fn inside a transaction; an error rolls back. Nested calls with the
 // same context reuse the outer transaction.

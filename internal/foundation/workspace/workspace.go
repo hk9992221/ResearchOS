@@ -266,7 +266,7 @@ func (w *Workspace) Project(ctx context.Context, projectID string) (*ProjectHand
 	if err != nil {
 		return nil, err
 	}
-	h := newProjectHandle(projectID, db)
+	h := newProjectHandle(projectID, db, w.opts.Clock)
 	w.projects[projectID] = h
 	return h, nil
 }
