@@ -408,6 +408,9 @@ type AIAnalysisConfig struct {
 	ScanRules ScanRules             `json:"scan_rules"`
 	RunParams map[string]ParamValue `json:"run_params"`
 	Extracted []ExtractedConfig     `json:"extracted"`
+	// Comparison is the deterministic cross-run delta table the model saw.
+	// It is evidence, never AI text (§3.5, §6.5).
+	Comparison *MetricComparison `json:"comparison,omitempty"`
 }
 
 // AIAnalysis is the frozen AI text plus audit context stored in

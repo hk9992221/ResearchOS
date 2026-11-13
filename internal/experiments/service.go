@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/events"
@@ -30,6 +31,9 @@ type Service struct {
 	projectID string
 	clock     clock.Clock
 	logger    workspace.Logger
+	ai        *AIConfig
+	mu        sync.Mutex
+	pending   map[string]Snapshot
 }
 
 // New binds the experiment service to one project of ws.
@@ -37,7 +41,14 @@ func New(ws *workspace.Workspace, projectID string, opt Options) *Service {
 	if opt.Clock == nil {
 		opt.Clock = clock.System{}
 	}
-	return &Service{ws: ws, projectID: projectID, clock: opt.Clock, logger: opt.Logger}
+	return &Service{
+		ws:        ws,
+		projectID: projectID,
+		clock:     opt.Clock,
+		logger:    opt.Logger,
+		ai:        opt.AI,
+		pending:   map[string]Snapshot{},
+	}
 }
 
 // handle resolves the project database handle.

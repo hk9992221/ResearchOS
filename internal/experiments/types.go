@@ -3,14 +3,12 @@
 // metadata and metric extraction, context budgets, read-only Git and the
 // append-only analysis history.
 //
-// Implemented here: E01–E08 and the non-AI parts of E12 (experiment/run
-// services, directory binding, archive read-only, Idea relations, snapshot
-// history). SPEC-02 (AI service) is not part of the frozen foundation yet, so
-// the AI tasks E09–E11 (Experiment Outline, Experiment Results, draft/confirm
-// proxy) are intentionally absent: no temporary AI client, no stub, no
-// fallback (SPEC-07 §2.1, O-18). The MyGo UI (E13/E14) and the MCP tool
-// registry (SPEC-11) consume this same service layer; none of their code lives
-// in this package.
+// Implemented here: E01–E12. Outline and Results generation uses the SPEC-02
+// CompleteStructured path (E09–E11), keeps the deterministic metric table
+// separate from AI text, validates every source against the frozen manifest
+// and appends one immutable snapshot per analysis. The MyGo UI (E13/E14) and
+// the MCP tool registry (SPEC-11) consume this same service layer; none of
+// their code lives in this package.
 package experiments
 
 import (
@@ -18,6 +16,7 @@ import (
 	"errors"
 	"time"
 
+	"researchos/internal/ai/output"
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/schema"
@@ -51,9 +50,28 @@ var (
 	// ErrInvalidAIOutput reports an AI payload that failed semantic validation.
 	ErrInvalidAIOutput = errors.New("experiments: invalid AI output")
 	// ErrSnapshotPersist reports a generated draft whose snapshot could not be
-	// stored. It is declared for E09–E11, not used yet.
+	// stored (see SnapshotPersistError).
 	ErrSnapshotPersist = errors.New("experiments: snapshot could not be stored")
 )
+
+// SnapshotPersistError is returned when the AI draft was persisted but the
+// snapshot write failed. AIOutputID lets the UI retry saving the evidence
+// without regenerating (§3.7, §5.6 step 10).
+type SnapshotPersistError struct {
+	AIOutputID string
+	Cause      error
+}
+
+// Error implements error.
+func (e *SnapshotPersistError) Error() string {
+	return "experiments: snapshot persist failed for ai output " + e.AIOutputID + ": " + e.Cause.Error()
+}
+
+// Unwrap exposes the database failure.
+func (e *SnapshotPersistError) Unwrap() error { return e.Cause }
+
+// Is makes errors.Is(err, ErrSnapshotPersist) true.
+func (e *SnapshotPersistError) Is(target error) bool { return target == ErrSnapshotPersist }
 
 // ---------------------------------------------------------------------------
 // Target and status vocabulary (SPEC-07 §5)
@@ -467,11 +485,31 @@ type ContextBudget struct {
 	MaxBytes int64
 }
 
-// AnalysisOptions tunes preview/analysis (§5.6). AI generation is deferred.
+// AnalysisService generates and reviews AI Outline/Results (§5.6). AI text is
+// always created by SPEC-02; this service owns evidence validation and the
+// append-only snapshot.
+type AnalysisService interface {
+	GenerateOutline(ctx context.Context, experimentID string, opts AnalysisOptions) (*Snapshot, error)
+	GenerateResults(ctx context.Context, target TargetRef, opts AnalysisOptions) (*Snapshot, error)
+	PreviewContext(ctx context.Context, target TargetRef, opts AnalysisOptions) (*ContextBundle, error)
+	UpdateContent(ctx context.Context, snapshotID, contentMD string, actor events.Actor) error
+	Confirm(ctx context.Context, snapshotID string, actor events.Actor) error
+	RetrySaveSnapshot(ctx context.Context, aiOutputID string) (*Snapshot, error)
+}
+
+// AnalysisOptions tunes preview/analysis (§5.6).
 type AnalysisOptions struct {
 	ExtraInstructions string
 	ForceRehash       bool
 	MaxContextBytes   int64
+}
+
+// AIConfig wires SPEC-02 into this module. Both services are required for
+// generation, editing and confirmation; nil makes AI operations return
+// ErrAIUnavailable while scanning, metrics, Git and history keep working.
+type AIConfig struct {
+	Generator output.GenerationService
+	Outputs   output.AIOutputService
 }
 
 // SnapshotService reads history. Creation stays internal to the analysis
@@ -500,6 +538,9 @@ type IdeaLinkService interface {
 type Options struct {
 	Clock  clock.Clock
 	Logger workspace.Logger
+	// AI wires SPEC-02. Nil disables Outline/Results generation and review
+	// (scanning, metrics, Git and history stay available, AC-15).
+	AI *AIConfig
 }
 
 // actorOf treats an empty actor as the local user, mirroring the notes service
