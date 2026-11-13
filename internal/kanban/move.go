@@ -165,11 +165,11 @@ func (m *Module) applyMove(ctx context.Context, tx *sql.Tx, actor events.Actor, 
 // Move is the TaskService.Move entry: project gate, task gates, then the
 // engine inside one seeded transaction (§5.2 Move).
 func (s *taskService) Move(ctx context.Context, actor events.Actor, in MoveInput) (Task, error) {
-	t, err := s.m.loadGateTask(ctx, in.ID)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return Task{}, err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, in.ID)
+	if err != nil {
 		return Task{}, err
 	}
 	if in.Column == "" {
@@ -199,11 +199,11 @@ func (s *taskService) Move(ctx context.Context, actor events.Actor, in MoveInput
 // already-terminal tasks return unchanged without an event (§5.2 Complete,
 // AC-27).
 func (s *taskService) Complete(ctx context.Context, actor events.Actor, id string) (Task, error) {
-	t, err := s.m.loadGateTask(ctx, id)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return Task{}, err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, id)
+	if err != nil {
 		return Task{}, err
 	}
 	a := kanbanActor(actor)

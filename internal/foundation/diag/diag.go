@@ -57,6 +57,9 @@ type Options struct {
 	IncludeFileScan bool
 	// ProjectIDs limits the report; empty means every registered project.
 	ProjectIDs []string
+	// Migrations is the module migration set registered with the workspace.
+	// Without it TargetVersion would only count the baseline schema (§4.8.1).
+	Migrations map[storage.Kind][]storage.Migration
 }
 
 // ConfigReport describes the application configuration.
@@ -79,7 +82,7 @@ func Run(ctx context.Context, w *workspace.Workspace, opt Options) (Report, erro
 	}
 
 	globalPath := filepath.Join(w.Root(), "global.db")
-	globalReport, err := inspectDB(ctx, globalPath, storage.KindGlobal)
+	globalReport, err := inspectDB(ctx, globalPath, storage.KindGlobal, opt.Migrations)
 	rep.Global = globalReport
 	if err != nil {
 		rep.Warnings = append(rep.Warnings, "global: "+err.Error())
@@ -96,7 +99,7 @@ func Run(ctx context.Context, w *workspace.Workspace, opt Options) (Report, erro
 	projectIDs = sortedUnique(projectIDs)
 
 	for _, projectID := range projectIDs {
-		pr, warnings := inspectProject(ctx, w, projectID, opt.IncludeFileScan)
+		pr, warnings := inspectProject(ctx, w, projectID, opt.IncludeFileScan, opt.Migrations)
 		rep.Projects = append(rep.Projects, pr)
 		rep.Warnings = append(rep.Warnings, warnings...)
 	}
@@ -109,7 +112,7 @@ func Run(ctx context.Context, w *workspace.Workspace, opt Options) (Report, erro
 	return rep, nil
 }
 
-func inspectProject(ctx context.Context, w *workspace.Workspace, projectID string, includeFileScan bool) (ProjectReport, []string) {
+func inspectProject(ctx context.Context, w *workspace.Workspace, projectID string, includeFileScan bool, extra map[storage.Kind][]storage.Migration) (ProjectReport, []string) {
 	pr := ProjectReport{ProjectID: projectID}
 	var warnings []string
 	p := w.Paths()
@@ -124,7 +127,7 @@ func inspectProject(ctx context.Context, w *workspace.Workspace, projectID strin
 	if info, err := os.Stat(dbPath); err != nil || info.IsDir() {
 		return pr, warnings
 	}
-	dbReport, err := inspectDB(ctx, dbPath, storage.KindProject)
+	dbReport, err := inspectDB(ctx, dbPath, storage.KindProject, extra)
 	pr.DB = &dbReport
 	if err != nil {
 		warnings = append(warnings, projectID+": "+err.Error())
@@ -174,7 +177,7 @@ func inspectProject(ctx context.Context, w *workspace.Workspace, projectID strin
 	return pr, warnings
 }
 
-func inspectDB(ctx context.Context, path string, kind storage.Kind) (DBReport, error) {
+func inspectDB(ctx context.Context, path string, kind storage.Kind, extra map[storage.Kind][]storage.Migration) (DBReport, error) {
 	rep := DBReport{Path: path}
 	if info, err := os.Stat(path); err == nil {
 		rep.SizeBytes = info.Size()
@@ -182,7 +185,7 @@ func inspectDB(ctx context.Context, path string, kind storage.Kind) (DBReport, e
 	if info, err := os.Stat(path + "-wal"); err == nil {
 		rep.WALBytes = info.Size()
 	}
-	rep.TargetVersion, _ = storage.TargetVersion(kind, storage.Options{})
+	rep.TargetVersion, _ = storage.TargetVersion(kind, storage.Options{Extra: extra})
 
 	db, err := storage.OpenReadOnly(ctx, path)
 	if err != nil {

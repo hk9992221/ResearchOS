@@ -60,6 +60,21 @@ func (s *Service) ExtractMetadata(ctx context.Context, scan *ScanResult) (*Metad
 				continue
 			}
 			meta.Readmes = append(meta.Readmes, summary)
+		case KindLog:
+			summary, err := parseLog(path, entry.Path)
+			if err != nil {
+				meta.Warnings = append(meta.Warnings, Warning{Code: "log_parse_failed", Path: entry.Path, Message: err.Error()})
+				continue
+			}
+			meta.Logs = append(meta.Logs, summary)
+		case KindCode:
+			ext := strings.ToLower(filepath.Ext(entry.Path))
+			if ext != "" {
+				if meta.Languages == nil {
+					meta.Languages = map[string]int{}
+				}
+				meta.Languages[ext]++
+			}
 		}
 		if deps := parseDependencies(path, entry.Path); deps != nil {
 			meta.Dependencies = append(meta.Dependencies, *deps)
@@ -73,7 +88,34 @@ func (s *Service) ExtractMetadata(ctx context.Context, scan *ScanResult) (*Metad
 	sort.Slice(meta.Readmes, func(i, j int) bool { return meta.Readmes[i].Path < meta.Readmes[j].Path })
 	sort.Slice(meta.Dependencies, func(i, j int) bool { return meta.Dependencies[i].Path < meta.Dependencies[j].Path })
 	sort.Slice(meta.EntryPoints, func(i, j int) bool { return meta.EntryPoints[i].Path < meta.EntryPoints[j].Path })
+	sort.Slice(meta.Logs, func(i, j int) bool { return meta.Logs[i].Path < meta.Logs[j].Path })
 	return meta, nil
+}
+
+// parseLog counts error/warn keywords case-insensitively (§3.2 log row).
+func parseLog(path, rel string) (LogSummary, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return LogSummary{}, err
+	}
+	defer f.Close()
+	out := LogSummary{Path: rel}
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		out.Lines++
+		line := strings.ToLower(scanner.Text())
+		if strings.Contains(line, "error") {
+			out.ErrorCount++
+		}
+		if strings.Contains(line, "warn") {
+			out.WarnCount++
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 // parseConfig reads one YAML/JSON/TOML config and records the parse error at

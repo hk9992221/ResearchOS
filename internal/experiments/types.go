@@ -345,7 +345,19 @@ type Metadata struct {
 	Readmes      []ReadmeSummary
 	Dependencies []DependencySet
 	EntryPoints  []EntryCandidate
-	Warnings     []Warning
+	// Languages tallies code files by lower-case extension (".go", ".py", …).
+	Languages map[string]int
+	// Logs carries deterministic error/warn keyword counts per log file.
+	Logs     []LogSummary
+	Warnings []Warning
+}
+
+// LogSummary is the keyword tally of one log file (§3.2 log row).
+type LogSummary struct {
+	Path       string
+	ErrorCount int
+	WarnCount  int
+	Lines      int
 }
 
 // EntryCandidate is a heuristic entry-point guess. Heuristic is always true in

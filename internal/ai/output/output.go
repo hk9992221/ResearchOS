@@ -368,6 +368,7 @@ func (s *outputStore) Get(ctx context.Context, oID string) (AIOutput, error) {
 	if err != nil {
 		return AIOutput{}, fmt.Errorf("output: get: %w", err)
 	}
+	o.ProjectID = s.opt.ProjectID
 	return o, nil
 }
 

@@ -156,13 +156,14 @@ func Scan(ctx context.Context, w *workspace.Workspace, projectID string) (Report
 		filePath string
 		title    string
 		hash     sql.NullString
+		state    string
 		deleted  bool
 	}
 	rowsByPath := make(map[string]noteRow)
 	var active []noteRow
 
 	rows, err := handle.DB().QueryContext(ctx,
-		`SELECT id, file_path, title, file_hash, deleted_at FROM notes`)
+		`SELECT id, file_path, title, file_hash, file_state, deleted_at FROM notes`)
 	if err != nil {
 		return rep, fmt.Errorf("reconcile: read notes: %w", err)
 	}
@@ -171,7 +172,7 @@ func Scan(ctx context.Context, w *workspace.Workspace, projectID string) (Report
 			row     noteRow
 			deleted sql.NullString
 		)
-		if err := rows.Scan(&row.id, &row.filePath, &row.title, &row.hash, &deleted); err != nil {
+		if err := rows.Scan(&row.id, &row.filePath, &row.title, &row.hash, &row.state, &deleted); err != nil {
 			rows.Close()
 			return rep, fmt.Errorf("reconcile: read notes: %w", err)
 		}
@@ -199,6 +200,15 @@ func Scan(ctx context.Context, w *workspace.Workspace, projectID string) (Report
 		}
 		diskHash := hashes[row.filePath]
 		dbHash := row.hash.String
+		if row.state == "missing" {
+			// The file reappeared while the row was flagged missing. Surface it
+			// as a reconcilable difference so any action (adopt/reattach) can
+			// clear the flag; otherwise the note would stay read-only forever.
+			rep.Modified = append(rep.Modified, Modified{
+				NoteID: row.id, FilePath: row.filePath, DBHash: dbHash, DiskHash: diskHash,
+			})
+			continue
+		}
 		if !row.hash.Valid || dbHash != diskHash {
 			rep.Modified = append(rep.Modified, Modified{
 				NoteID: row.id, FilePath: row.filePath, DBHash: dbHash, DiskHash: diskHash,
@@ -341,7 +351,7 @@ func acceptExternalEdit(ctx context.Context, w *workspace.Workspace, handle *wor
 	return handle.InTx(ctx, func(tx *sql.Tx) error {
 		now := clock.Format(c.Now())
 		res, err := tx.ExecContext(ctx,
-			`UPDATE notes SET file_hash = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
+			`UPDATE notes SET file_state = 'ok', file_hash = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
 			hash, clock.Format(info.ModTime()), now, noteID)
 		if err != nil {
 			return fmt.Errorf("reconcile: accept external edit: %w", err)
@@ -352,7 +362,7 @@ func acceptExternalEdit(ctx context.Context, w *workspace.Workspace, handle *wor
 			return fmt.Errorf("reconcile: accept external edit %s: %w", noteID, sql.ErrNoRows)
 		}
 		return handle.Events().EmitNoteUpdated(ctx, tx, events.NoteUpdatedEvent{
-			NoteID: noteID, Summary: "检测到外部修改", Actor: actor, At: c.Now(),
+			NoteID: noteID, Summary: "对账采纳磁盘内容", Actor: actor, At: c.Now(),
 		})
 	})
 }

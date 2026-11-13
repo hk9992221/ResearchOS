@@ -274,6 +274,8 @@ type scanner struct {
 	pruned    []ExcludedEntry
 	warnings  []Warning
 	truncated bool
+	// visitedDirs guards symlink cycles when follow_symlinks=true.
+	visitedDirs map[string]bool
 }
 
 // run performs the walk in lexical order (filepath.WalkDir) and enforces the
@@ -299,30 +301,35 @@ func (w *scanner) run() error {
 			return nil
 		}
 		rel = normalizeRelPath(rel)
-		if entry.IsDir() {
-			if forcedExcludedDir(entry.Name()) {
-				w.prune(rel+"/", ReasonCache)
-				return filepath.SkipDir
-			}
-			if excluded, reason := w.rules.excluded(rel, true); excluded {
-				w.prune(rel+"/", reason)
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.Type()&fs.ModeSymlink != 0 {
-			return w.symlink(path, rel, entry)
-		}
-		if !entry.Type().IsRegular() {
-			w.prune(rel, ReasonUnreadable)
-			return nil
-		}
-		return w.file(path, rel, entry)
+		return w.visit(path, rel, entry)
 	})
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// visit dispatches one walk entry (regular file, directory or symlink).
+func (w *scanner) visit(path, rel string, entry fs.DirEntry) error {
+	if entry.IsDir() {
+		if forcedExcludedDir(entry.Name()) {
+			w.prune(rel+"/", ReasonCache)
+			return filepath.SkipDir
+		}
+		if excluded, reason := w.rules.excluded(rel, true); excluded {
+			w.prune(rel+"/", reason)
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	if entry.Type()&fs.ModeSymlink != 0 {
+		return w.symlink(path, rel, entry)
+	}
+	if !entry.Type().IsRegular() {
+		w.prune(rel, ReasonUnreadable)
+		return nil
+	}
+	return w.file(path, rel, entry)
 }
 
 // symlink follows a link only when allowed and inside the scan root (§3.2).
@@ -346,11 +353,52 @@ func (w *scanner) symlink(path, rel string, entry fs.DirEntry) error {
 		return nil
 	}
 	info, err := os.Stat(real)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil {
+		w.prune(rel, ReasonUnreadable)
+		return nil
+	}
+	if info.IsDir() {
+		return w.walkSymlinkDir(real, rel)
+	}
+	if !info.Mode().IsRegular() {
 		w.prune(rel, ReasonUnreadable)
 		return nil
 	}
 	return w.file(real, rel, fs.FileInfoToDirEntry(info))
+}
+
+// walkSymlinkDir scans an in-root symlinked directory (follow_symlinks=true).
+// A visited-realpath set prevents cycles.
+func (w *scanner) walkSymlinkDir(real, rel string) error {
+	if w.visitedDirs == nil {
+		w.visitedDirs = map[string]bool{}
+	}
+	if w.visitedDirs[real] {
+		w.prune(rel+"/", ReasonSymlinkOutside)
+		return nil
+	}
+	w.visitedDirs[real] = true
+	err := filepath.WalkDir(real, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			w.warn("unreadable", path, walkErr.Error())
+			if entry != nil && entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		sub, err := filepath.Rel(real, path)
+		if err != nil {
+			return nil
+		}
+		if sub == "." {
+			return nil
+		}
+		return w.visit(path, rel+"/"+normalizeRelPath(sub), entry)
+	})
+	return err
 }
 
 // entryMTime returns the lstat mtime of one walk entry.
@@ -400,7 +448,10 @@ func (w *scanner) file(path, rel string, entry fs.DirEntry) error {
 	if reason != "" {
 		file.ExclusionReason = &reason
 	}
-	if kind == KindImage && !w.rules.rules.IncludeImagesInAI {
+	if kind == KindImage {
+		// Image understanding is not implemented in v1 (O-13): the manifest
+		// and the ContextBundle must agree that images never enter AI content,
+		// regardless of the include_images_in_ai switch.
 		userExclude := ReasonUserExclude
 		file.ContentEligible = false
 		file.ExclusionReason = &userExclude

@@ -41,13 +41,15 @@ func (k *keyword) ReplaceDoc(ctx context.Context, doc IndexDoc, chunks []IndexCh
 	now := clock.Format(k.clock.Now())
 
 	return k.inTx(ctx, func(tx *sql.Tx) error {
-		// Remove the previous projection first: the doc row is replaced
-		// afterwards, and chunk inserts need the FK parent to exist at the
-		// end state, not the interleaved one.
-		if err := k.purgeDocChunks(ctx, tx, doc.DocID); err != nil {
+		// Upsert the doc row first (never delete it): its SPEC-10-owned
+		// metadata columns — parser_version, embedding_model_id,
+		// embedding_dim, index_status, indexed_at, error — must survive a
+		// keyword re-projection (§5.10.3 rule 1, RQ-11). Only chunks and
+		// their FTS rows are replaced.
+		if err := k.upsertDoc(ctx, tx, doc, now); err != nil {
 			return err
 		}
-		if err := k.upsertDoc(ctx, tx, doc, now); err != nil {
+		if err := k.purgeChunks(ctx, tx, doc.DocID); err != nil {
 			return err
 		}
 		for _, ch := range chunks {
@@ -103,6 +105,17 @@ func (k *keyword) DeleteDoc(ctx context.Context, projectID, docID string) error 
 // purgeDocChunks deletes FTS rows, chunks and the doc row in one tx. The
 // vectors FK cascades keep profile data consistent (§5.10.3 rule 2).
 func (k *keyword) purgeDocChunks(ctx context.Context, tx *sql.Tx, docID string) error {
+	if err := k.purgeChunks(ctx, tx, docID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM %s WHERE doc_id = ?`, k.tb.docs), docID)
+	return err
+}
+
+// purgeChunks removes the chunk projection and its FTS rows while keeping the
+// doc row (and its SPEC-10-owned metadata) intact.
+func (k *keyword) purgeChunks(ctx context.Context, tx *sql.Tx, docID string) error {
 	if _, err := tx.ExecContext(ctx,
 		fmt.Sprintf(`DELETE FROM %s WHERE chunk_id IN (SELECT chunk_id FROM %s WHERE doc_id = ?)`,
 			k.tb.fts, k.tb.chunks), docID); err != nil {
@@ -112,9 +125,7 @@ func (k *keyword) purgeDocChunks(ctx context.Context, tx *sql.Tx, docID string) 
 		fmt.Sprintf(`DELETE FROM %s WHERE doc_id = ?`, k.tb.chunks), docID); err != nil {
 		return fmt.Errorf("index/store: delete chunks: %w", err)
 	}
-	_, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM %s WHERE doc_id = ?`, k.tb.docs), docID)
-	return err
+	return nil
 }
 
 func (k *keyword) upsertDoc(ctx context.Context, tx *sql.Tx, doc IndexDoc, now string) error {

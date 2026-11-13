@@ -58,6 +58,11 @@ func (s *Service) CreateRun(ctx context.Context, in CreateRunInput) (*Run, error
 	}
 	if dirPath != "" {
 		run.DirRef = &dirPath
+		// Run-level Git state is captured once at creation (SPEC-07 §3.10);
+		// a non-repository or unreadable directory stays detected=false.
+		if info, err := s.Inspect(ctx, dirPath); err == nil && info != nil {
+			run.GitInfo = *info
+		}
 	}
 	err = handle.InTx(ctx, func(tx *sql.Tx) error {
 		if err := s.insertRun(ctx, tx, run); err != nil {

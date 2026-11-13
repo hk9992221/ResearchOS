@@ -63,6 +63,9 @@ type Service struct {
 	zotero   literature.ZoteroSource
 	opener   Opener
 	importMu *sync.Mutex
+
+	syncMu      sync.Mutex
+	syncReports map[string]syncReportEntry
 }
 
 // New binds the service to an open workspace.
@@ -77,15 +80,16 @@ func New(ws *workspace.Workspace, opts Options) *Service {
 	}
 	global := ws.Global()
 	return &Service{
-		ws:       ws,
-		clock:    c,
-		papers:   papers.New(global.DB(), c),
-		projects: projects.New(global.DB(), c),
-		files:    NewFileStore(ws),
-		settings: settings.NewWorkspace(global.DB()).WithClock(c),
-		zotero:   opts.Zotero,
-		opener:   opener,
-		importMu: importLockFor(ws.Root()),
+		ws:          ws,
+		clock:       c,
+		papers:      papers.New(global.DB(), c),
+		projects:    projects.New(global.DB(), c),
+		files:       NewFileStore(ws),
+		settings:    settings.NewWorkspace(global.DB()).WithClock(c),
+		zotero:      opts.Zotero,
+		opener:      opener,
+		importMu:    importLockFor(ws.Root()),
+		syncReports: map[string]syncReportEntry{},
 	}
 }
 

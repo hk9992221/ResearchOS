@@ -434,7 +434,10 @@ type HistoryQuery struct {
 
 // HistoryEntry is one merged, newest-first History row.
 type HistoryEntry struct {
-	At          time.Time
+	At time.Time
+	// ActivityID is the activities row id; it is the stable tie-break of the
+	// (created_at, id) cursor and stays empty for synthesized entries.
+	ActivityID  string
 	Kind        HistoryKind
 	EventType   string
 	Summary     string

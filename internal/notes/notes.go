@@ -439,12 +439,12 @@ func (s *noteService) PromoteToDatabase(ctx context.Context, in PromoteInput) (*
 			return fmt.Errorf("%w: database %s", errs.ErrEntityDeleted, in.DatabaseID)
 		}
 
-		// The §4.2 unique index on db_records(note_id) is not partial, so a
-		// soft-deleted record still owns the note page. Checking every row
-		// keeps the service error readable instead of surfacing a UNIQUE
-		// constraint failure.
+		// The live partial unique index (0270) only constrains rows with
+		// deleted_at IS NULL; a trashed record releases the note page
+		// (SPEC-05 §4.2, D-05-04 round-trip).
 		var existing string
-		switch err := tx.QueryRowContext(ctx, `SELECT id FROM db_records WHERE note_id = ?`, in.NoteID).Scan(&existing); {
+		switch err := tx.QueryRowContext(ctx,
+			`SELECT id FROM db_records WHERE note_id = ? AND deleted_at IS NULL`, in.NoteID).Scan(&existing); {
 		case err == nil:
 			return fmt.Errorf("notes: note %s is already the page of record %s", in.NoteID, existing)
 		case !errors.Is(err, sql.ErrNoRows):

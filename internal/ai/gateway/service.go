@@ -26,7 +26,6 @@ const embedConcurrency = 2
 // Service implements Gateway, EmbeddingService and RerankService.
 type Service struct {
 	opts    Options
-	mu      sync.Mutex
 	slots   map[string]chan struct{}
 	slotsMu sync.Mutex
 }

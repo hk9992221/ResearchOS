@@ -417,6 +417,9 @@ func (s *Service) BindDirectory(ctx context.Context, experimentID, absPath strin
 		if err := s.setExperimentDirRef(ctx, tx, experimentID, dir); err != nil {
 			return err
 		}
+		if err := s.writeScanRules(ctx, tx, experimentID, rules); err != nil {
+			return err
+		}
 		refs := externalrefs.New(handle.DB(), handle.Events(), s.clock)
 		id, err := refs.Register(ctx, tx, externalrefs.Ref{
 			OwnerType: schema.EntityExperiment,
