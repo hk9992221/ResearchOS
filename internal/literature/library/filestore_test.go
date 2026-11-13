@@ -316,3 +316,28 @@ func TestFileStoreMove(t *testing.T) {
 		t.Error("traversal source accepted")
 	}
 }
+
+func TestFileStoreRemoveIgnoresCanceledContext(t *testing.T) {
+	f := newFixture(t)
+	store := NewFileStore(f.Workspace)
+	paperID := ids.MustNew(f.Clock)
+	if _, err := store.Store(context.Background(), paperID, bytes.NewReader([]byte("copy")), 4); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := store.Remove(ctx, paperID); err != nil {
+		t.Fatalf("remove with canceled context: %v", err)
+	}
+	if _, _, err := store.Stat(context.Background(), paperID); !errors.Is(err, literature.ErrPaperFileMissing) {
+		t.Errorf("copy survived canceled remove: %v", err)
+	}
+	dir, err := f.Workspace.Paths().Abs(f.Workspace.Paths().PaperDir(paperID))
+	if err != nil {
+		t.Fatalf("resolve dir: %v", err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("directory survived canceled remove: %v", err)
+	}
+}
