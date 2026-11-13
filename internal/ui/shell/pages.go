@@ -3,6 +3,8 @@ package shell
 import (
 	"context"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -191,9 +193,11 @@ func homePage(ctx context.Context, a *app.App) Page {
 				v.Skeleton(components.SkeletonOptions{Lines: 4})
 			case len(list) == 0:
 				v.EmptyState(components.EmptyStateOptions{
-					Icon:   icons.Projects,
-					Title:  i18n.T("shell.projects.empty_title"),
-					Reason: i18n.T("shell.projects.empty_reason_home"),
+					Icon:        icons.Projects,
+					Title:       i18n.T("shell.projects.empty_title"),
+					Reason:      i18n.T("shell.projects.empty_reason_home"),
+					ActionLabel: i18n.T("shell.projects.btn_create"),
+					OnAction:    func() { requestCreate(a) },
 				})
 			default:
 				v.Card(components.CardOptions{Title: i18n.T("shell.home.card_recent")}, func() {
@@ -204,20 +208,74 @@ func homePage(ctx context.Context, a *app.App) Page {
 	}
 }
 
-// projectsPage is the read-only project list of the shell. Project management
-// belongs to SPEC-03; opening a project is shell navigation.
+// projectsPage is the project list of the shell. Opening is shell navigation;
+// creation runs the SPEC-03 pipeline through App.CreateProject inside a managed
+// task, so the frame never waits on the disk and the task strip shows progress.
 type projectsPage struct {
 	state ui.ListState
+
+	// createOpen, name, summary, goals and requested are written only while a
+	// frame is built. creating is also cleared by the task, so it is guarded.
+	mu         sync.Mutex
+	createOpen bool
+	name       string
+	summary    string
+	goals      string
+	creating   bool
+	requested  string
+}
+
+// createProjectParam is the route parameter that asks for the creation dialog.
+// Its value is a one-shot token, so repainting the page never reopens a dialog
+// the user already closed.
+const createProjectParam = "create_project"
+
+// requestCreate sends the Projects page the create request through navigation,
+// which keeps the form and its service call in one place.
+func requestCreate(a *app.App) {
+	a.Navigate(ports.Route{
+		Kind:   app.RouteProjects,
+		Params: map[string]string{createProjectParam: strconv.FormatInt(time.Now().UnixNano(), 10)},
+	})
+}
+
+// open shows the dialog once per request token.
+func (p *projectsPage) open(token string) {
+	if token == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if token == p.requested {
+		return
+	}
+	p.requested = token
+	p.createOpen = true
 }
 
 func (p *projectsPage) view(ctx context.Context, a *app.App) Page {
 	p.state = *components.NewTableState()
 	return func(v *components.UI, r ports.Route) {
+		p.open(r.Params[createProjectParam])
+		p.mu.Lock()
+		creating := p.creating
+		p.mu.Unlock()
+
 		list, loaded, listErr := a.ProjectList()
 		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
 				Title:       pageTitle(app.RouteProjects),
 				Description: i18n.T("shell.projects.description"),
+				Actions: func() {
+					if v.Button(i18n.T("shell.projects.btn_create"), components.ButtonOptions{
+						Variant:  components.VariantPrimary,
+						Icon:     icons.Plus,
+						Disabled: creating,
+						Label:    i18n.T("shell.projects.btn_create_aria"),
+					}).Clicked() {
+						p.open(strconv.FormatInt(time.Now().UnixNano(), 10))
+					}
+				},
 			})
 			if listErr != nil {
 				v.Banner(components.BannerOptions{
@@ -231,17 +289,95 @@ func (p *projectsPage) view(ctx context.Context, a *app.App) Page {
 				v.Skeleton(components.SkeletonOptions{Lines: 5})
 			case len(list) == 0:
 				v.EmptyState(components.EmptyStateOptions{
-					Icon:   icons.Projects,
-					Title:  i18n.T("shell.projects.empty_title"),
-					Reason: i18n.T("shell.projects.empty_reason_list"),
+					Icon:        icons.Projects,
+					Title:       i18n.T("shell.projects.empty_title"),
+					Reason:      i18n.T("shell.projects.empty_reason_list"),
+					ActionLabel: i18n.T("shell.projects.btn_create"),
+					OnAction: func() {
+						p.open(strconv.FormatInt(time.Now().UnixNano(), 10))
+					},
 				})
 			default:
 				v.Card(components.CardOptions{}, func() {
 					projectTable(v, ctx, a, &p.state, list, len(list))
 				})
 			}
+			p.form(v, a)
 		}})
 	}
+}
+
+// form renders the creation dialog while it is open. The fields are page state,
+// so a rejected name leaves the typed values in place for the next attempt.
+func (p *projectsPage) form(v *components.UI, a *app.App) {
+	if !p.createOpen {
+		return
+	}
+	v.Dialog(&p.createOpen, components.DialogOptions{
+		Title:       i18n.T("shell.projects.dialog_title"),
+		Description: i18n.T("shell.projects.dialog_desc"),
+		Actions: func() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+				p.createOpen = false
+			}
+			created := v.Button(i18n.T("shell.projects.btn_confirm"), components.ButtonOptions{
+				Variant: components.VariantPrimary,
+			})
+			if created.Clicked() {
+				p.createOpen = false
+				p.submit(a, p.name, p.summary, p.goals)
+			}
+		},
+	}, func() {
+		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
+			v.Input(&p.name, components.FieldOptions{
+				Label:       i18n.T("shell.projects.field_name"),
+				Placeholder: i18n.T("shell.projects.field_name_hint"),
+				AutoFocus:   true,
+			})
+			v.Input(&p.summary, components.FieldOptions{
+				Label:       i18n.T("shell.projects.field_summary"),
+				Description: i18n.T("shell.projects.field_summary_desc"),
+			})
+			v.Textarea(&p.goals, components.FieldOptions{
+				Label:       i18n.T("shell.projects.field_goals"),
+				Description: i18n.T("shell.projects.field_goals_desc"),
+			})
+		})
+	})
+}
+
+// submit runs the creation pipeline as a task. The dialog is already closed, so
+// the task never touches dialog state: its only writes are the creating flag
+// and the toasts the shell renders.
+func (p *projectsPage) submit(a *app.App, name, summary, goals string) {
+	p.mu.Lock()
+	if p.creating {
+		p.mu.Unlock()
+		return
+	}
+	p.creating = true
+	p.mu.Unlock()
+
+	a.RunTask(i18n.T("shell.projects.task_create"), func(ctx context.Context, t *app.Task) error {
+		t.Stage(i18n.T("shell.projects.stage_create"))
+		created, err := a.CreateProject(ctx, project.CreateInput{Name: name, Summary: summary, Goals: goals})
+		p.mu.Lock()
+		p.creating = false
+		p.mu.Unlock()
+		switch {
+		case err != nil && created == nil:
+			a.Toast(app.LevelDanger, i18n.T("shell.projects.toast_create_fail"), errtext.Text(err))
+			return err
+		case err != nil:
+			// The project exists; only its Activity event is missing (§5.4).
+			a.Toast(app.LevelWarning, i18n.Tf("shell.projects.toast_created", map[string]string{"name": created.Name}),
+				errtext.Text(err))
+		default:
+			a.Toast(app.LevelInfo, i18n.Tf("shell.projects.toast_created", map[string]string{"name": created.Name}), "")
+		}
+		return nil
+	})
 }
 
 // projectTable renders the project rows with an Open action.
