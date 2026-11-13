@@ -21,6 +21,7 @@ import (
 	"researchos/internal/foundation/reconcile"
 	foundationworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/i18n"
+	"researchos/internal/literature"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/shell"
 	"researchos/internal/workspace"
@@ -43,6 +44,13 @@ type Services struct {
 	Diagnostics DiagnosticsAPI
 	External    ExternalAPI
 	Config      ConfigAPI
+	// MCPStatus reports the in-process MCP server of SPEC-11 §5.8. It is the
+	// only place a user can see whether the stdio bridge has something to talk
+	// to; a nil function means the composition root never started one.
+	MCPStatus func() MCPStatus
+	// Literature binds the SPEC-04 Zotero and import services. Nil means the
+	// module is not assembled, and the page says so instead of faking data.
+	Literature LiteratureAPI
 	// Scan reports the marker and registry state of the open workspace.
 	Scan func(ctx context.Context) (foundationworkspace.WorkspaceScan, error)
 	// ChooseFolder opens the OS directory picker.
@@ -84,6 +92,32 @@ type DiagnosticsAPI interface {
 type ExternalAPI interface {
 	CheckOwner(ctx context.Context, projectID string, ownerType, ownerID string) ([]externalrefs.Status, error)
 	Relocate(ctx context.Context, req externalrefs.RelocateRequest) (externalrefs.RelocateResult, error)
+}
+
+// MCPStatus is the state of the in-process MCP server (SPEC-11 §5.8). Socket is
+// the local endpoint the stdio bridge connects to; Error explains why the
+// server is not running when it is not.
+type MCPStatus struct {
+	Running bool
+	Socket  string
+	Error   string
+}
+
+// LiteratureAPI is the part of SPEC-04 the Literature page uses: the Zotero
+// connection, the item browser, and the preview-and-import pipeline. The
+// composition root binds it to the services, always as ActorUser: the page is
+// the user path, while MCP reaches the same methods with ActorMCP.
+type LiteratureAPI interface {
+	ZoteroStatus(ctx context.Context) (literature.ZoteroConnectionStatus, error)
+	// MetadataSource reports which reader is in use (local API or SQLite) and
+	// why it fell back, as SPEC-04 §5.2 requires the UI to show.
+	MetadataSource(ctx context.Context) (literature.MetadataSource, string, error)
+	Collections(ctx context.Context, libraryID string) ([]literature.ZoteroCollection, error)
+	Items(ctx context.Context, libraryID, collectionKey string, opts literature.ListItemsOptions) (literature.ItemPage, error)
+	Attachments(ctx context.Context, libraryID, itemKey string) ([]literature.ZoteroAttachment, error)
+	Preview(ctx context.Context, sel literature.ImportSelection) (literature.ImportPreview, error)
+	Import(ctx context.Context, sel literature.ImportSelection, progress literature.ProgressFunc) (literature.ImportResult, error)
+	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
 }
 
 // TrashRef identifies one trash entry for restore or purge.
@@ -158,6 +192,16 @@ func System(s Services) map[ports.RouteKind]shell.Page {
 		ports.RouteTrash:     trash.Page,
 		app.RouteConsistency: consistency.Page,
 		app.RouteDiagnostics: diagnostics.Page,
+	}
+}
+
+// Research returns the module pages that operate on the open project. Today
+// that is the SPEC-04 literature browser and import page; the remaining
+// modules replace their shell placeholders as they are built.
+func Research(s Services) map[ports.RouteKind]shell.Page {
+	literature := &Literature{Services: &s}
+	return map[ports.RouteKind]shell.Page{
+		app.RouteLiterature: literature.Page,
 	}
 }
 

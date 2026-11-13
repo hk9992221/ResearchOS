@@ -581,10 +581,15 @@ func inPlaceholders(ids []int64) (string, []any) {
 	return strings.Join(marks, ","), args
 }
 
+// libraryNumber translates a Zotero library identifier into the number the
+// local database uses. The personal library is addressed as "0" everywhere
+// outside Zotero (SPEC-04 §5.2: ListLibraries returns ID "0", and the local API
+// path is /api/users/0), while zotero.sqlite stores it as libraryID 1. Without
+// this step the personal library would look empty.
 func libraryNumber(libraryID string) (int64, error) {
 	id := strings.TrimSpace(libraryID)
-	if id == "" {
-		return 0, nil
+	if id == "" || id == "0" {
+		return 1, nil
 	}
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil || n < 0 {

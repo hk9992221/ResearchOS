@@ -27,11 +27,13 @@ import (
 	"researchos/internal/foundation/reconcile"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/settings"
+	"researchos/internal/foundation/storage"
 	"researchos/internal/foundation/trash"
 	fworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/project"
+	"researchos/internal/search"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
 	"researchos/internal/ui/errtext"
@@ -52,6 +54,11 @@ type Runtime struct {
 	app      *app.App
 	shell    *shell.Shell
 	services pages.Services
+	mcp      *mcpService
+	// search and literature are the SPEC-10 and SPEC-04 services of the open
+	// workspace; both hold database handles and are released on a switch.
+	search     *search.Service
+	literature *literatureModule
 
 	// setupApp drives the wizard's tasks before a workspace exists.
 	setupApp *app.App
@@ -96,7 +103,7 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 
 	r.setupApp = app.New(app.Options{WorkspaceName: i18n.T("app.name")})
 	r.setupApp.Changed(mygo.InvalidateAll())
-	r.setupServices = r.pageServices(nil, nil, r.setupApp)
+	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil)
 	r.services = r.setupServices
 	r.wizard = &pages.Wizard{Services: &r.setupServices}
 
@@ -164,7 +171,15 @@ func (r *Runtime) servicesFor() pages.Services {
 // open opens an existing workspace, or initializes the folder when it is not a
 // workspace yet, then installs the shell.
 func (r *Runtime) open(ctx context.Context, path string) error {
-	opts := fworkspace.Options{Config: r.config, Confirm: r.confirm}
+	// The MCP listener holds the database handles of the workspace it was
+	// started with, so it must be released before a new one opens.
+	r.stopMCP()
+
+	migrations, err := moduleMigrations()
+	if err != nil {
+		return err
+	}
+	opts := fworkspace.Options{Config: r.config, Confirm: r.confirm, Migrations: migrations}
 	ws, err := fworkspace.Open(ctx, path, opts)
 	if errors.Is(err, errs.ErrNotWorkspace) {
 		ws, err = fworkspace.Init(ctx, path, opts)
@@ -190,39 +205,87 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	a.Changed(mygo.InvalidateAll())
 
 	svc := workspace.New(ws)
-	pagesService := r.pageServices(ws, svc, a)
+	searchSvc, searchErr := newSearch(ws)
+	if searchErr != nil {
+		// Retrieval is an optional collaborator: without it the SPEC-10 tools
+		// stay unpublished and imports skip the index hook, but every other
+		// module still works (§SPEC-11 2.2).
+		appLogger{}.Warn("boot: 检索模块不可用", "err", searchErr)
+	}
+	lit := newLiteratureModule(ws, searchSvc)
+	pagesService := r.pageServices(ws, svc, a, migrations, lit)
+	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc)
 
 	pageSet := shell.DefaultPages(ctx, a)
-	for kind, page := range pages.System(pagesService) {
+	for kind, page := range pages.Research(pagesService) {
 		pageSet[kind] = page
 	}
 	sh := shell.New(shell.Config{App: a, Theme: provider, Pages: pageSet, Ctx: ctx})
 	r.mu.Lock()
-	prev := r.ws
+	prev, prevSearch, prevLit := r.ws, r.search, r.literature
 	r.ws = ws
 	r.app = a
 	r.shell = sh
 	r.services = pagesService
+	r.mcp = host
+	r.search = searchSvc
+	r.literature = lit
 	r.setupErr = ""
 	r.mu.Unlock()
 	mygo.InvalidateAll()()
 	if prev != nil {
+		// The module services hold handles of the previous workspace's
+		// databases, so they close before the workspace does.
+		_ = prevLit.Close()
+		if prevSearch != nil {
+			_ = prevSearch.Close()
+		}
 		_ = prev.Close()
 	}
 	return nil
 }
 
-// Close closes the workspace.
+// Close stops the MCP server and the module services, then closes the
+// workspace.
 func (r *Runtime) Close() error {
+	r.stopMCP()
 	r.mu.Lock()
 	ws := r.ws
+	lit := r.literature
+	searchSvc := r.search
 	r.ws = nil
 	r.shell = nil
+	r.mcp = nil
+	r.literature = nil
+	r.search = nil
 	r.mu.Unlock()
+	_ = lit.Close()
+	if searchSvc != nil {
+		_ = searchSvc.Close()
+	}
 	if ws == nil {
 		return nil
 	}
 	return ws.Close()
+}
+
+// stopMCP releases the MCP listener of the previous workspace, if any. It runs
+// before that workspace's handles are closed, because the server queries them.
+func (r *Runtime) stopMCP() {
+	r.mu.Lock()
+	host := r.mcp
+	r.mcp = nil
+	r.mu.Unlock()
+	host.stop()
+}
+
+// mcpStatus implements the diagnostics view of the server; nil host means no
+// workspace is open, which the page reports as stopped without an error.
+func (r *Runtime) mcpStatus() pages.MCPStatus {
+	r.mu.Lock()
+	host := r.mcp
+	r.mu.Unlock()
+	return host.status()
 }
 
 // Inspect implements pages.SetupAPI.
@@ -280,8 +343,10 @@ func (r *Runtime) setSetupErr(text string) {
 }
 
 // pageServices builds the service set the pages use. Before a workspace opens
-// only the setup service is available.
-func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App) pages.Services {
+// only the setup service is available. migrations is the registered module band
+// so the self check compares against the real target version, and the MCP
+// status reaches the diagnostics page through the runtime.
+func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI) pages.Services {
 	s := pages.Services{
 		App:          a,
 		Setup:        r,
@@ -289,15 +354,17 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 		Confirm:      r.confirm,
 		ChooseFolder: r.chooseFolder,
 		OnMigrated:   r.onMigrated,
+		MCPStatus:    r.mcpStatus,
 	}
 	if ws == nil {
 		return s
 	}
 	s.Workspace = appWS
 	s.Scan = ws.Scan
+	s.Literature = lit
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
-	s.Diagnostics = &selfCheck{ws: ws}
+	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}
 	s.External = &externalRefs{ws: ws}
 	return s
 }
@@ -481,10 +548,16 @@ func (n *noteReconcile) Apply(ctx context.Context, projectID string, actions []r
 	return reconcile.Apply(ctx, n.ws, projectID, actions)
 }
 
-// selfCheck adapts the diagnostic service.
-type selfCheck struct{ ws *fworkspace.Workspace }
+// selfCheck adapts the diagnostic service. The registered module band is
+// injected here so the page does not have to know about migrations: without it
+// diag would compare against the foundation baseline only (§4.8.1).
+type selfCheck struct {
+	ws         *fworkspace.Workspace
+	migrations map[storage.Kind][]storage.Migration
+}
 
 func (s *selfCheck) Run(ctx context.Context, opts diag.Options) (diag.Report, error) {
+	opts.Migrations = s.migrations
 	return diag.Run(ctx, s.ws, opts)
 }
 

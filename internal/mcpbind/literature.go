@@ -7,7 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"researchos/internal/foundation/settings"
+	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/literature"
 	"researchos/internal/literature/library"
 	"researchos/internal/literature/zotero"
@@ -29,11 +30,7 @@ func (d *Deps) libraryService() *library.Service {
 	var conn *zotero.Connection
 	var sqlite *zotero.SQLiteReader
 	if d.Workspace != nil && d.Workspace.Global() != nil {
-		store := d.Settings
-		if store == nil {
-			store = settingsStore(d)
-		}
-		conn = zotero.NewConnection(zotero.Options{Settings: store, Clock: c})
+		conn = zotero.NewConnection(zotero.Options{AppConfig: d.Workspace.Config(), Clock: c})
 		if status, err := conn.Status(context.Background()); err == nil && status.DataDir != nil {
 			if reader, err := zotero.NewSQLiteReader(status.DataDir.Path); err == nil {
 				sqlite = reader
@@ -42,7 +39,13 @@ func (d *Deps) libraryService() *library.Service {
 	}
 	source := zotero.NewSource(conn, sqlite, nil)
 	d.Infra.source = source
-	d.Infra.lib = library.New(d.Workspace, library.Options{Clock: c, Zotero: source})
+	// The imported paper is indexed post-commit (SPEC-10 §5.3). Without the
+	// search module the hook stays nil and the index is simply not updated.
+	var indexer indexhook.Indexer
+	if d.Search != nil {
+		indexer = d.Search
+	}
+	d.Infra.lib = library.New(d.Workspace, library.Options{Clock: c, Zotero: source, Indexer: indexer})
 	return d.Infra.lib
 }
 
@@ -59,19 +62,16 @@ func (d *Deps) zoteroReader(ctx context.Context) (literature.ZoteroReader, error
 	return source.Reader(ctx)
 }
 
-func settingsStore(d *Deps) *settings.Store {
-	if d.Settings != nil {
-		return d.Settings
-	}
-	if d.Workspace == nil || d.Workspace.Global() == nil {
-		return nil
-	}
-	return settings.NewWorkspace(d.Workspace.Global().DB()).WithClock(d.clock())
-}
-
+// zoteroConnection builds the SPEC-04 connection service. The manual data
+// directory comes from the application configuration, the same value the
+// settings page writes, never from workspace settings.
 func (d *Deps) zoteroConnection() *zotero.Connection {
 	c := d.clock()
-	return zotero.NewConnection(zotero.Options{Settings: settingsStore(d), Clock: c})
+	var appConfig config.Store
+	if d.Workspace != nil {
+		appConfig = d.Workspace.Config()
+	}
+	return zotero.NewConnection(zotero.Options{AppConfig: appConfig, Clock: c})
 }
 
 // newLiteratureProvider builds the SPEC-04 literature domain (§5.3.2).

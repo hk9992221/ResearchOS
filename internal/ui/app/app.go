@@ -214,6 +214,30 @@ func (a *App) OpenProject(ctx context.Context, id string) error {
 	return nil
 }
 
+// CreateProject runs the SPEC-03 §5.4 creation pipeline. Create already makes
+// the new project the active session, so the app mirrors that outcome, switches
+// to its Overview and reloads the cached list. The returned project is non-nil
+// whenever the registration row exists: an ErrEventMissing companion reports a
+// committed project whose Activity event is missing (§5.4 cross-database rule),
+// which the caller must surface without discarding the project.
+func (a *App) CreateProject(ctx context.Context, in project.CreateInput) (*project.Project, error) {
+	if a.projects == nil {
+		return nil, ErrNoProjectService
+	}
+	created, err := a.projects.Create(ctx, in)
+	if created == nil {
+		return nil, err
+	}
+	cp := *created
+	a.mu.Lock()
+	a.proj = &cp
+	a.route = ports.Route{Kind: ports.RouteOverview, ProjectID: cp.ID}
+	a.mu.Unlock()
+	a.changed()
+	_ = a.RefreshProjects(ctx)
+	return created, err
+}
+
 // CloseProject closes the session and returns to the Projects list.
 func (a *App) CloseProject(ctx context.Context) error {
 	if a.projects != nil && a.Project() != nil {

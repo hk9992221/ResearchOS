@@ -77,6 +77,17 @@ func (s *Shell) commands() []command {
 		})
 	}
 
+	// A new project is created by the Projects page; the palette only navigates
+	// there with a one-shot request, so the form has a single owner.
+	out = append(out, command{
+		id:       "action:new_project",
+		title:    i18n.T("shell.command.new_project"),
+		hint:     i18n.T("shell.command.hint_action"),
+		keywords: i18n.T("shell.command.keywords_new_project"),
+		icon:     icons.Plus,
+		run:      func() { requestCreate(s.app) },
+	})
+
 	next := nextTheme(s.provider.Mode())
 	out = append(out, command{
 		id:       "action:theme",
