@@ -23,20 +23,23 @@ func main() {
 	}
 	defer runtime.Close()
 
-	// The window's Content is the pure shell view: the normal MyGo window
-	// paints it on the GPU. No renderer or software backend is selected here,
-	// so MyGo keeps its default hardware-accelerated path.
-	mg.NewWindow(mg.WindowOptions{
-		Title:     "ResearchOS",
-		Width:     1440,
-		Height:    900,
-		MinWidth:  1024,
-		MinHeight: 700,
-		StateKey:  "main",
-		Content:   ui.View(runtime.View),
-	})
-
 	mg.App.WhenReady(func() {
+		// MyGo requires windows to be created once the application is ready;
+		// calling NewWindow before App.Run() reaches that point panics.
+		//
+		// The window's Content is the pure shell view: the normal MyGo window
+		// paints it on the GPU. No renderer or software backend is selected
+		// here, so MyGo keeps its default hardware-accelerated path.
+		mg.NewWindow(mg.WindowOptions{
+			Title:     "ResearchOS",
+			Width:     1440,
+			Height:    900,
+			MinWidth:  1024,
+			MinHeight: 700,
+			StateKey:  "main",
+			Content:   ui.View(runtime.View),
+		})
+
 		// Follow the desktop's appearance and reduced-motion setting; the
 		// app applies them through the theme provider.
 		uimygo.SyncSystem(runtime.Provider())
