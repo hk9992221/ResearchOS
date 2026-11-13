@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log"
 	"os"
 
@@ -14,6 +15,13 @@ import (
 	"researchos/internal/ui/boot"
 	uimygo "researchos/internal/ui/mygo"
 )
+
+// appIconPNG is the application icon (512x512 RGBA PNG, transparent
+// background; the 1254px original sits next to it as appicon-source.png).
+// The window backend resizes it per use: title bar, taskbar, Dock.
+//
+//go:embed assets/appicon.png
+var appIconPNG []byte
 
 func main() {
 	ctx := context.Background()
@@ -30,7 +38,7 @@ func main() {
 		// The window's Content is the pure shell view: the normal MyGo window
 		// paints it on the GPU. No renderer or software backend is selected
 		// here, so MyGo keeps its default hardware-accelerated path.
-		mg.NewWindow(mg.WindowOptions{
+		window := mg.NewWindow(mg.WindowOptions{
 			Title:     "ResearchOS",
 			Width:     1440,
 			Height:    900,
@@ -39,6 +47,15 @@ func main() {
 			StateKey:  "main",
 			Content:   ui.View(runtime.View),
 		})
+
+		// The app icon in the title bar and taskbar button (Windows, Linux)
+		// and in the Dock (macOS). A failure is cosmetic, not fatal.
+		if err := window.SetIcon(appIconPNG); err != nil {
+			log.Printf("researchos: window icon: %v", err)
+		}
+		if err := mg.App.Dock.SetIcon(appIconPNG); err != nil {
+			log.Printf("researchos: dock icon: %v", err)
+		}
 
 		// Follow the desktop's appearance and reduced-motion setting; the
 		// app applies them through the theme provider.
