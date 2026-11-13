@@ -1,0 +1,169 @@
+{
+  "period_start": "2026-11-02",
+  "period_end": "2026-11-08",
+  "timezone": "Asia/Shanghai",
+  "counts_by_type": {
+    "ai.analysis_completed": 1,
+    "entity.created": 1,
+    "note.updated": 1,
+    "paper.imported": 1,
+    "status.changed": 2
+  },
+  "counts_by_section": {
+    "experiment": 1,
+    "idea": 0,
+    "literature": 2,
+    "next_week": 0,
+    "problem": 1,
+    "theory": 1,
+    "work": 1
+  },
+  "sections": [
+    {
+      "key": "work",
+      "items": [
+        {
+          "type": "task",
+          "id": "0192f2a0-0000-7000-8000-0000000000b1",
+          "kind": "status",
+          "state": "done",
+          "summary": "完成任务：完成动力学推导（进入 Done）",
+          "detail": "",
+          "old": "列：Doing，未完成，未受阻",
+          "new": "列：Done，已完成，未受阻",
+          "actor": "user",
+          "first_at": "2026-11-04T15:00:00+08:00",
+          "last_at": "2026-11-04T15:00:00+08:00",
+          "broken": false,
+          "unconfirmed_source": false
+        }
+      ]
+    },
+    {
+      "key": "literature",
+      "items": [
+        {
+          "type": "note",
+          "id": "0192f2a0-0000-7000-8000-0000000000a1",
+          "kind": "created",
+          "state": "done",
+          "summary": "新增论文笔记",
+          "detail": "",
+          "old": "",
+          "new": "",
+          "actor": "user",
+          "first_at": "2026-11-02T10:00:00+08:00",
+          "last_at": "2026-11-02T10:00:00+08:00",
+          "broken": false,
+          "unconfirmed_source": false
+        },
+        {
+          "type": "paper",
+          "id": "0192f2a0-0000-7000-8000-0000000000f1",
+          "kind": "import",
+          "state": "done",
+          "summary": "导入文献：Some Paper",
+          "detail": "",
+          "old": "",
+          "new": "",
+          "actor": "user",
+          "first_at": "2026-11-06T09:30:00+08:00",
+          "last_at": "2026-11-06T09:30:00+08:00",
+          "broken": false,
+          "unconfirmed_source": false
+        }
+      ]
+    },
+    {
+      "key": "theory",
+      "items": [
+        {
+          "type": "note",
+          "id": "0192f2a0-0000-7000-8000-0000000000a2",
+          "kind": "updated",
+          "state": "done",
+          "summary": "更新笔记",
+          "detail": "1 次保存",
+          "old": "",
+          "new": "",
+          "actor": "user",
+          "first_at": "2026-11-03T09:00:00+08:00",
+          "last_at": "2026-11-03T09:00:00+08:00",
+          "broken": false,
+          "unconfirmed_source": false
+        }
+      ]
+    },
+    {
+      "key": "experiment",
+      "items": [
+        {
+          "type": "snapshot",
+          "id": "0192f2a0-0000-7000-8000-0000000000d3",
+          "kind": "ai_done",
+          "state": "done",
+          "summary": "AI 分析完成（Results）",
+          "detail": "AI 内容待确认",
+          "old": "",
+          "new": "",
+          "actor": "ai",
+          "first_at": "2026-11-07T16:00:00+08:00",
+          "last_at": "2026-11-07T16:00:00+08:00",
+          "broken": false,
+          "unconfirmed_source": true
+        }
+      ]
+    },
+    {
+      "key": "idea",
+      "items": []
+    },
+    {
+      "key": "problem",
+      "items": [
+        {
+          "type": "task",
+          "id": "0192f2a0-0000-7000-8000-0000000000b2",
+          "kind": "status",
+          "state": "done",
+          "summary": "核对边界条件 标记受阻",
+          "detail": "",
+          "old": "列：Doing，未完成，未受阻",
+          "new": "列：Doing，未完成，受阻",
+          "actor": "user",
+          "first_at": "2026-11-05T10:00:00+08:00",
+          "last_at": "2026-11-05T10:00:00+08:00",
+          "broken": false,
+          "unconfirmed_source": false
+        }
+      ]
+    },
+    {
+      "key": "next_week",
+      "items": []
+    }
+  ],
+  "blocked": [
+    {
+      "type": "task",
+      "id": "0192f2a0-0000-7000-8000-0000000000b2",
+      "title": "核对边界条件",
+      "column_name": "Doing",
+      "is_done": false,
+      "reason": ""
+    }
+  ],
+  "planned": [
+    {
+      "type": "task",
+      "id": "0192f2a0-0000-7000-8000-0000000000b4",
+      "title": "补写方法章节",
+      "column_name": "Doing",
+      "is_done": false,
+      "week_plan": "2026-W46",
+      "origin": "week_plan"
+    }
+  ],
+  "warnings": [],
+  "truncated": false
+}
