@@ -1,0 +1,12 @@
+{
+  "components.breadcrumb.aria_label": "面包屑导航",
+  "components.btn.confirm": "确认",
+  "components.confirm.issue_failed": "无法发出确认凭据：{error}",
+  "components.error_state.code": "错误代码：{code}",
+  "components.toast.dismiss": "关闭",
+  "components.tone.accent": "进行中",
+  "components.tone.danger": "错误",
+  "components.tone.info": "信息",
+  "components.tone.success": "成功",
+  "components.tone.warning": "警告"
+}

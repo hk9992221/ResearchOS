@@ -29,10 +29,12 @@ import (
 	"researchos/internal/foundation/settings"
 	"researchos/internal/foundation/trash"
 	fworkspace "researchos/internal/foundation/workspace"
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/project"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/pages"
 	"researchos/internal/ui/shell"
@@ -79,19 +81,31 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 		confirm:    confirm.New(confirm.Options{}),
 		dialogOpen: dialogOpen,
 	}
-	r.setupApp = app.New(app.Options{WorkspaceName: "ResearchOS"})
+
+	// The language is settled before the wizard or the shell builds its first
+	// frame: pages read i18n.T while they render, and the configuration is
+	// the only source of it. A corrupt configuration falls back to the
+	// operating system, as a language setting must not keep the app from
+	// starting.
+	cfg, loadErr := store.Load(ctx)
+	if loadErr == nil {
+		i18n.SetLanguage(cfg.Language)
+	} else {
+		i18n.SetLanguage("")
+	}
+
+	r.setupApp = app.New(app.Options{WorkspaceName: i18n.T("app.name")})
 	r.setupApp.Changed(mygo.InvalidateAll())
 	r.setupServices = r.pageServices(nil, nil, r.setupApp)
 	r.services = r.setupServices
 	r.wizard = &pages.Wizard{Services: &r.setupServices}
 
-	cfg, err := store.Load(ctx)
-	if err == nil && cfg.WorkspaceRoot != "" {
+	if loadErr == nil && cfg.WorkspaceRoot != "" {
 		if openErr := r.open(ctx, cfg.WorkspaceRoot); openErr != nil {
 			r.setupErr = openErr.Error()
 		}
-	} else if err != nil {
-		r.setupErr = err.Error()
+	} else if loadErr != nil {
+		r.setupErr = loadErr.Error()
 	}
 	return r, nil
 }
@@ -241,7 +255,7 @@ func (r *Runtime) openAndSave(ctx context.Context, root string) error {
 		return err
 	}
 	if err := r.saveConfig(ctx, root); err != nil {
-		r.setSetupErr("The workspace opened, but the configuration could not be saved: " + err.Error())
+		r.setSetupErr(i18n.Tf("boot.error.config_not_saved", map[string]string{"error": errtext.Text(err)}))
 		return err
 	}
 	r.setSetupErr("")
@@ -309,7 +323,7 @@ func (r *Runtime) chooseFolder() (string, error) {
 // dialogOpen is the native directory picker, kept behind a variable so the
 // wizard stays testable without a window.
 var dialogOpen = func() ([]string, error) {
-	return mg.Dialog.Open(mg.OpenDialogOptions{Title: "Select workspace folder", Directory: true})
+	return mg.Dialog.Open(mg.OpenDialogOptions{Title: i18n.T("boot.dialog.select_workspace"), Directory: true})
 }
 
 // inspectFolder classifies a candidate folder read-only, using the marker and
@@ -323,14 +337,14 @@ func inspectFolder(root string) (pages.SetupInspection, error) {
 	st, err := os.Stat(abs)
 	if errors.Is(err, os.ErrNotExist) {
 		insp.State = pages.SetupEmpty
-		insp.Message = "The folder does not exist and will be created."
+		insp.Message = i18n.T("boot.inspect.not_exist")
 		return insp, nil
 	}
 	if err != nil {
 		return insp, err
 	}
 	if !st.IsDir() {
-		return insp, errors.New(abs + " is not a folder")
+		return insp, errors.New(i18n.Tf("boot.error.not_a_folder", map[string]string{"path": abs}))
 	}
 
 	entries, err := os.ReadDir(abs)
@@ -348,7 +362,7 @@ func inspectFolder(root string) (pages.SetupInspection, error) {
 	}
 	if !nonEmpty {
 		insp.State = pages.SetupEmpty
-		insp.Message = "The folder is empty and can be initialized."
+		insp.Message = i18n.T("boot.inspect.empty")
 		return insp, nil
 	}
 
@@ -366,25 +380,25 @@ func inspectFolder(root string) (pages.SetupInspection, error) {
 		}
 		if json.Unmarshal(markerBody, &m) != nil || m.App == "" || m.SchemaVersion <= 0 {
 			insp.State = pages.SetupMarkerCorrupt
-			insp.Message = "The .researchos marker exists but cannot be read as a ResearchOS marker."
+			insp.Message = i18n.T("boot.inspect.marker_corrupt")
 			return insp, nil
 		}
 		if !hasGlobal {
 			insp.State = pages.SetupMarkerCorrupt
-			insp.Message = "The marker is present but global.db is missing."
+			insp.Message = i18n.T("boot.inspect.global_missing")
 			return insp, nil
 		}
 		insp.State = pages.SetupExisting
-		insp.Message = "This is an existing ResearchOS workspace."
+		insp.Message = i18n.T("boot.inspect.existing")
 		return insp, nil
 	case errors.Is(markerErr, os.ErrNotExist):
 		if hasGlobal {
 			insp.State = pages.SetupMarkerMissing
-			insp.Message = "global.db exists but the .researchos marker is missing."
+			insp.Message = i18n.T("boot.inspect.marker_missing")
 			return insp, nil
 		}
 		insp.State = pages.SetupForeign
-		insp.Message = "The folder is not empty and is not a ResearchOS workspace."
+		insp.Message = i18n.T("boot.inspect.foreign")
 		return insp, nil
 	default:
 		return insp, markerErr
@@ -395,7 +409,7 @@ func inspectFolder(root string) (pages.SetupInspection, error) {
 // derives it; UI code never handles paths itself.
 func workspaceName(root string) string {
 	if root == "" {
-		return "ResearchOS"
+		return i18n.T("app.name")
 	}
 	base := filepath.Base(root)
 	if base == "." || base == string(filepath.Separator) || base == "" {

@@ -2,16 +2,18 @@ package pages
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/foundation/reconcile"
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -45,11 +47,11 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 	}
 	if projectID == "" {
 		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
-			v.PageHeader(components.PageHeaderOptions{Title: "File Consistency"})
+			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.consistency.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Scan,
-				Title:  "No project is open",
-				Reason: "The consistency check compares one project's note files with its database. Open a project first.",
+				Title:  i18n.T("pages.common.empty_no_project_title"),
+				Reason: i18n.T("pages.consistency.empty_no_project_reason"),
 			})
 		}})
 		return
@@ -62,17 +64,17 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 
 	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.4, Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
-			Title:       "File Consistency",
-			Description: "Compares note files on disk with the database. Nothing is changed until you choose a repair.",
+			Title:       i18n.T("pages.consistency.title"),
+			Description: i18n.T("pages.consistency.description"),
 		})
 		if scanErr != nil {
-			v.Banner(components.BannerOptions{Tone: components.Danger, Title: "The scan failed", Message: scanErr.Error()})
+			v.Banner(components.BannerOptions{Tone: components.Danger, Title: i18n.T("pages.consistency.banner_scan_failed"), Message: errtext.Text(scanErr)})
 		}
 		if applyErr != nil {
-			v.Banner(components.BannerOptions{Tone: components.Danger, Title: "Some repairs failed", Message: applyErr.Error()})
+			v.Banner(components.BannerOptions{Tone: components.Danger, Title: i18n.T("pages.consistency.banner_repair_failed"), Message: errtext.Text(applyErr)})
 		}
-		v.Toolbar("Consistency actions", func() {
-			v.Button("Scan again", components.ButtonOptions{
+		v.Toolbar(i18n.T("pages.consistency.toolbar_label"), func() {
+			v.Button(i18n.T("pages.consistency.btn_rescan"), components.ButtonOptions{
 				Icon:    icons.Refresh,
 				Loading: loading || applying,
 				OnClick: func() { s.rescan(projectID) },
@@ -87,17 +89,17 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 			v.Skeleton(components.SkeletonOptions{Lines: 6})
 			return
 		}
-		v.Card(components.CardOptions{Title: fmt.Sprintf("Orphans (%d)", len(report.Orphans)), Description: "Files on disk with no note row."}, func() {
+		v.Card(components.CardOptions{Title: i18n.Tf("pages.consistency.card_orphans", map[string]string{"count": strconv.Itoa(len(report.Orphans))}), Description: i18n.T("pages.consistency.card_orphans_desc")}, func() {
 			ui.Column(v.C).Gap(tokens.ComponentGap).Children(func() {
 				if len(report.Orphans) == 0 {
-					v.StatusIndicator(components.Success, "No orphan files")
+					v.StatusIndicator(components.Success, i18n.T("pages.consistency.orphans_none"))
 				}
 				for _, o := range report.Orphans {
 					orphan := o
 					ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 						ui.Text(v.C, orphan.RelPath).Grow(1).Font(tokens.SystemFonts.Mono)
 						ui.Text(v.C, humanBytes(orphan.Size)).FontFeatures("tnum")
-						v.Button("Register", components.ButtonOptions{
+						v.Button(i18n.T("pages.consistency.btn_register"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {
 								s.apply(projectID, []reconcile.Action{{Kind: reconcile.ActionAdopt, RelPath: orphan.RelPath}})
@@ -106,7 +108,7 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 					})
 				}
 				if len(report.Orphans) > 1 {
-					v.Button("Register all orphans", components.ButtonOptions{
+					v.Button(i18n.T("pages.consistency.btn_register_all"), components.ButtonOptions{
 						Variant: components.VariantSecondary,
 						Size:    components.SizeSmall,
 						OnClick: func() { s.adoptAll(projectID) },
@@ -115,29 +117,29 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 			})
 		})
 
-		v.Card(components.CardOptions{Title: fmt.Sprintf("Missing (%d)", len(report.Missing)), Description: "Note rows whose body file is gone."}, func() {
+		v.Card(components.CardOptions{Title: i18n.Tf("pages.consistency.card_missing", map[string]string{"count": strconv.Itoa(len(report.Missing))}), Description: i18n.T("pages.consistency.card_missing_desc")}, func() {
 			ui.Column(v.C).Gap(tokens.ComponentGap).Children(func() {
 				if len(report.Missing) == 0 {
-					v.StatusIndicator(components.Success, "No missing files")
+					v.StatusIndicator(components.Success, i18n.T("pages.consistency.missing_none"))
 				}
 				for _, m := range report.Missing {
 					missing := m
 					ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 						ui.Text(v.C, missing.Title).Grow(1)
 						ui.Text(v.C, missing.FilePath).Font(tokens.SystemFonts.Mono)
-						v.Button("Recreate", components.ButtonOptions{
+						v.Button(i18n.T("pages.consistency.btn_recreate"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {
 								s.apply(projectID, []reconcile.Action{{Kind: reconcile.ActionRecreate, NoteID: missing.NoteID}})
 							},
 						})
-						v.Button("Mark broken", components.ButtonOptions{
+						v.Button(i18n.T("pages.consistency.btn_mark_broken"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {
 								s.apply(projectID, []reconcile.Action{{Kind: reconcile.ActionMarkBroken, NoteID: missing.NoteID}})
 							},
 						})
-						v.Button("Reattach…", components.ButtonOptions{
+						v.Button(i18n.T("pages.consistency.btn_reattach"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {
 								s.reattachOpen = true
@@ -148,7 +150,7 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 					})
 				}
 				if len(report.Missing) > 1 {
-					v.Button("Mark all missing as broken", components.ButtonOptions{
+					v.Button(i18n.T("pages.consistency.btn_mark_all_broken"), components.ButtonOptions{
 						Variant: components.VariantSecondary,
 						Size:    components.SizeSmall,
 						OnClick: func() { s.markAllBroken(projectID) },
@@ -157,16 +159,16 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 			})
 		})
 
-		v.Card(components.CardOptions{Title: fmt.Sprintf("Modified (%d)", len(report.Modified)), Description: "The body file changed outside ResearchOS."}, func() {
+		v.Card(components.CardOptions{Title: i18n.Tf("pages.consistency.card_modified", map[string]string{"count": strconv.Itoa(len(report.Modified))}), Description: i18n.T("pages.consistency.card_modified_desc")}, func() {
 			ui.Column(v.C).Gap(tokens.ComponentGap).Children(func() {
 				if len(report.Modified) == 0 {
-					v.StatusIndicator(components.Success, "No external modifications")
+					v.StatusIndicator(components.Success, i18n.T("pages.consistency.modified_none"))
 				}
 				for _, f := range report.Modified {
 					file := f
 					ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 						ui.Text(v.C, file.FilePath).Grow(1).Font(tokens.SystemFonts.Mono)
-						v.Button("Accept external edit", components.ButtonOptions{
+						v.Button(i18n.T("pages.consistency.btn_accept_edit"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {
 								s.apply(projectID, []reconcile.Action{{Kind: reconcile.ActionAcceptExternalEdit, NoteID: file.NoteID}})
@@ -180,14 +182,17 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 		s.reattachDialog(v, projectID)
 
 		if len(results.Items) > 0 {
-			v.Card(components.CardOptions{Title: "Repair results"}, func() {
+			v.Card(components.CardOptions{Title: i18n.T("pages.consistency.card_results")}, func() {
 				ui.Column(v.C).Gap(tokens.ComponentGap).Children(func() {
 					for _, item := range results.Items {
 						tone := components.Success
-						text := "Applied " + string(item.Action.Kind)
+						text := i18n.Tf("pages.consistency.result_applied", map[string]string{"kind": actionKindLabel(item.Action.Kind)})
 						if item.Err != nil {
 							tone = components.Danger
-							text = "Failed " + string(item.Action.Kind) + ": " + item.Err.Error()
+							text = i18n.Tf("pages.consistency.result_failed", map[string]string{
+								"kind":  actionKindLabel(item.Action.Kind),
+								"error": errtext.Text(item.Err),
+							})
 						}
 						v.StatusIndicator(tone, text)
 					}
@@ -197,6 +202,24 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 	}})
 }
 
+// actionKindLabel names a reconcile action kind for display. A kind the map
+// does not name, as one added by a newer build, falls back to the raw kind.
+func actionKindLabel(kind reconcile.ActionKind) string {
+	switch kind {
+	case reconcile.ActionAdopt:
+		return i18n.T("pages.consistency.kind_adopt")
+	case reconcile.ActionAcceptExternalEdit:
+		return i18n.T("pages.consistency.kind_accept_external_edit")
+	case reconcile.ActionMarkBroken:
+		return i18n.T("pages.consistency.kind_mark_broken")
+	case reconcile.ActionReattach:
+		return i18n.T("pages.consistency.kind_reattach")
+	case reconcile.ActionRecreate:
+		return i18n.T("pages.consistency.kind_recreate")
+	}
+	return string(kind)
+}
+
 // reattachDialog asks for the relative path of the recovered file.
 func (s *Consistency) reattachDialog(v *components.UI, projectID string) {
 	open := s.reattachOpen
@@ -204,13 +227,13 @@ func (s *Consistency) reattachDialog(v *components.UI, projectID string) {
 		return
 	}
 	v.Dialog(&s.reattachOpen, components.DialogOptions{
-		Title:       "Reattach note file",
-		Description: "Enter the path of the recovered file, relative to the project's notes folder.",
+		Title:       i18n.T("pages.consistency.dialog_reattach_title"),
+		Description: i18n.T("pages.consistency.dialog_reattach_desc"),
 		Actions: func() {
-			if v.Button("Cancel", components.ButtonOptions{}).Clicked() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
 				s.reattachOpen = false
 			}
-			if v.Button("Reattach", components.ButtonOptions{Variant: components.VariantPrimary}).Clicked() {
+			if v.Button(i18n.T("pages.consistency.dialog_reattach_btn"), components.ButtonOptions{Variant: components.VariantPrimary}).Clicked() {
 				note := s.reattachNote
 				path := s.reattachPath
 				s.reattachOpen = false
@@ -218,7 +241,7 @@ func (s *Consistency) reattachDialog(v *components.UI, projectID string) {
 			}
 		},
 	}, func() {
-		v.Input(&s.reattachPath, components.FieldOptions{Label: "Relative path", Placeholder: "notes/folding-log.md"})
+		v.Input(&s.reattachPath, components.FieldOptions{Label: i18n.T("pages.consistency.dialog_reattach_field"), Placeholder: "notes/folding-log.md"})
 	})
 }
 
@@ -231,7 +254,7 @@ func (s *Consistency) load(projectID string) {
 	}
 	s.loading = true
 	s.mu.Unlock()
-	s.Services.App.RunTask("Scan note files", func(ctx context.Context, t *app.Task) error {
+	s.Services.App.RunTask(i18n.T("pages.consistency.task_scan"), func(ctx context.Context, t *app.Task) error {
 		report, err := s.Services.Reconcile.Scan(ctx, projectID)
 		s.mu.Lock()
 		s.loading = false
@@ -290,7 +313,7 @@ func (s *Consistency) apply(projectID string, actions []reconcile.Action) {
 	s.applying = true
 	s.applyErr = nil
 	s.mu.Unlock()
-	s.Services.App.RunTask("Repair note files", func(ctx context.Context, t *app.Task) error {
+	s.Services.App.RunTask(i18n.T("pages.consistency.task_repair"), func(ctx context.Context, t *app.Task) error {
 		res, err := s.Services.Reconcile.Apply(ctx, projectID, actions)
 		s.mu.Lock()
 		s.applying = false
@@ -312,7 +335,7 @@ func (s *Consistency) apply(projectID string, actions []reconcile.Action) {
 // scanTime formats the last scan time.
 func scanTime(t time.Time) string {
 	if t.IsZero() {
-		return "Not scanned yet"
+		return i18n.T("pages.consistency.scan_never")
 	}
-	return "Last scan: " + t.Format("2006-01-02 15:04")
+	return i18n.Tf("pages.consistency.scan_time", map[string]string{"time": t.Format("2006-01-02 15:04")})
 }

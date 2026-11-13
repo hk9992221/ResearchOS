@@ -17,10 +17,12 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/project"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/theme"
@@ -159,25 +161,25 @@ func (s *Shell) sidebar(v *components.UI, collapsed bool, width float32) {
 		_ = workspace
 
 		ui.Column(v.C).FillHeight().Gap(tokens.SectionGap).Children(func() {
-			v.NavSection("Workspace", collapsed, func() {
+			v.NavSection(i18n.T("shell.nav.section_workspace"), collapsed, func() {
 				s.navItems(v, collapsed, []navEntry{
-					{app.RouteHome, icons.Home, "Home", false},
-					{app.RouteProjects, icons.Projects, "Projects", false},
-					{app.RouteInbox, icons.Inbox, "Inbox", false},
-					{app.RoutePluginMarket, icons.PluginMarket, "Plugin Market", false},
+					{app.RouteHome, icons.Home, false},
+					{app.RouteProjects, icons.Projects, false},
+					{app.RouteInbox, icons.Inbox, false},
+					{app.RoutePluginMarket, icons.PluginMarket, false},
 				})
 			})
 
 			if proj := s.app.Project(); proj != nil {
-				v.NavSection("Project", collapsed, func() {
+				v.NavSection(i18n.T("shell.nav.section_project"), collapsed, func() {
 					s.navItems(v, collapsed, []navEntry{
-						{ports.RouteOverview, icons.Overview, "Overview", true},
-						{app.RouteLiterature, icons.Literature, "Literature", true},
-						{app.RouteNotes, icons.Note, "Research Notes", true},
-						{app.RouteIdeas, icons.Ideas, "Ideas", true},
-						{app.RouteExperiments, icons.Experiments, "Experiments", true},
-						{app.RouteKanban, icons.Kanban, "Kanban", true},
-						{app.RouteWeeklyReview, icons.WeeklyReview, "Weekly Review", true},
+						{ports.RouteOverview, icons.Overview, true},
+						{app.RouteLiterature, icons.Literature, true},
+						{app.RouteNotes, icons.Note, true},
+						{app.RouteIdeas, icons.Ideas, true},
+						{app.RouteExperiments, icons.Experiments, true},
+						{app.RouteKanban, icons.Kanban, true},
+						{app.RouteWeeklyReview, icons.WeeklyReview, true},
 					})
 				})
 			}
@@ -186,19 +188,20 @@ func (s *Shell) sidebar(v *components.UI, collapsed bool, width float32) {
 
 			ui.Column(v.C).Gap(tokens.Space1).Children(func() {
 				s.navItems(v, collapsed, []navEntry{
-					{ports.RouteSettings, icons.Settings, "Settings", false},
-					{app.RouteHelp, icons.Help, "Help / About", false},
+					{ports.RouteSettings, icons.Settings, false},
+					{app.RouteHelp, icons.Help, false},
 				})
 			})
 		})
 	})
 }
 
-// navEntry is one destination of the sidebar.
+// navEntry is one destination of the sidebar. Its label is the destination's
+// name from pageTitle, so the sidebar, the breadcrumb and the command palette
+// never drift apart.
 type navEntry struct {
 	kind    ports.RouteKind
 	icon    *icons.Icon
-	label   string
 	project bool
 }
 
@@ -211,7 +214,7 @@ func (s *Shell) navItems(v *components.UI, collapsed bool, entries []navEntry) {
 		v.NavItem(components.NavItemOptions{
 			ID:        string(e.kind),
 			Icon:      e.icon,
-			Label:     e.label,
+			Label:     pageTitle(e.kind),
 			Selected:  selected,
 			Collapsed: collapsed,
 			OnClick: func() {
@@ -231,7 +234,7 @@ func (s *Shell) navItems(v *components.UI, collapsed bool, entries []navEntry) {
 // search and the command palette entry. It stays minimal on purpose.
 func (s *Shell) topBar(v *components.UI, narrow bool) {
 	v.TopBar(func() {
-		v.IconButton(icons.Sidebar, "Toggle sidebar", components.IconButtonOptions{
+		v.IconButton(icons.Sidebar, i18n.T("shell.topbar.toggle_sidebar"), components.IconButtonOptions{
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
 			OnClick: func() {
@@ -255,8 +258,8 @@ func (s *Shell) topBar(v *components.UI, narrow bool) {
 			query := s.app.Search()
 			field := ui.SearchField(v.C, &query).
 				Width(260).
-				Placeholder("Search (Ctrl+K)").
-				Label("Global search")
+				Placeholder(i18n.T("shell.topbar.search_placeholder")).
+				Label(i18n.T("shell.topbar.search_label"))
 			field.Bind(&s.search)
 			if field.Changed() {
 				s.app.SetSearch(query)
@@ -267,7 +270,7 @@ func (s *Shell) topBar(v *components.UI, narrow bool) {
 			}
 		}
 
-		v.IconButton(icons.Command, "Command palette", components.IconButtonOptions{
+		v.IconButton(icons.Command, i18n.T("shell.palette.title"), components.IconButtonOptions{
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
 			OnClick: func() { s.togglePalette() },
@@ -278,7 +281,7 @@ func (s *Shell) topBar(v *components.UI, narrow bool) {
 		v.Button(themeLabel(s.provider.Mode()), components.ButtonOptions{
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
-			Tooltip: "Switch theme: Light, Dark or System",
+			Tooltip: i18n.T("shell.topbar.theme_tooltip"),
 			OnClick: func() { s.cycleTheme() },
 		})
 	})
@@ -353,13 +356,13 @@ func (s *Shell) inspector(v *components.UI, insp app.Inspector) {
 		ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 			title := insp.Title
 			if title == "" {
-				title = "Inspector"
+				title = i18n.T("shell.inspector.default_title")
 			}
 			ui.Text(v.C, title).
 				Grow(1).
 				FontSize(tokens.Typography.SectionTitle.Size).
 				FontWeight(int(tokens.Typography.SectionTitle.Weight))
-			v.IconButton(icons.Close, "Close inspector", components.IconButtonOptions{
+			v.IconButton(icons.Close, i18n.T("shell.inspector.close"), components.IconButtonOptions{
 				Variant: components.VariantGhost,
 				Size:    components.SizeSmall,
 				OnClick: func() { s.app.HideInspector() },
@@ -372,8 +375,8 @@ func (s *Shell) inspector(v *components.UI, insp app.Inspector) {
 		}
 		v.EmptyState(components.EmptyStateOptions{
 			Icon:   icons.Search,
-			Title:  "Nothing selected",
-			Reason: "Select a row to see its properties, relations and sources here.",
+			Title:  i18n.T("shell.inspector.empty_title"),
+			Reason: i18n.T("shell.inspector.empty_reason"),
 		})
 	})
 }
@@ -435,10 +438,12 @@ func (s *Shell) cycleTheme() {
 		next = theme.Light
 	}
 	if err := s.provider.SetMode(s.ctx, next); err != nil {
-		s.app.Toast(app.LevelDanger, "Theme not saved", err.Error())
+		s.app.Toast(app.LevelDanger, i18n.T("shell.theme.toast_save_fail_title"), errtext.Text(err))
 		return
 	}
-	s.app.Toast(app.LevelInfo, "Theme: "+themeLabel(next), "The interface switched without reloading.")
+	s.app.Toast(app.LevelInfo,
+		i18n.Tf("shell.theme.toast_switch_title", map[string]string{"mode": themeLabel(next)}),
+		i18n.T("shell.theme.toast_switch_message"))
 }
 
 // loadProjectsIfNeeded fetches the project list in the background once, so the
@@ -457,7 +462,7 @@ func (s *Shell) loadProjectsIfNeeded() {
 	}
 	go func() {
 		if err := s.app.RefreshProjects(s.ctx); err != nil {
-			s.app.Toast(app.LevelDanger, "Could not list projects", err.Error())
+			s.app.Toast(app.LevelDanger, i18n.T("shell.projects.toast_list_fail"), errtext.Text(err))
 		}
 	}()
 }
@@ -474,11 +479,11 @@ func absf(v float32) float32 {
 func themeLabel(m theme.Mode) string {
 	switch m {
 	case theme.Dark:
-		return "Dark"
+		return i18n.T("shell.theme.dark")
 	case theme.System:
-		return "System"
+		return i18n.T("shell.theme.system")
 	}
-	return "Light"
+	return i18n.T("shell.theme.light")
 }
 
 // inspectorWidth returns the pane width, within the designed range.

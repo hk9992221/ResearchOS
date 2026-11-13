@@ -11,6 +11,7 @@ package pages
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"researchos/internal/foundation/config"
@@ -19,6 +20,7 @@ import (
 	"researchos/internal/foundation/externalrefs"
 	"researchos/internal/foundation/reconcile"
 	foundationworkspace "researchos/internal/foundation/workspace"
+	"researchos/internal/i18n"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/shell"
 	"researchos/internal/workspace"
@@ -179,12 +181,15 @@ func brokenTone(broken bool) string {
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
-		return fmt.Sprintf("%d B", n)
+		return i18n.Tf("pages.common.size_bytes", map[string]string{"n": strconv.FormatInt(n, 10)})
 	}
 	div, exp := int64(unit), 0
 	for m := n / unit; m >= unit && exp < 4; m /= unit {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTP"[exp])
+	return i18n.Tf("pages.common.size_units", map[string]string{
+		"value": fmt.Sprintf("%.1f", float64(n)/float64(div)),
+		"unit":  string("KMGTP"[exp]),
+	})
 }

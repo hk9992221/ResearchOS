@@ -3,6 +3,7 @@ package components
 import (
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -165,7 +166,7 @@ func (u *UI) ErrorState(o ErrorStateOptions) ui.Element {
 					MaxWidth(tokens.Space12 * 8)
 			}
 			if o.Code != "" {
-				ui.Text(u.C, "Error code: "+o.Code).
+				ui.Text(u.C, i18n.Tf("components.error_state.code", map[string]string{"code": o.Code})).
 					FontSize(tokens.Typography.Caption.Size).
 					Font(tokens.SystemFonts.Mono).
 					TextColor(mygo.Color(p.TextMuted))
@@ -284,7 +285,7 @@ func (u *UI) ToastCard(o ToastOptions) ui.Element {
 			}
 		})
 		if o.OnDismiss != nil {
-			u.IconButton(icons.Close, "Dismiss", IconButtonOptions{
+			u.IconButton(icons.Close, i18n.T("components.toast.dismiss"), IconButtonOptions{
 				Variant: VariantGhost,
 				Size:    SizeSmall,
 				OnClick: o.OnDismiss,

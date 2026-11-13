@@ -200,7 +200,7 @@ func (a *App) SetProject(p *project.Project) {
 // its Overview. It returns the service error unchanged.
 func (a *App) OpenProject(ctx context.Context, id string) error {
 	if a.projects == nil {
-		return errNoProjectService
+		return ErrNoProjectService
 	}
 	sess, err := a.projects.Open(ctx, id)
 	if err != nil {

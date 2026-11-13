@@ -4,6 +4,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/foundation/confirm"
+	"researchos/internal/i18n"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
@@ -122,11 +124,11 @@ type confirmState struct {
 func (u *UI) ConfirmDialog(o ConfirmOptions) ui.Element {
 	confirmLabel := o.ConfirmLabel
 	if confirmLabel == "" {
-		confirmLabel = "Confirm"
+		confirmLabel = i18n.T("components.btn.confirm")
 	}
 	cancelLabel := o.CancelLabel
 	if cancelLabel == "" {
-		cancelLabel = "Cancel"
+		cancelLabel = i18n.T("common.cancel")
 	}
 	variant := VariantPrimary
 	if o.Destructive {
@@ -168,7 +170,9 @@ func (u *UI) ConfirmDialog(o ConfirmOptions) ui.Element {
 			if u.Button(confirmLabel, ButtonOptions{Variant: variant, Size: SizeMedium}).Clicked() {
 				tok, err := o.Service.Issue(u.Context(), o.Scope)
 				if err != nil {
-					st.err = "The confirmation could not be issued: " + err.Error()
+					st.err = i18n.Tf("components.confirm.issue_failed", map[string]string{
+						"error": errtext.Text(err),
+					})
 					return
 				}
 				st.err = ""

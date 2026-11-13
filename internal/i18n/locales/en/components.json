@@ -1,0 +1,12 @@
+{
+  "components.breadcrumb.aria_label": "Breadcrumb",
+  "components.btn.confirm": "Confirm",
+  "components.confirm.issue_failed": "The confirmation could not be issued: {error}",
+  "components.error_state.code": "Error code: {code}",
+  "components.toast.dismiss": "Dismiss",
+  "components.tone.accent": "Active",
+  "components.tone.danger": "Error",
+  "components.tone.info": "Info",
+  "components.tone.success": "Success",
+  "components.tone.warning": "Warning"
+}

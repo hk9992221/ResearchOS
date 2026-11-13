@@ -27,6 +27,12 @@ type AppConfig struct {
 	SchemaVersion int    `json:"schema_version"`
 	WorkspaceRoot string `json:"workspace_root"`
 	ZoteroDataDir string `json:"zotero_data_dir"`
+	// Language is the interface language chosen by the user: "" or "system"
+	// follows the operating system, and any other value names a bundled
+	// language pack ("en", "zh"). It lives in the application configuration
+	// rather than in workspace settings because the first-run wizard, which
+	// runs before a workspace is open, already has to show it.
+	Language string `json:"language,omitempty"`
 }
 
 // Store reads and writes the configuration file.

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"researchos/internal/i18n"
 )
 
 // TaskState is where a long-running operation stands.
@@ -62,9 +64,12 @@ type Task struct {
 	cancel    func()
 }
 
-// NewTask returns a queued task.
+// NewTask returns a queued task. The default stages are translated when they
+// are set, like every other label; a language switch mid-operation leaves the
+// stage already shown in the old language until the operation sets the next
+// one.
 func NewTask(name string) *Task {
-	return &Task{name: name, state: TaskQueued, stage: "Queued", started: time.Now()}
+	return &Task{name: name, state: TaskQueued, stage: i18n.T("app.task.stage_queued"), started: time.Now()}
 }
 
 // ID returns the task's identity in its App.
@@ -100,7 +105,7 @@ func (t *Task) SetCancel(fn func()) {
 func (t *Task) start() {
 	t.mu.Lock()
 	t.state = TaskRunning
-	t.stage = "Starting"
+	t.stage = i18n.T("app.task.stage_starting")
 	t.started = time.Now()
 	t.mu.Unlock()
 }

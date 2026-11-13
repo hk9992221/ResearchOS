@@ -1,12 +1,14 @@
 package shell
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
@@ -48,7 +50,10 @@ func (s *Shell) taskStrip(v *components.UI) {
 			if stage == "" {
 				stage = t.Name
 			} else if t.Name != "" {
-				stage = t.Name + " · " + stage
+				stage = i18n.Tf("shell.task.strip_stage", map[string]string{
+					"name":  t.Name,
+					"stage": stage,
+				})
 			}
 			ui.Text(v.C, stage).
 				FontSize(tokens.Typography.Secondary.Size).
@@ -56,21 +61,24 @@ func (s *Shell) taskStrip(v *components.UI) {
 			if t.Total > 0 {
 				v.Progress(components.ProgressOptions{
 					Value: float64(t.Done) / float64(t.Total),
-					Label: fmt.Sprintf("%d of %d", t.Done, t.Total),
+					Label: i18n.Tf("shell.task.progress_count", map[string]string{
+						"done":  strconv.Itoa(t.Done),
+						"total": strconv.Itoa(t.Total),
+					}),
 				}).Width(tokens.Space12 * 5)
 			}
 			if !t.Canceling {
-				v.Button("Cancel", components.ButtonOptions{
+				v.Button(i18n.T("shell.task.btn_cancel"), components.ButtonOptions{
 					Variant: components.VariantGhost,
 					Size:    components.SizeSmall,
 					OnClick: func() { s.app.CancelTask(t.ID) },
 				})
 			} else {
-				ui.Text(v.C, "Canceling…").
+				ui.Text(v.C, i18n.T("shell.task.canceling")).
 					FontSize(tokens.Typography.Caption.Size).
 					TextColor(mygo.Color(p.TextMuted))
 			}
-			ui.Text(v.C, "·").TextColor(mygo.Color(p.TextMuted))
+			ui.Text(v.C, i18n.T("shell.task.separator")).TextColor(mygo.Color(p.TextMuted))
 		}
 		for _, t := range failed {
 			t := t
@@ -78,7 +86,7 @@ func (s *Shell) taskStrip(v *components.UI) {
 		}
 		v.Spacer()
 		if len(failed) > 0 {
-			v.Button("Clear", components.ButtonOptions{
+			v.Button(i18n.T("shell.task.btn_clear"), components.ButtonOptions{
 				Variant: components.VariantGhost,
 				Size:    components.SizeSmall,
 				OnClick: func() { s.app.ClearTasks() },
@@ -87,15 +95,20 @@ func (s *Shell) taskStrip(v *components.UI) {
 	})
 }
 
-// failureText names a failed task and its reason, shortened for the strip.
+// failureText names a failed task and its reason, shortened for the strip. The
+// cut counts runes, so a Chinese message never ends in half a character.
 func failureText(t app.TaskSnapshot) string {
-	msg := t.Name + " failed"
+	msg := i18n.Tf("shell.task.failed", map[string]string{"task": t.Name})
 	if t.Err != nil {
-		msg += ": " + t.Err.Error()
+		msg = i18n.Tf("shell.task.failed_detail", map[string]string{
+			"task": t.Name,
+			"err":  errtext.Text(t.Err),
+		})
 	}
 	const limit = 120
-	if len(msg) > limit {
-		return msg[:limit] + "…"
+	runes := []rune(msg)
+	if len(runes) > limit {
+		return string(runes[:limit]) + i18n.T("shell.task.ellipsis")
 	}
 	return msg
 }

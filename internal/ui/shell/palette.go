@@ -3,6 +3,7 @@ package shell
 import (
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
 	"researchos/internal/ui/mygo"
@@ -41,8 +42,8 @@ func (s *Shell) palette(v *components.UI) {
 
 		query := s.paletteQuery
 		field := ui.TextInput(v.C, &query).
-			Placeholder("Type a page or a command").
-			Label("Command palette").
+			Placeholder(i18n.T("shell.palette.placeholder")).
+			Label(i18n.T("shell.palette.title")).
 			AutoFocus()
 		if field.Changed() {
 			s.paletteQuery = query
@@ -64,7 +65,7 @@ func (s *Shell) palette(v *components.UI) {
 		submitted := field.Submitted()
 		ui.Column(v.C).FillWidth().Gap(tokens.Space1).Children(func() {
 			if len(cmds) == 0 {
-				ui.Text(v.C, "No matching commands").
+				ui.Text(v.C, i18n.T("shell.palette.no_results")).
 					Padding(tokens.Space2).
 					FontSize(tokens.Typography.Secondary.Size).
 					TextColor(mygo.Color(v.T.Palette.TextMuted))

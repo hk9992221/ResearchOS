@@ -9,9 +9,11 @@ import (
 
 	"researchos/internal/foundation/config"
 	foundationworkspace "researchos/internal/foundation/workspace"
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -33,6 +35,13 @@ type Settings struct {
 	loadErr error
 
 	zotero string
+
+	// langTag is the language value the configuration holds ("" is "system")
+	// and langLabel the option label the language select shows. The select
+	// writes the chosen label into langLabel directly, as a match filter
+	// does, and the next frame turns it back into a tag.
+	langTag   string
+	langLabel string
 }
 
 // Page renders the settings groups.
@@ -44,16 +53,16 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 
 	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.3, Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
-			Title:       "Settings",
-			Description: "Workspace, external data, and maintenance.",
+			Title:       i18n.T("pages.settings.title"),
+			Description: i18n.T("pages.settings.description"),
 		})
 		if loadErr != nil {
-			v.Banner(components.BannerOptions{Tone: components.Warning, Title: "Some settings could not be read", Message: loadErr.Error()})
+			v.Banner(components.BannerOptions{Tone: components.Warning, Title: i18n.T("pages.settings.banner_load_fail"), Message: errtext.Text(loadErr)})
 		}
 		if !loaded && loading {
 			v.Skeleton(components.SkeletonOptions{Lines: 5})
 		}
-		v.Tabs(&s.tab, "Workspace", "External Data", "Storage & Maintenance")
+		v.Tabs(&s.tab, i18n.T("pages.settings.tab_workspace"), i18n.T("pages.settings.tab_external"), i18n.T("pages.settings.tab_storage"))
 		switch s.tab {
 		case 0:
 			s.workspaceTab(v, info, scan, cfg)
@@ -80,7 +89,7 @@ func (s *Settings) load() {
 		s.mu.Unlock()
 		return
 	}
-	s.Services.App.RunTask("Load workspace settings", func(ctx context.Context, t *app.Task) error {
+	s.Services.App.RunTask(i18n.T("pages.settings.task_load"), func(ctx context.Context, t *app.Task) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		defer func() {
@@ -108,6 +117,8 @@ func (s *Settings) load() {
 			}
 			s.cfg = cfg
 			s.zotero = cfg.ZoteroDataDir
+			s.langTag = cfg.Language
+			s.langLabel = ""
 		}
 		return nil
 	})
@@ -119,50 +130,51 @@ func (s *Settings) workspaceTab(v *components.UI, info *workspace.Info, scan fou
 	if info != nil && info.Root != "" {
 		root = info.Root
 	}
-	v.Card(components.CardOptions{Title: "Workspace"}, func() {
+	v.Card(components.CardOptions{Title: i18n.T("pages.settings.tab_workspace")}, func() {
 		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-			s.row(v, "Location", root)
+			s.row(v, i18n.T("pages.settings.row_location"), root)
 			if info != nil {
-				s.row(v, "Projects", strconvPair(info.ProjectCount, info.ArchivedCount))
-				s.row(v, "Database", humanBytes(info.DBBytes))
-				s.row(v, "Library", humanBytes(info.LibraryBytes))
-				s.row(v, "Free space", humanBytes(info.FreeBytes))
+				s.row(v, i18n.T("pages.settings.row_projects"), strconvPair(info.ProjectCount, info.ArchivedCount))
+				s.row(v, i18n.T("pages.settings.row_database"), humanBytes(info.DBBytes))
+				s.row(v, i18n.T("pages.settings.row_library"), humanBytes(info.LibraryBytes))
+				s.row(v, i18n.T("pages.settings.row_free_space"), humanBytes(info.FreeBytes))
 			}
-			s.row(v, "Marker file", markerLabel(scan.Marker))
+			s.row(v, i18n.T("pages.settings.row_marker"), markerLabel(scan.Marker))
 			if len(scan.SchemaIssues) > 0 {
-				v.StatusIndicator(components.Warning, "Schema issues: "+strconv.Itoa(len(scan.SchemaIssues)))
+				v.StatusIndicator(components.Warning, i18n.Tf("pages.settings.schema_issues", map[string]string{"count": strconv.Itoa(len(scan.SchemaIssues))}))
 			}
 			v.Divider()
-			ui.Text(v.C, "To move the workspace, plan a migration: it copies into an empty folder and verifies the copy before switching.").
+			ui.Text(v.C, i18n.T("pages.settings.migration_note")).
 				FontSize(tokens.Typography.Secondary.Size).
 				TextColor(mygo.Color(p.TextSecondary))
-			v.Button("Change workspace location…", components.ButtonOptions{
+			v.Button(i18n.T("pages.settings.btn_change_location"), components.ButtonOptions{
 				Variant: components.VariantSecondary,
 				Size:    components.SizeSmall,
 				OnClick: func() { s.Services.App.Navigate(ports.Route{Kind: app.RouteMigration}) },
 			})
 		})
 	})
+	s.languageCard(v)
 }
 
 func (s *Settings) externalTab(v *components.UI, cfg config.AppConfig) {
 	p := v.T.Palette
-	v.Card(components.CardOptions{Title: "External Data"}, func() {
+	v.Card(components.CardOptions{Title: i18n.T("pages.settings.tab_external")}, func() {
 		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-			ui.Text(v.C, "Zotero data directory").
+			ui.Text(v.C, i18n.T("pages.settings.zotero_label")).
 				FontSize(tokens.Typography.Body.Size).
 				FontWeight(int(tokens.WeightSemibold))
 			zotero := s.currentZotero()
 			in := v.Input(&zotero, components.FieldOptions{
-				Label:       "Zotero data directory",
-				Description: "ResearchOS reads Zotero's local storage here. Detection arrives with the Literature module (SPEC-04).",
+				Label:       i18n.T("pages.settings.zotero_label"),
+				Description: i18n.T("pages.settings.zotero_desc"),
 				Placeholder: "C:/Users/you/Zotero",
 			})
 			if in.Changed() {
 				s.setZotero(zotero)
 			}
 			ui.Row(v.C).Gap(tokens.ComponentGap).Children(func() {
-				v.Button("Browse…", components.ButtonOptions{
+				v.Button(i18n.T("pages.common.btn_browse"), components.ButtonOptions{
 					Variant: components.VariantSecondary,
 					OnClick: func() {
 						if s.Services.ChooseFolder == nil {
@@ -173,15 +185,15 @@ func (s *Settings) externalTab(v *components.UI, cfg config.AppConfig) {
 						}
 					},
 				})
-				v.Button("Save", components.ButtonOptions{
+				v.Button(i18n.T("common.save"), components.ButtonOptions{
 					Variant: components.VariantPrimary,
-					OnClick: func() { s.saveZotero(cfg) },
+					OnClick: func() { s.saveZotero() },
 				})
 			})
-			status := "Not configured"
+			status := i18n.T("pages.settings.status_not_configured")
 			tone := components.Neutral
 			if cfg.ZoteroDataDir != "" {
-				status = "Configured: " + cfg.ZoteroDataDir
+				status = i18n.Tf("pages.settings.status_configured", map[string]string{"path": cfg.ZoteroDataDir})
 				tone = components.Success
 			}
 			v.StatusIndicator(tone, status)
@@ -191,25 +203,25 @@ func (s *Settings) externalTab(v *components.UI, cfg config.AppConfig) {
 }
 
 func (s *Settings) storageTab(v *components.UI, info *workspace.Info) {
-	v.Card(components.CardOptions{Title: "Storage & Maintenance"}, func() {
+	v.Card(components.CardOptions{Title: i18n.T("pages.settings.tab_storage")}, func() {
 		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 			if info != nil {
-				s.row(v, "Workspace size", humanBytes(info.DBBytes+info.LibraryBytes+info.ExportsBytes))
+				s.row(v, i18n.T("pages.settings.row_workspace_size"), humanBytes(info.DBBytes+info.LibraryBytes+info.ExportsBytes))
 			}
 			ui.Row(v.C).Gap(tokens.ComponentGap).Children(func() {
-				v.Button("Recycle Bin", components.ButtonOptions{
+				v.Button(i18n.T("pages.settings.btn_recycle_bin"), components.ButtonOptions{
 					Icon: icons.Trash,
 					OnClick: func() {
 						s.Services.App.Navigate(ports.Route{Kind: ports.RouteTrash})
 					},
 				})
-				v.Button("File Consistency", components.ButtonOptions{
+				v.Button(i18n.T("pages.settings.btn_file_consistency"), components.ButtonOptions{
 					Icon: icons.Scan,
 					OnClick: func() {
 						s.Services.App.Navigate(ports.Route{Kind: app.RouteConsistency})
 					},
 				})
-				v.Button("Diagnostics", components.ButtonOptions{
+				v.Button(i18n.T("pages.settings.btn_diagnostics"), components.ButtonOptions{
 					Icon: icons.Diagnostics,
 					OnClick: func() {
 						s.Services.App.Navigate(ports.Route{Kind: app.RouteDiagnostics})
@@ -221,19 +233,174 @@ func (s *Settings) storageTab(v *components.UI, info *workspace.Info) {
 }
 
 // saveZotero writes the Zotero directory through the configuration service.
-func (s *Settings) saveZotero(cfg config.AppConfig) {
+// The configuration is read again inside the task instead of reusing the
+// snapshot the page was rendered with, so a change made meanwhile, such as the
+// language, is not overwritten with the value the page last saw.
+func (s *Settings) saveZotero() {
 	if s.Services.Config == nil || s.Services.App == nil {
 		return
 	}
 	dir := s.zotero
-	s.Services.App.RunTask("Save external data settings", func(ctx context.Context, t *app.Task) error {
+	s.Services.App.RunTask(i18n.T("pages.settings.task_save_zotero"), func(ctx context.Context, t *app.Task) error {
+		cfg, err := s.Services.Config.Load(ctx)
+		if err != nil {
+			return err
+		}
 		cfg.ZoteroDataDir = dir
 		if err := s.Services.Config.Save(ctx, cfg); err != nil {
 			return err
 		}
-		s.Services.App.Toast(app.LevelSuccess, "Settings saved", "The Zotero data directory was updated.")
+		s.Services.App.Toast(app.LevelSuccess, i18n.T("pages.settings.toast_saved_title"), i18n.T("pages.settings.toast_saved_message"))
 		return nil
 	})
+}
+
+// languageCard renders the interface language choice. The choice lives in the
+// application configuration, not in workspace settings, because it applies to
+// the first-run wizard too. A choice takes effect at once: every label is read
+// through i18n while the frame is built, and App.Notify repaints the window,
+// as a theme change does.
+func (s *Settings) languageCard(v *components.UI) {
+	if !s.isLoaded() {
+		return
+	}
+	labels, tags := languageChoices()
+	expected := languageChoiceLabel(labels, tags, s.languageTag())
+
+	s.mu.Lock()
+	if s.langLabel == "" {
+		s.langLabel = expected
+	}
+	chosen := s.langLabel
+	s.mu.Unlock()
+
+	// The select writes the chosen option's label into langLabel, so a label
+	// that no longer matches the configured tag is the user's new choice.
+	if chosen != expected {
+		if tag, ok := languageTagOf(labels, tags, chosen); ok {
+			s.applyLanguage(tag)
+			labels, tags = languageChoices()
+			expected = languageChoiceLabel(labels, tags, tag)
+		}
+		s.mu.Lock()
+		s.langLabel = expected
+		s.mu.Unlock()
+	}
+
+	v.Card(components.CardOptions{Title: i18n.T("settings.language.title")}, func() {
+		v.Select(&s.langLabel, components.SelectOptions{
+			Label:       i18n.T("settings.language.label"),
+			Description: i18n.T("settings.language.description"),
+			Options:     labels,
+		})
+	})
+}
+
+// applyLanguage switches the interface language and stores the choice through
+// the configuration service, the path the Zotero directory uses. The
+// configuration is read again inside the task so a concurrent save is not
+// lost.
+func (s *Settings) applyLanguage(tag string) {
+	i18n.SetLanguage(tag)
+	s.mu.Lock()
+	s.langTag = tag
+	s.cfg.Language = tag
+	s.mu.Unlock()
+
+	a := s.Services.App
+	if a == nil {
+		return
+	}
+	if svc := s.Services.Config; svc != nil {
+		a.RunTask(i18n.T("pages.settings.task_save_language"), func(ctx context.Context, t *app.Task) error {
+			cfg, err := svc.Load(ctx)
+			if err != nil {
+				return err
+			}
+			cfg.Language = tag
+			if err := svc.Save(ctx, cfg); err != nil {
+				return err
+			}
+			a.Toast(app.LevelSuccess, i18n.T("settings.language.title"), i18n.T("settings.language.saved"))
+			return nil
+		})
+	}
+	a.Notify()
+}
+
+// isLoaded reports whether the stored configuration has been read, so the
+// language select never shows a guess and then corrects itself.
+func (s *Settings) isLoaded() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loaded
+}
+
+// languageTag is the configured language value, with "" read as "system".
+func (s *Settings) languageTag() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.langTag == "" {
+		return "system"
+	}
+	return s.langTag
+}
+
+// languageChoices returns the select's option labels and the tags behind
+// them: following the system first, showing what the system resolves to, then
+// every pack by its native name.
+func languageChoices() (labels, tags []string) {
+	labels = []string{i18n.Tf("settings.language.system_hint", map[string]string{
+		"language": languageName(i18n.SystemLanguage()),
+	})}
+	tags = []string{"system"}
+	for _, o := range i18n.Available() {
+		labels = append(labels, o.NativeName)
+		tags = append(tags, o.Tag)
+	}
+	return labels, tags
+}
+
+// languageName is a pack's native name, or the tag when no pack carries it.
+func languageName(tag string) string {
+	for _, o := range i18n.Available() {
+		if o.Tag == tag {
+			return o.NativeName
+		}
+	}
+	return tag
+}
+
+// languageTagOf is the tag of an option's label.
+func languageTagOf(labels, tags []string, label string) (string, bool) {
+	for i, l := range labels {
+		if l == label {
+			return tags[i], true
+		}
+	}
+	return "", false
+}
+
+// languageChoiceLabel is the label of tag. A tag no option names, as a value
+// written by a newer build, falls back to the language actually in use.
+func languageChoiceLabel(labels, tags []string, tag string) string {
+	if label, ok := labelOfTag(labels, tags, tag); ok {
+		return label
+	}
+	if label, ok := labelOfTag(labels, tags, i18n.Language()); ok {
+		return label
+	}
+	return labels[0]
+}
+
+// labelOfTag is the option label of a tag, if an option names it.
+func labelOfTag(labels, tags []string, tag string) (string, bool) {
+	for i, t := range tags {
+		if t == tag {
+			return labels[i], true
+		}
+	}
+	return "", false
 }
 
 // row renders a label and value pair.
@@ -255,17 +422,20 @@ func (s *Settings) row(v *components.UI, label, value string) {
 func markerLabel(m foundationworkspace.MarkerState) string {
 	switch m.String() {
 	case "present":
-		return "Present"
+		return i18n.T("pages.settings.marker_present")
 	case "missing":
-		return "Missing"
+		return i18n.T("pages.settings.marker_missing")
 	case "invalid":
-		return "Damaged"
+		return i18n.T("pages.settings.marker_damaged")
 	}
 	return m.String()
 }
 
 func strconvPair(total, archived int) string {
-	return strconv.Itoa(total) + " (" + strconv.Itoa(archived) + " archived)"
+	return i18n.Tf("pages.settings.projects_pair", map[string]string{
+		"total":    strconv.Itoa(total),
+		"archived": strconv.Itoa(archived),
+	})
 }
 
 func (s *Settings) currentZotero() string {

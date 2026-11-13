@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -27,7 +28,7 @@ func (u *UI) Breadcrumb(items []string, chosen *int) ui.Element {
 		var local int
 		chosen = &local
 	}
-	return ui.Breadcrumbs(u.C, items, chosen).Label("Breadcrumb")
+	return ui.Breadcrumbs(u.C, items, chosen).Label(i18n.T("components.breadcrumb.aria_label"))
 }
 
 // Toolbar builds a row of controls that take no face until hovered, with
