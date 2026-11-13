@@ -487,6 +487,17 @@ func (a *syncAPI) RefreshMetadata(ctx context.Context, scope literature.SyncScop
 		}
 		item, err := reader.GetItem(ctx, libraryID, row.ZoteroKey)
 		if err != nil {
+			if errors.Is(err, literature.ErrItemNotFound) {
+				// Preserve the old metadata and mark the source unavailable.
+				_ = a.ws.Global().InTx(ctx, func(tx *sql.Tx) error {
+					_, uerr := tx.ExecContext(ctx,
+						`UPDATE papers SET source_state = 'missing', updated_at = ? WHERE id = ?`,
+						clock.Format(a.clock.Now()), row.ID)
+					return uerr
+				})
+				result.Missing = append(result.Missing, row.ID)
+				continue
+			}
 			result.Failed = append(result.Failed, literature.SyncError{PaperID: row.ID, Message: err.Error()})
 			continue
 		}

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -392,14 +391,4 @@ func normalizeForMatch(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
-}
-
-// sortViolations orders findings deterministically by rule then section.
-func sortViolations(v []Violation) {
-	sort.SliceStable(v, func(i, j int) bool {
-		if v[i].Rule != v[j].Rule {
-			return v[i].Rule < v[j].Rule
-		}
-		return v[i].Section < v[j].Section
-	})
 }
