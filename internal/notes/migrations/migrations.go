@@ -2,6 +2,12 @@
 // reserved 0200–0299 band (SPEC-01 §4.8.1, §10.4): the research database
 // description, db_fields.role and the tags/entity_tags dictionary.
 //
+// 0310_notes_description sits above the band on purpose: the engine only
+// applies versions above the database's highest applied version, and existing
+// project databases are already at 0300, so a 0200–0299 version would never
+// reach them (the migration started life as 0280, which collided with
+// literature's 0280_literature_notes).
+//
 // Register the set through workspace.Options.Migrations (or
 // foundationtest.Options.Migrations in tests):
 //

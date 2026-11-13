@@ -47,6 +47,7 @@ type Note struct {
 	ID          string
 	Kind        NoteKind
 	Title       string
+	Description string
 	FilePath    string // relative to the workspace root
 	BodyState   BodyState
 	ContentHash string
@@ -56,7 +57,9 @@ type Note struct {
 }
 
 // Body is the Markdown body plus the hash token used for save conflict
-// detection. State missing means the file is gone; Markdown and Hash are empty.
+// detection. Markdown never includes the file frontmatter; Hash is the sha256
+// of the whole file, frontmatter included. State missing means the file is
+// gone; Markdown and Hash are empty.
 type Body struct {
 	NoteID   string
 	Markdown string
@@ -72,10 +75,11 @@ type NotePage struct {
 
 // CreateNoteInput creates one note and its Markdown file.
 type CreateNoteInput struct {
-	Kind  NoteKind // empty means scratchpad
-	Title string
-	Body  string // Markdown, may be empty
-	Actor events.Actor
+	Kind        NoteKind // empty means scratchpad
+	Title       string
+	Description string
+	Body        string // Markdown, may be empty
+	Actor       events.Actor
 }
 
 // ListNotesQuery filters List. TitleLike is a case-insensitive substring match.
@@ -104,6 +108,15 @@ type SaveResult struct {
 	DiskHash  string
 }
 
+// UpdateMetaInput edits the metadata a note carries in project.db and in its
+// file frontmatter. The body is never touched (SPEC-05 §5, D-05-01).
+type UpdateMetaInput struct {
+	NoteID      string
+	Title       string
+	Description string
+	Actor       events.Actor
+}
+
 // PromoteInput moves a scratchpad note into a research database (D-05-04: the
 // note kind and its Markdown file are unchanged).
 type PromoteInput struct {
@@ -123,6 +136,7 @@ type NoteService interface {
 	SaveBody(ctx context.Context, in SaveBodyInput) (*SaveResult, error)
 
 	UpdateTitle(ctx context.Context, noteID, title string, actor events.Actor) (*Note, error)
+	UpdateMeta(ctx context.Context, in UpdateMetaInput) (*Note, error)
 	SoftDelete(ctx context.Context, noteID string, actor events.Actor) error
 	Restore(ctx context.Context, noteID string, actor events.Actor) error
 

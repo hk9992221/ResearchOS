@@ -278,7 +278,10 @@ func adopt(ctx context.Context, w *workspace.Workspace, handle *workspace.Projec
 		return "", fmt.Errorf("reconcile: adopt %s: %w", action.RelPath, err)
 	}
 	hash := notefile.HashBytes(body)
-	title := deriveTitle(action.AdoptOptions.Title, body, abs)
+	// A file that already carries frontmatter (one of ours, moved or copied)
+	// contributes its title and description; the body is what is left after it.
+	meta, markdown := notefile.Split(body)
+	title := deriveTitle(action.AdoptOptions.Title, meta, markdown, abs)
 	// Action.Kind is the action selector; the note kind comes from the embedded
 	// AdoptOptions (its Kind field is shadowed by the outer one).
 	kind := action.AdoptOptions.Kind
@@ -306,9 +309,9 @@ func adopt(ctx context.Context, w *workspace.Workspace, handle *workspace.Projec
 		noteID = id
 		now := clock.Format(c.Now())
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO notes(id, title, file_path, kind, created_at, updated_at, file_hash, file_mtime, file_state)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok')`,
-			id, title, action.RelPath, string(kind), now, now, hash, clock.Format(info.ModTime())); err != nil {
+			`INSERT INTO notes(id, title, description, file_path, kind, created_at, updated_at, file_hash, file_mtime, file_state)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok')`,
+			id, title, meta.Description, action.RelPath, string(kind), now, now, hash, clock.Format(info.ModTime())); err != nil {
 			return fmt.Errorf("reconcile: adopt: %w", err)
 		}
 		return handle.Events().Emit(ctx, tx, events.Event{
@@ -347,12 +350,26 @@ func acceptExternalEdit(ctx context.Context, w *workspace.Workspace, handle *wor
 		return fmt.Errorf("reconcile: accept external edit %s: %w", noteID, err)
 	}
 	hash := notefile.HashBytes(body)
+	// An external editor may also have changed the frontmatter: accepting the
+	// disk version adopts its title and description into the row in the same
+	// transaction. A file without frontmatter keeps the row metadata.
+	meta, _ := notefile.Split(body)
+	hasMeta := notefile.HasFrontmatter(body)
 	c := w.Clock()
 	return handle.InTx(ctx, func(tx *sql.Tx) error {
 		now := clock.Format(c.Now())
-		res, err := tx.ExecContext(ctx,
-			`UPDATE notes SET file_state = 'ok', file_hash = ?, file_mtime = ?, updated_at = ? WHERE id = ?`,
-			hash, clock.Format(info.ModTime()), now, noteID)
+		set := `file_state = 'ok', file_hash = ?, file_mtime = ?, updated_at = ?`
+		args := []any{hash, clock.Format(info.ModTime()), now}
+		if hasMeta {
+			set += `, description = ?`
+			args = append(args, meta.Description)
+			if title := strings.TrimSpace(meta.Title); title != "" {
+				set += `, title = ?`
+				args = append(args, title)
+			}
+		}
+		args = append(args, noteID)
+		res, err := tx.ExecContext(ctx, `UPDATE notes SET `+set+` WHERE id = ?`, args...)
 		if err != nil {
 			return fmt.Errorf("reconcile: accept external edit: %w", err)
 		}
@@ -470,11 +487,14 @@ func noteFilePath(ctx context.Context, handle *workspace.ProjectHandle, noteID s
 	return filePath, nil
 }
 
-// deriveTitle implements the §5.11 rule: explicit title, else the first "# "
-// heading, else the file name without its extension.
-func deriveTitle(explicit string, body []byte, abs string) string {
+// deriveTitle implements the §5.11 rule: explicit title, else the frontmatter
+// title, else the first "# " heading, else the file name without its extension.
+func deriveTitle(explicit string, meta notefile.Meta, body []byte, abs string) string {
 	if strings.TrimSpace(explicit) != "" {
 		return explicit
+	}
+	if title := strings.TrimSpace(meta.Title); title != "" {
+		return title
 	}
 	for _, line := range strings.Split(string(body), "\n") {
 		if strings.HasPrefix(line, "# ") {

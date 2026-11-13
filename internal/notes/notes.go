@@ -91,11 +91,12 @@ func (s *noteService) Create(ctx context.Context, in CreateNoteInput) (*Note, er
 	var noteID string
 	err = handle.InTx(ctx, func(tx *sql.Tx) error {
 		res, err := s.noteFiles(handle).Create(ctx, tx, notefile.CreateRequest{
-			ProjectID: s.projectID,
-			Kind:      schema.NoteKind(kind),
-			Title:     in.Title,
-			Body:      []byte(in.Body),
-			Actor:     noteActor(in.Actor),
+			ProjectID:   s.projectID,
+			Kind:        schema.NoteKind(kind),
+			Title:       in.Title,
+			Description: in.Description,
+			Body:        []byte(in.Body),
+			Actor:       noteActor(in.Actor),
 		})
 		if err != nil {
 			return err
@@ -130,7 +131,7 @@ func (s *noteService) Get(ctx context.Context, noteID string) (*Note, error) {
 // noteGet reads one notes row by id.
 func noteGet(ctx context.Context, db *sql.DB, noteID string) (*Note, error) {
 	row := db.QueryRowContext(ctx,
-		`SELECT id, title, file_path, kind, created_at, updated_at, deleted_at, file_hash, file_state
+		`SELECT id, title, description, file_path, kind, created_at, updated_at, deleted_at, file_hash, file_state
 		 FROM notes WHERE id = ?`, noteID)
 	note, err := noteScanRow(row)
 	if err != nil {
@@ -150,7 +151,7 @@ func noteScanRow(row interface{ Scan(dest ...any) error }) (*Note, error) {
 		fileHash  sql.NullString
 		fileState string
 	)
-	if err := row.Scan(&note.ID, &note.Title, &note.FilePath, &kind, &createdAt, &updatedAt,
+	if err := row.Scan(&note.ID, &note.Title, &note.Description, &note.FilePath, &kind, &createdAt, &updatedAt,
 		&deletedAt, &fileHash, &fileState); err != nil {
 		return nil, err
 	}
@@ -230,7 +231,7 @@ func (s *noteService) List(ctx context.Context, q ListNotesQuery) (NotePage, err
 		offset = 0
 	}
 	rows, err := handle.DB().QueryContext(ctx,
-		`SELECT id, title, file_path, kind, created_at, updated_at, deleted_at, file_hash, file_state
+		`SELECT id, title, description, file_path, kind, created_at, updated_at, deleted_at, file_hash, file_state
 		 FROM notes`+clause+` ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
@@ -251,8 +252,10 @@ func (s *noteService) List(ctx context.Context, q ListNotesQuery) (NotePage, err
 	return NotePage{Notes: out, Total: total}, nil
 }
 
-// LoadBody reads the Markdown body. A missing file is not an error: it returns
-// Body{State: missing} and records file_state='missing' once (SPEC-05 §5.1).
+// LoadBody reads the Markdown body without its frontmatter. A missing file is
+// not an error: it returns Body{State: missing} and records file_state='missing'
+// once (SPEC-05 §5.1). Hash stays the token of the whole file, frontmatter
+// included, because that is what a save conflict compares.
 func (s *noteService) LoadBody(ctx context.Context, noteID string) (*Body, error) {
 	note, err := s.Get(ctx, noteID)
 	if err != nil {
@@ -274,7 +277,8 @@ func (s *noteService) LoadBody(ctx context.Context, noteID string) (*Body, error
 	if err != nil {
 		return nil, err
 	}
-	return &Body{NoteID: noteID, Markdown: string(body), Hash: stat.Hash, State: BodyOK}, nil
+	_, markdown := notefile.Split(body)
+	return &Body{NoteID: noteID, Markdown: string(markdown), Hash: stat.Hash, State: BodyOK}, nil
 }
 
 // noteMarkFileState flips notes.file_state without bumping updated_at: it
@@ -288,11 +292,31 @@ func noteMarkFileState(ctx context.Context, db *sql.DB, noteID string, state Bod
 	return nil
 }
 
-// UpdateTitle changes only the metadata title (D-05-01) and emits the merged
-// note.updated event. An unchanged title writes nothing.
+// UpdateTitle changes only the metadata title (D-05-01), in the notes row and
+// in the file frontmatter, and emits one merged note.updated event. An
+// unchanged title writes nothing.
 func (s *noteService) UpdateTitle(ctx context.Context, noteID, title string, actor events.Actor) (*Note, error) {
+	return s.updateMeta(ctx, noteID, title, nil, actor, "更新标题")
+}
+
+// UpdateMeta replaces the title and description of a note (D-05-01): the row
+// and the file frontmatter are written in one transaction, the body and any
+// unknown frontmatter keys are preserved. An unchanged write emits nothing.
+func (s *noteService) UpdateMeta(ctx context.Context, in UpdateMetaInput) (*Note, error) {
+	return s.updateMeta(ctx, in.NoteID, in.Title, &in.Description, in.Actor, "更新笔记元数据")
+}
+
+// updateMeta is the shared metadata write. description nil keeps the current
+// description (UpdateTitle). The file is refreshed through notefile.RewriteMeta,
+// which is a no-op when the body file is gone: metadata stays editable on a
+// note whose body was lost.
+func (s *noteService) updateMeta(ctx context.Context, noteID, title string, description *string, actor events.Actor, summary string) (*Note, error) {
 	if !ids.Valid(noteID) {
 		return nil, fmt.Errorf("%w: %q", errs.ErrBadEntityID, noteID)
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, fmt.Errorf("notes: update meta %s: title must not be empty", noteID)
 	}
 	handle, err := s.noteHandle(ctx)
 	if err != nil {
@@ -301,29 +325,38 @@ func (s *noteService) UpdateTitle(ctx context.Context, noteID, title string, act
 	changed := false
 	err = handle.InTx(ctx, func(tx *sql.Tx) error {
 		var (
-			current string
-			deleted sql.NullString
+			currentTitle       string
+			currentDescription string
+			deleted            sql.NullString
 		)
-		if err := tx.QueryRowContext(ctx, `SELECT title, deleted_at FROM notes WHERE id = ?`, noteID).
-			Scan(&current, &deleted); err != nil {
-			return fmt.Errorf("notes: update title %s: %w", noteID, err)
+		if err := tx.QueryRowContext(ctx,
+			`SELECT title, description, deleted_at FROM notes WHERE id = ?`, noteID).
+			Scan(&currentTitle, &currentDescription, &deleted); err != nil {
+			return fmt.Errorf("notes: update meta %s: %w", noteID, err)
 		}
 		if deleted.Valid {
 			return fmt.Errorf("%w: note %s", errs.ErrEntityDeleted, noteID)
 		}
-		if current == title {
+		newDescription := currentDescription
+		if description != nil {
+			newDescription = *description
+		}
+		if currentTitle == title && currentDescription == newDescription {
 			return nil
 		}
 		changed = true
 		now := s.clock.Now()
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE notes SET title = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
-			title, clock.Format(now), noteID); err != nil {
-			return fmt.Errorf("notes: update title %s: %w", noteID, err)
+			`UPDATE notes SET title = ?, description = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+			title, newDescription, clock.Format(now), noteID); err != nil {
+			return fmt.Errorf("notes: update meta %s: %w", noteID, err)
+		}
+		if err := s.noteFiles(handle).RewriteMeta(ctx, tx, noteID); err != nil {
+			return err
 		}
 		return handle.Events().EmitNoteUpdated(ctx, tx, events.NoteUpdatedEvent{
 			NoteID:  noteID,
-			Summary: "更新标题",
+			Summary: summary,
 			Actor:   noteActor(actor),
 			At:      now,
 		})

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"researchos/internal/foundation/clock"
+	"researchos/internal/foundation/notefile"
 	"researchos/internal/foundation/reconcile"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/workspace"
@@ -160,8 +161,9 @@ func (s *reconcileService) decisionAction(ctx context.Context, decision Reconcil
 	}
 }
 
-// orphanTitle derives the registration title from the file: the first
-// non-empty line (SPEC-05 §5.8), else the file name without its extension.
+// orphanTitle derives the registration title from the file: its frontmatter
+// title, else the first non-empty body line (SPEC-05 §5.8), else the file name
+// without its extension.
 func (s *reconcileService) orphanTitle(relPath string) string {
 	if relPath == "" {
 		return ""
@@ -171,7 +173,11 @@ func (s *reconcileService) orphanTitle(relPath string) string {
 		return ""
 	}
 	if body, err := os.ReadFile(abs); err == nil {
-		if title := noteFirstLine(body); title != "" {
+		meta, markdown := notefile.Split(body)
+		if title := strings.TrimSpace(meta.Title); title != "" {
+			return title
+		}
+		if title := noteFirstLine(markdown); title != "" {
 			return title
 		}
 	}

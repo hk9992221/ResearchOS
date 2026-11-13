@@ -57,6 +57,13 @@ func main() {
 			log.Printf("researchos: dock icon: %v", err)
 		}
 
+		// SPEC-05 §5.7: the note editor's 600 ms debounce must not lose the
+		// last edits when the window closes, so its flush runs synchronously
+		// before the window goes away.
+		window.OnClose(func(e *mg.CloseEvent) {
+			runtime.Flush()
+		})
+
 		// Follow the desktop's appearance and reduced-motion setting; the
 		// app applies them through the theme provider.
 		uimygo.SyncSystem(runtime.Provider())

@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"researchos/internal/foundation/config"
@@ -22,6 +23,7 @@ import (
 	foundationworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/i18n"
 	"researchos/internal/literature"
+	"researchos/internal/notes"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/shell"
 	"researchos/internal/workspace"
@@ -51,6 +53,13 @@ type Services struct {
 	// Literature binds the SPEC-04 Zotero and import services. Nil means the
 	// module is not assembled, and the page says so instead of faking data.
 	Literature LiteratureAPI
+	// Notes binds the SPEC-05 note service. Nil means the module is not
+	// assembled, and the page says so instead of rendering an empty list.
+	Notes NotesAPI
+	// NoteFlush is the note editor's synchronous flush. The composition
+	// root allocates it, pages.Research installs the editor, and the window's
+	// close callback runs it before the process exits (SPEC-05 §5.7).
+	NoteFlush *NoteFlush
 	// Scan reports the marker and registry state of the open workspace.
 	Scan func(ctx context.Context) (foundationworkspace.WorkspaceScan, error)
 	// ChooseFolder opens the OS directory picker.
@@ -114,6 +123,61 @@ type LiteratureAPI interface {
 	Preview(ctx context.Context, sel literature.ImportSelection) (literature.ImportPreview, error)
 	Import(ctx context.Context, sel literature.ImportSelection, progress literature.ProgressFunc) (literature.ImportResult, error)
 	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
+}
+
+// NotesAPI is the part of SPEC-05 the Research Notes page uses: the note list,
+// the editor's read and save calls, and the link resolution of the preview.
+// The composition root binds it to the note service, always as ActorUser: the
+// page is the user path, while MCP reaches the same methods with ActorMCP.
+// Every call names the open project, because one adapter serves the workspace.
+type NotesAPI interface {
+	Create(ctx context.Context, projectID string, in notes.CreateNoteInput) (*notes.Note, error)
+	Get(ctx context.Context, projectID, noteID string) (*notes.Note, error)
+	List(ctx context.Context, projectID string, q notes.ListNotesQuery) (notes.NotePage, error)
+	// LoadBody reads the Markdown without its frontmatter; Hash is the
+	// whole-file token the next save carries as BaseHash.
+	LoadBody(ctx context.Context, projectID, noteID string) (*notes.Body, error)
+	SaveBody(ctx context.Context, projectID string, in notes.SaveBodyInput) (*notes.SaveResult, error)
+	UpdateMeta(ctx context.Context, projectID string, in notes.UpdateMetaInput) (*notes.Note, error)
+	SoftDelete(ctx context.Context, projectID, noteID string, actor ports.Actor) error
+	ResolveTarget(ctx context.Context, projectID string, ref notes.EntityRef) (*notes.LinkTarget, error)
+	// ImageBaseDir is the absolute directory Markdown image paths of a note
+	// resolve from. The composition root owns paths; the page never joins
+	// workspace paths itself.
+	ImageBaseDir(projectID, noteID string) (string, error)
+}
+
+// NoteFlush carries the note editor's close-time flush between the page and
+// the composition root: a save started through the shell's task machinery
+// would not finish before the process exits, so the window's close callback
+// calls it on the main thread instead. It holds one callback, set when the
+// pages are built and nil-safe while it is unset.
+type NoteFlush struct {
+	mu sync.Mutex
+	fn func()
+}
+
+// Set installs the editor's flush.
+func (f *NoteFlush) Set(fn func()) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	f.fn = fn
+	f.mu.Unlock()
+}
+
+// Run runs the installed flush, if any.
+func (f *NoteFlush) Run() {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	fn := f.fn
+	f.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // TrashRef identifies one trash entry for restore or purge.
@@ -192,12 +256,20 @@ func System(s Services) map[ports.RouteKind]shell.Page {
 }
 
 // Research returns the module pages that operate on the open project. Today
-// that is the SPEC-04 literature browser and import page; the remaining
-// modules replace their shell placeholders as they are built.
+// that is the SPEC-04 literature browser, the SPEC-05 note list and editor;
+// the remaining modules replace their shell placeholders as they are built.
 func Research(s Services) map[ports.RouteKind]shell.Page {
 	literature := &Literature{Services: &s}
+	// The list and the editor share the generation the editor bumps after a
+	// write, so a returning list reloads instead of showing a stale row.
+	shared := &notesShared{}
+	notesList := &Notes{Services: &s, shared: shared}
+	noteEditor := &NoteEditor{Services: &s, shared: shared}
+	s.NoteFlush.Set(noteEditor.Flush)
 	return map[ports.RouteKind]shell.Page{
 		app.RouteLiterature: literature.Page,
+		app.RouteNotes:      notesList.Page,
+		ports.RouteNote:     noteEditor.Page,
 	}
 }
 
