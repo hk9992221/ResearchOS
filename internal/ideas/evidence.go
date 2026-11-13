@@ -260,6 +260,9 @@ func (s *service) confirmOne(ctx context.Context, handle *workspace.ProjectHandl
 		if _, err := requireIdeaTx(ctx, tx, ideaID, false); err != nil {
 			return err
 		}
+		if !ev.AIGenerated {
+			return serviceError(ErrEvidenceNotAIDraft, "evidence %s is not an AI draft", evidenceID)
+		}
 		if ev.Confirmed {
 			return nil // already effective: idempotent
 		}

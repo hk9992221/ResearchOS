@@ -386,28 +386,18 @@ func (s *service) skillRequest(idea *Idea, inputs []skillSource, instruction str
 	}
 }
 
-// completeWithRepair calls the provider and allows exactly one repair retry
-// when the JSON cannot be parsed (SPEC-06 §5.7.3 rule 1).
+// completeWithRepair performs one structured call. The single repair retry is
+// owned by SPEC-02's CompleteStructured (SPEC-06 §2.3, §5.7.3 rule 1); adding
+// a second round here would send the model three requests.
 func (s *service) completeWithRepair(ctx context.Context, req StructuredRequest) (StructuredResponse, aiOutput, error) {
 	response, err := s.ai.CompleteStructured(ctx, req)
 	if err != nil {
 		return StructuredResponse{}, aiOutput{}, err
 	}
 	out, parseErr := parseAIOutput(response.Content)
-	if parseErr == nil {
-		return response, out, nil
-	}
-	repair := req
-	repair.Prompt = req.Prompt + "\n\n上一次输出不是合法 JSON（" + parseErr.Error() +
-		"）。请只返回符合给定 schema 的 JSON，不要包含代码块或解释。"
-	response, err = s.ai.CompleteStructured(ctx, repair)
-	if err != nil {
-		return StructuredResponse{}, aiOutput{}, err
-	}
-	out, parseErr = parseAIOutput(response.Content)
 	if parseErr != nil {
 		return StructuredResponse{}, aiOutput{}, serviceError(ErrAIOutputInvalid,
-			"model output is not valid JSON after one repair retry: %v", parseErr)
+			"model output is not valid JSON: %v", parseErr)
 	}
 	return response, out, nil
 }

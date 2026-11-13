@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -165,7 +164,10 @@ func violationV2(parsed parsedReport, digest *ActivityDigest) []Violation {
 			if strings.HasPrefix(strings.TrimSpace(line), "##") {
 				continue
 			}
-			for _, tok := range numberPattern.FindAllString(line, -1) {
+			// Reference tokens carry UUIDs; they are identifiers, not
+			// reported measurements (SPEC-09 §5.4 V2).
+			scanned := refPattern.ReplaceAllString(line, "")
+			for _, tok := range numberPattern.FindAllString(scanned, -1) {
 				canon := canonNumber(tok)
 				if allowed[canon] || reported[canon] || ignorableNumber(tok) {
 					continue
@@ -344,31 +346,80 @@ func violationV4(parsed parsedReport, digest *ActivityDigest) []Violation {
 
 func violationV5(parsed parsedReport, digest *ActivityDigest) []Violation {
 	planned := map[string]bool{}
+	titles := make([]string, 0, len(digest.Planned))
 	for _, t := range digest.Planned {
 		planned[t.Ref.ID] = true
+		if title := normalizeForMatch(t.Title); len([]rune(title)) >= 4 {
+			titles = append(titles, title)
+		}
 	}
 	var out []Violation
 	for _, line := range parsed.sections[SectionNextWeek] {
-		for _, m := range refPattern.FindAllStringSubmatch(line, -1) {
-			if m[1] != "task" || planned[m[2]] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(trimmed, "本周期无记录") {
+			continue
+		}
+		matches := refPattern.FindAllStringSubmatch(trimmed, -1)
+		if len(matches) == 0 {
+			// A candidate task named by title (without a ref) is grounded;
+			// anything else is a new plan entry without a candidate (§5.4 V5).
+			normalized := normalizeForMatch(trimmed)
+			grounded := false
+			for _, title := range titles {
+				if strings.Contains(normalized, title) {
+					grounded = true
+					break
+				}
+			}
+			if grounded {
 				continue
 			}
-			ref := EntityRef{Type: m[1], ID: m[2]}
 			out = append(out, Violation{
 				Rule: "V5", Severity: SeverityError,
-				Fingerprint: fingerprint("V5", SectionNextWeek, m[2], normalizeForMatch(line)),
+				Fingerprint: fingerprint("V5", SectionNextWeek, "", normalized),
 				Section:     SectionNextWeek,
-				Ref:         &ref,
-				Message:     "下周计划包含不在候选中的任务",
+				Message:     "下周计划条目缺少候选任务引用",
 			})
+			continue
 		}
+		valid := false
+		for _, m := range matches {
+			if m[1] == "task" && planned[m[2]] {
+				valid = true
+				break
+			}
+		}
+		if valid {
+			continue
+		}
+		ref := firstRef(matches)
+		out = append(out, Violation{
+			Rule: "V5", Severity: SeverityError,
+			Fingerprint: fingerprint("V5", SectionNextWeek, refID(matches), normalizeForMatch(trimmed)),
+			Section:     SectionNextWeek,
+			Ref:         ref,
+			Message:     "下周计划包含不在候选中的任务",
+		})
 	}
 	return out
 }
 
+// refID returns the first task reference id, or empty for non-task refs.
+func refID(matches [][]string) string {
+	for _, m := range matches {
+		if m[1] == "task" {
+			return m[2]
+		}
+	}
+	return ""
+}
+
 func fingerprint(rule string, section SectionKey, refID, text string) string {
 	sum := sha256.Sum256([]byte(rule + "|" + string(section) + "|" + refID + "|" + text))
-	return hex.EncodeToString(sum[:])
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func normalizeForMatch(s string) string {
@@ -392,14 +443,4 @@ func normalizeForMatch(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
-}
-
-// sortViolations orders findings deterministically by rule then section.
-func sortViolations(v []Violation) {
-	sort.SliceStable(v, func(i, j int) bool {
-		if v[i].Rule != v[j].Rule {
-			return v[i].Rule < v[j].Rule
-		}
-		return v[i].Section < v[j].Section
-	})
 }

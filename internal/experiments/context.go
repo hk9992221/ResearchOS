@@ -3,6 +3,7 @@ package experiments
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -165,9 +166,54 @@ func readSample(path string, entry FileEntry) (string, bool, error) {
 		return readLineWindow(path, contextLogLines)
 	case KindData:
 		return readCSVWindow(path, contextCSVHeadRows, contextCSVTailRows)
+	case KindNotebook:
+		return readNotebookWindow(path)
 	default:
 		return readByteWindow(path, contextWindowBytes, contextSmallFull)
 	}
+}
+
+// readNotebookWindow strips notebook cell outputs (large binary payloads)
+// before sampling, per §3.2 "notebook 去掉输出大字段".
+func readNotebookWindow(path string) (string, bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	content := stripNotebookOutputs(raw)
+	if int64(len(content)) <= contextSmallFull {
+		return content, false, nil
+	}
+	window := int64(contextWindowBytes)
+	if int64(len(content)) <= window*2 {
+		return content, true, nil
+	}
+	head := trimPartialRune(content[:window], false)
+	tail := trimPartialRune(content[len(content)-int(window):], true)
+	return head + "\n…（中间内容已省略）…\n" + tail, true, nil
+}
+
+// stripNotebookOutputs removes every cell-level "outputs" array and execution
+// counts so only source/type metadata remains. Invalid JSON falls back to the
+// raw bytes (already bounded by the scan size limit).
+func stripNotebookOutputs(raw []byte) string {
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return string(raw)
+	}
+	if cells, ok := doc["cells"].([]any); ok {
+		for _, c := range cells {
+			if cell, ok := c.(map[string]any); ok {
+				delete(cell, "outputs")
+				delete(cell, "execution_count")
+			}
+		}
+	}
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return string(raw)
+	}
+	return string(out)
 }
 
 // readByteWindow returns the whole file when small, otherwise head and tail

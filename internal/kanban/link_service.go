@@ -35,11 +35,11 @@ var allowedTaskRelations = map[schema.Relation]bool{
 // (ErrInvalidInput — a foreign UUID simply does not resolve here), and
 // soft-deleted targets (errs.ErrEntityDeleted from the foundation).
 func (s *linkService) Add(ctx context.Context, taskID string, rel schema.Relation, dstType schema.EntityType, dstID string, actor events.Actor) (string, error) {
-	t, err := s.m.loadGateTask(ctx, taskID)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return "", err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, taskID)
+	if err != nil {
 		return "", err
 	}
 	if !rel.Valid() || !allowedTaskRelations[rel] {
@@ -90,11 +90,11 @@ func (s *linkService) Add(ctx context.Context, taskID string, rel schema.Relatio
 
 // Remove unlinks the triple; a missing triple is a no-op (§5.6).
 func (s *linkService) Remove(ctx context.Context, taskID string, rel schema.Relation, dstType schema.EntityType, dstID string, actor events.Actor) error {
-	t, err := s.m.loadGateTask(ctx, taskID)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, taskID)
+	if err != nil {
 		return err
 	}
 	if !rel.Valid() {

@@ -11,6 +11,7 @@ package notes
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,17 +36,24 @@ const maxTagNameRunes = 64
 
 // tagService is the TagService implementation bound to one project.db.
 type tagService struct {
-	db  *sql.DB
-	clk clock.Clock
+	db     *sql.DB
+	clk    clock.Clock
+	events events.Writer
 }
 
 // NewTagService returns the tag service of one project database. A nil clock
-// uses clock.System.
-func NewTagService(db *sql.DB, clk clock.Clock) TagService {
+// uses clock.System. The optional writer enables the note.updated events tag
+// changes must emit (SPEC-05 §5.4/§7.1); nil keeps the service read/query-only
+// for callers that do not need events.
+func NewTagService(db *sql.DB, clk clock.Clock, writer ...events.Writer) TagService {
 	if clk == nil {
 		clk = clock.System{}
 	}
-	return &tagService{db: db, clk: clk}
+	var w events.Writer
+	if len(writer) > 0 {
+		w = writer[0]
+	}
+	return &tagService{db: db, clk: clk, events: w}
 }
 
 // ListTags returns the dictionary ordered case-insensitively by name, ties on
@@ -206,7 +214,7 @@ func (s *tagService) RestoreTag(ctx context.Context, tagID string, _ events.Acto
 // Assign attaches a live tag to the given notes and records. It is idempotent
 // (the entity_tags primary key absorbs repeats) and rejects unknown, deleted
 // or unsupported (neither note nor db_record) refs with a validation error.
-func (s *tagService) Assign(ctx context.Context, refs []EntityRef, tagID string, _ events.Actor) error {
+func (s *tagService) Assign(ctx context.Context, refs []EntityRef, tagID string, actor events.Actor) error {
 	if _, err := s.requireLiveTag(ctx, tagID); err != nil {
 		return err
 	}
@@ -225,11 +233,24 @@ func (s *tagService) Assign(ctx context.Context, refs []EntityRef, tagID string,
 	defer dbTx.Rollback() //nolint:errcheck // after Commit it is a no-op
 	now := clock.Format(s.clk.Now())
 	for _, ref := range refs {
-		if _, err := dbTx.ExecContext(ctx,
+		res, err := dbTx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO entity_tags(tag_id, entity_type, entity_id, created_at)
 			 VALUES (?, ?, ?, ?)`,
-			tagID, string(ref.Type), ref.ID, now); err != nil {
+			tagID, string(ref.Type), ref.ID, now)
+		if err != nil {
 			return fmt.Errorf("tags: assign: %w", err)
+		}
+		changed, _ := res.RowsAffected()
+		if changed == 0 {
+			continue
+		}
+		if ref.Type == schema.EntityDBRecord {
+			if err := syncRecordTagsData(ctx, dbTx, ref.ID, now); err != nil {
+				return err
+			}
+		}
+		if err := s.emitTagUpdated(ctx, dbTx, ref, actor); err != nil {
+			return err
 		}
 	}
 	if err := dbTx.Commit(); err != nil {
@@ -241,7 +262,7 @@ func (s *tagService) Assign(ctx context.Context, refs []EntityRef, tagID string,
 // Unassign removes exactly the given (tag, entity) join rows. Missing rows
 // are not an error. Tag changes never write entity_relations and never emit
 // activity events (SPEC-05 §5.4).
-func (s *tagService) Unassign(ctx context.Context, refs []EntityRef, tagID string, _ events.Actor) error {
+func (s *tagService) Unassign(ctx context.Context, refs []EntityRef, tagID string, actor events.Actor) error {
 	if _, err := s.requireLiveTag(ctx, tagID); err != nil {
 		return err
 	}
@@ -258,11 +279,25 @@ func (s *tagService) Unassign(ctx context.Context, refs []EntityRef, tagID strin
 		return fmt.Errorf("tags: unassign: begin: %w", err)
 	}
 	defer dbTx.Rollback() //nolint:errcheck // after Commit it is a no-op
+	now := clock.Format(s.clk.Now())
 	for _, ref := range refs {
-		if _, err := dbTx.ExecContext(ctx,
+		res, err := dbTx.ExecContext(ctx,
 			`DELETE FROM entity_tags WHERE tag_id = ? AND entity_type = ? AND entity_id = ?`,
-			tagID, string(ref.Type), ref.ID); err != nil {
+			tagID, string(ref.Type), ref.ID)
+		if err != nil {
 			return fmt.Errorf("tags: unassign: %w", err)
+		}
+		changed, _ := res.RowsAffected()
+		if changed == 0 {
+			continue
+		}
+		if ref.Type == schema.EntityDBRecord {
+			if err := syncRecordTagsData(ctx, dbTx, ref.ID, now); err != nil {
+				return err
+			}
+		}
+		if err := s.emitTagUpdated(ctx, dbTx, ref, actor); err != nil {
+			return err
 		}
 	}
 	if err := dbTx.Commit(); err != nil {
@@ -300,6 +335,123 @@ func (s *tagService) EntitiesByTag(ctx context.Context, tagID string) ([]EntityR
 		return nil, fmt.Errorf("tags: entities: %w", err)
 	}
 	return out, nil
+}
+
+// emitTagUpdated records a tag change on the target's backing note as
+// note.updated (SPEC-05 §5.4/§7.1). Records without a note page emit nothing.
+func (s *tagService) emitTagUpdated(ctx context.Context, tx *sql.Tx, ref EntityRef, actor events.Actor) error {
+	if s.events == nil {
+		return nil
+	}
+	noteID, err := noteIDForRef(ctx, tx, ref)
+	if err != nil || noteID == "" {
+		return err
+	}
+	return s.events.EmitNoteUpdated(ctx, tx, events.NoteUpdatedEvent{
+		NoteID:  noteID,
+		Summary: "更新标签",
+		Actor:   actor,
+		At:      s.clk.Now(),
+	})
+}
+
+// noteIDForRef resolves the backing note of a note/record tag target.
+func noteIDForRef(ctx context.Context, tx *sql.Tx, ref EntityRef) (string, error) {
+	switch ref.Type {
+	case schema.EntityNote:
+		return ref.ID, nil
+	case schema.EntityDBRecord:
+		var noteID sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT note_id FROM db_records WHERE id = ?`, ref.ID).Scan(&noteID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", nil
+			}
+			return "", fmt.Errorf("tags: record note: %w", err)
+		}
+		if noteID.Valid {
+			return noteID.String, nil
+		}
+	}
+	return "", nil
+}
+
+// syncRecordTagsData mirrors entity_tags into every tags-typed field of the
+// record's data JSON so the filter/sort engine and table cells agree with the
+// dictionary writes (SPEC-05 §4.2/§4.5).
+func syncRecordTagsData(ctx context.Context, tx *sql.Tx, recordID, now string) error {
+	var databaseID, dataRaw string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT database_id, data FROM db_records WHERE id = ?`, recordID).
+		Scan(&databaseID, &dataRaw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	var values map[string]json.RawMessage
+	if dataRaw == "" {
+		values = map[string]json.RawMessage{}
+	} else if err := json.Unmarshal([]byte(dataRaw), &values); err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id FROM db_fields WHERE database_id = ? AND type = 'tags' AND deleted_at IS NULL`,
+		databaseID)
+	if err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	var fieldIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("notes: sync record tags: %w", err)
+		}
+		fieldIDs = append(fieldIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	if len(fieldIDs) == 0 {
+		return nil
+	}
+	tagRows, err := tx.QueryContext(ctx,
+		`SELECT tag_id FROM entity_tags WHERE entity_type = ? AND entity_id = ?
+		 ORDER BY tag_id`, string(schema.EntityDBRecord), recordID)
+	if err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	var tagIDs []string
+	for tagRows.Next() {
+		var id string
+		if err := tagRows.Scan(&id); err != nil {
+			tagRows.Close()
+			return fmt.Errorf("notes: sync record tags: %w", err)
+		}
+		tagIDs = append(tagIDs, id)
+	}
+	tagRows.Close()
+	if err := tagRows.Err(); err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	encodedTags, err := json.Marshal(tagIDs)
+	if err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	for _, fieldID := range fieldIDs {
+		values[fieldID] = encodedTags
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE db_records SET data = ?, updated_at = ? WHERE id = ?`,
+		string(encoded), now, recordID); err != nil {
+		return fmt.Errorf("notes: sync record tags: %w", err)
+	}
+	return nil
 }
 
 // getTag loads one tag row; a missing row is a validation error.

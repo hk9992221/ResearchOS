@@ -212,7 +212,7 @@ func (s *service) UpdateContent(ctx context.Context, in UpdateContentInput) (*We
 		current.ContentMD = in.ContentMD
 		current.ContentHash = contentHash(in.ContentMD)
 		current.UpdatedAt = s.clock.Now().UTC()
-		current.Meta.Checks = &CheckState{CheckedAt: s.clock.Now(), Violations: violations}
+		current.Meta.Checks = buildCheckState(violations, s.clock.Now())
 		return updateReport(ctx, tx, current)
 	})
 	if err != nil {
@@ -248,7 +248,7 @@ func (s *service) Confirm(ctx context.Context, in ConfirmInput) (*WeeklyReport, 
 		return nil, err
 	}
 	violations := mergeAcks(Validate(report.ContentMD, defaultTemplate, digest), report.Meta.Checks)
-	violations = applyAckFingerprints(violations, in.AckFingerprints, s.clock.Now().UTC())
+	violations = applyAckFingerprints(violations, in.AckFingerprints, in.AckNotes, s.clock.Now().UTC())
 	var unresolved []Violation
 	for _, v := range violations {
 		if v.Ack == nil {
@@ -284,7 +284,7 @@ func (s *service) Confirm(ctx context.Context, in ConfirmInput) (*WeeklyReport, 
 		current.ConfirmedAt = &now
 		current.UpdatedAt = now
 		current.Meta.ConfirmedHash = contentHash(current.ContentMD)
-		current.Meta.Checks = &CheckState{CheckedAt: now, Violations: capViolations(violations)}
+		current.Meta.Checks = buildCheckState(violations, now)
 		if err := updateReport(ctx, tx, current); err != nil {
 			return err
 		}
@@ -381,7 +381,7 @@ func mergeAcks(violations []Violation, state *CheckState) []Violation {
 	return violations
 }
 
-func applyAckFingerprints(violations []Violation, fingerprints []string, now time.Time) []Violation {
+func applyAckFingerprints(violations []Violation, fingerprints []string, notes map[string]string, now time.Time) []Violation {
 	if len(fingerprints) == 0 {
 		return violations
 	}
@@ -391,10 +391,20 @@ func applyAckFingerprints(violations []Violation, fingerprints []string, now tim
 	}
 	for i := range violations {
 		if want[violations[i].Fingerprint] && violations[i].Ack == nil {
-			violations[i].Ack = &Ack{Actor: "user", At: now}
+			violations[i].Ack = &Ack{Actor: "user", At: now, Note: notes[violations[i].Fingerprint]}
 		}
 	}
 	return violations
+}
+
+// buildCheckState snapshots a validation run, flagging truncation at the
+// 200-violation cap (SPEC-09 §4.3).
+func buildCheckState(violations []Violation, at time.Time) *CheckState {
+	return &CheckState{
+		CheckedAt:  at,
+		Violations: capViolations(violations),
+		Truncated:  len(violations) > maxViolations,
+	}
 }
 
 // capViolations keeps errors first and caps the list at 200.

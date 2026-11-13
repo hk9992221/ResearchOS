@@ -14,7 +14,9 @@ import (
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/errs"
+	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/foundation/papers"
 	"researchos/internal/foundation/projectpapers"
 	"researchos/internal/foundation/projects"
@@ -50,6 +52,10 @@ type Options struct {
 	Zotero literature.ZoteroSource
 	// Opener launches external applications. Nil means the OS default opener.
 	Opener Opener
+	// Indexer is the post-commit search-index hook (SPEC-10 §5.3). Nil
+	// disables global literature indexing; failures never fail an import or a
+	// sync.
+	Indexer indexhook.Indexer
 }
 
 // Service implements the query, project-link and PDF contracts of SPEC-04.
@@ -62,7 +68,11 @@ type Service struct {
 	settings *settings.Store
 	zotero   literature.ZoteroSource
 	opener   Opener
+	indexer  indexhook.Indexer
 	importMu *sync.Mutex
+
+	syncMu      sync.Mutex
+	syncReports map[string]syncReportEntry
 }
 
 // New binds the service to an open workspace.
@@ -77,16 +87,39 @@ func New(ws *workspace.Workspace, opts Options) *Service {
 	}
 	global := ws.Global()
 	return &Service{
-		ws:       ws,
-		clock:    c,
-		papers:   papers.New(global.DB(), c),
-		projects: projects.New(global.DB(), c),
-		files:    NewFileStore(ws),
-		settings: settings.NewWorkspace(global.DB()).WithClock(c),
-		zotero:   opts.Zotero,
-		opener:   opener,
-		importMu: importLockFor(ws.Root()),
+		ws:          ws,
+		clock:       c,
+		papers:      papers.New(global.DB(), c),
+		projects:    projects.New(global.DB(), c),
+		files:       NewFileStore(ws),
+		settings:    settings.NewWorkspace(global.DB()).WithClock(c),
+		zotero:      opts.Zotero,
+		opener:      opener,
+		indexer:     opts.Indexer,
+		importMu:    importLockFor(ws.Root()),
+		syncReports: map[string]syncReportEntry{},
 	}
+}
+
+// notifyIndex fires the post-commit global literature index hook (SPEC-10
+// §5.3, §7.2). A hook failure is swallowed: the import or sync already
+// committed and the index can be rebuilt.
+func (s *Service) notifyIndex(ctx context.Context, paperID string, typ schema.EventType, summary string) {
+	if s.indexer == nil || paperID == "" {
+		return
+	}
+	ev := events.Activity{
+		Type:       typ,
+		EntityType: schema.EntityPaper,
+		EntityID:   paperID,
+		Payload: events.Payload{
+			EntityType: schema.EntityPaper,
+			EntityID:   paperID,
+			Summary:    summary,
+			Actor:      schema.ActorUser,
+		},
+	}
+	_ = s.indexer.OnEntityChanged(ctx, ev)
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +147,7 @@ func (s *Service) ListPapers(ctx context.Context, filter literature.PaperFilter)
 		return compareEntries(a, b, filter.Sort, filter.Desc)
 	})
 	total := len(entries)
-	start, end := pageBounds(total, filter.Offset, filter.Limit)
+	start, end := s.pageBounds(ctx, total, filter.Offset, filter.Limit)
 	items := make([]literature.Paper, 0, end-start)
 	for _, entry := range entries[start:end] {
 		items = append(items, entry.paper)
@@ -206,7 +239,7 @@ func (s *Service) QueryProjectPapers(ctx context.Context, projectID string, filt
 		return compareEntries(a.entry, b.entry, filter.Sort, filter.Desc)
 	})
 	total := len(candidates)
-	start, end := pageBounds(total, filter.Offset, filter.Limit)
+	start, end := s.pageBounds(ctx, total, filter.Offset, filter.Limit)
 	items := make([]literature.ProjectPaper, 0, end-start)
 	for _, c := range candidates[start:end] {
 		items = append(items, literature.ProjectPaper{
@@ -621,6 +654,22 @@ func compareEntriesAsc(a, b paperEntry, sort literature.PaperSort) int {
 		}
 	}
 	return strings.Compare(a.paper.ID, b.paper.ID)
+}
+
+// pageBounds clamps offset/limit to the §5.3 defaults, honoring the
+// literature.paper_page_size setting when the caller passes no limit.
+func (s *Service) pageBounds(ctx context.Context, total, offset, limit int) (int, int) {
+	if limit <= 0 {
+		limit = defaultPageLimit
+		if s.settings != nil {
+			if raw, ok, err := s.settings.Get(ctx, "literature.paper_page_size"); err == nil && ok {
+				if n, err := strconv.Atoi(strings.Trim(strings.TrimSpace(raw), `"`)); err == nil && n > 0 {
+					limit = n
+				}
+			}
+		}
+	}
+	return pageBounds(total, offset, limit)
 }
 
 // pageBounds clamps offset/limit to the §5.3 defaults.

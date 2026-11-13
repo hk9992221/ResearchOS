@@ -51,6 +51,9 @@ func (s *labelService) Add(ctx context.Context, actor events.Actor, taskID, labe
 	if err != nil {
 		return Task{}, err
 	}
+	if err := s.m.assertWritable(ctx); err != nil {
+		return Task{}, err
+	}
 	t, err := s.m.loadGateTask(ctx, taskID)
 	if err != nil {
 		return Task{}, err
@@ -68,6 +71,9 @@ func (s *labelService) Add(ctx context.Context, actor events.Actor, taskID, labe
 func (s *labelService) Remove(ctx context.Context, actor events.Actor, taskID, label string, expected *Version) (Task, error) {
 	clean, err := validateLabel(label)
 	if err != nil {
+		return Task{}, err
+	}
+	if err := s.m.assertWritable(ctx); err != nil {
 		return Task{}, err
 	}
 	t, err := s.m.loadGateTask(ctx, taskID)

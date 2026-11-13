@@ -22,4 +22,5 @@
 //	project.not_found             the bound project row is missing
 //	relation.target_not_found     relation target does not exist
 //	relation.target_deleted       relation target is soft-deleted
+//	evidence.not_ai_draft         ConfirmEvidence received manual evidence
 package ideas

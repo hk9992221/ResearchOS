@@ -130,6 +130,8 @@ type Coverage struct {
 type CheckState struct {
 	CheckedAt  time.Time   `json:"checked_at"`
 	Violations []Violation `json:"violations"`
+	// Truncated marks that violations were capped at 200 (SPEC-09 §4.3).
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // ReportMeta is the weekly_reports.meta JSON document (SPEC-09 §4.3).
@@ -327,6 +329,9 @@ type ConfirmInput struct {
 	ReportID        string
 	Actor           Actor
 	AckFingerprints []string
+	// AckNotes optionally attaches a verification note to an acknowledged
+	// fingerprint (SPEC-09 §4.3 ack.note).
+	AckNotes map[string]string
 }
 
 // RevertInput returns a confirmed report to draft.

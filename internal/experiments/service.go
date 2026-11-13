@@ -16,6 +16,7 @@ import (
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/externalrefs"
 	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/foundation/relations"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/trash"
@@ -31,6 +32,7 @@ type Service struct {
 	projectID string
 	clock     clock.Clock
 	logger    workspace.Logger
+	indexer   indexhook.Indexer
 	ai        *AIConfig
 	mu        sync.Mutex
 	pending   map[string]Snapshot
@@ -46,9 +48,52 @@ func New(ws *workspace.Workspace, projectID string, opt Options) *Service {
 		projectID: projectID,
 		clock:     opt.Clock,
 		logger:    opt.Logger,
+		indexer:   opt.Indexer,
 		ai:        opt.AI,
 		pending:   map[string]Snapshot{},
 	}
+}
+
+// notifyIndex fires the post-commit search-index hook (SPEC-10 §5.3). Index
+// failures are warnings only: the business write has already committed.
+func (s *Service) notifyIndex(ctx context.Context, experimentID string, typ schema.EventType, summary string) {
+	if s.indexer == nil || experimentID == "" {
+		return
+	}
+	ev := events.Activity{
+		Type:       typ,
+		EntityType: schema.EntityExperiment,
+		EntityID:   experimentID,
+		Payload: events.Payload{
+			EntityType: schema.EntityExperiment,
+			EntityID:   experimentID,
+			Summary:    summary,
+			Actor:      schema.ActorUser,
+		},
+	}
+	if err := s.indexer.OnEntityChanged(ctx, ev); err != nil && s.logger != nil {
+		s.logger.Warn("experiments: index hook failed", "experiment_id", experimentID, "event", string(typ), "error", err)
+	}
+}
+
+// notifySnapshot fires the index hook after an Outline/Results snapshot is
+// saved (SPEC-10 §7.2: ai.analysis_completed → experiment document upsert).
+func (s *Service) notifySnapshot(ctx context.Context, snap *Snapshot) {
+	if s.indexer == nil || snap == nil {
+		return
+	}
+	experimentID := snap.Target.ID
+	if snap.Target.Type == TargetRun {
+		handle, err := s.handle(ctx)
+		if err != nil {
+			return
+		}
+		if err := handle.DB().QueryRowContext(ctx,
+			`SELECT experiment_id FROM runs WHERE id = ?`, snap.Target.ID).Scan(&experimentID); err != nil {
+			return
+		}
+	}
+	s.notifyIndex(ctx, experimentID, schema.EventAIAnalysisCompleted, "实验分析已生成")
 }
 
 // handle resolves the project database handle.
@@ -165,6 +210,7 @@ func (s *Service) CreateExperiment(ctx context.Context, in CreateExperimentInput
 	if err != nil {
 		return nil, err
 	}
+	s.notifyIndex(ctx, created.ID, schema.EventEntityCreated, "创建实验："+created.Title)
 	return &created, nil
 }
 
@@ -198,6 +244,7 @@ func (s *Service) UpdateExperiment(ctx context.Context, in UpdateExperimentInput
 	if err != nil {
 		return nil, err
 	}
+	s.notifyIndex(ctx, updated.ID, schema.EventEntityUpdated, "更新实验："+updated.Title)
 	return &updated, nil
 }
 
@@ -214,9 +261,13 @@ func (s *Service) SoftDeleteExperiment(ctx context.Context, id string, actor eve
 		return err
 	}
 	trashSvc := trash.New(s.projectID, handle.DB(), s.ws.Paths(), handle.Events(), nil, s.clock)
-	return handle.InTx(ctx, func(tx *sql.Tx) error {
+	if err := handle.InTx(ctx, func(tx *sql.Tx) error {
 		return trashSvc.SoftDelete(ctx, tx, trash.Ref{Type: schema.EntityExperiment, ID: id}, actorOf(actor))
-	})
+	}); err != nil {
+		return err
+	}
+	s.notifyIndex(ctx, id, schema.EventEntityDeleted, "删除实验")
+	return nil
 }
 
 // Restore clears the deleted_at of one experiment. Archived projects reject it.
@@ -232,9 +283,13 @@ func (s *Service) RestoreExperiment(ctx context.Context, id string, actor events
 		return err
 	}
 	trashSvc := trash.New(s.projectID, handle.DB(), s.ws.Paths(), handle.Events(), nil, s.clock)
-	return handle.InTx(ctx, func(tx *sql.Tx) error {
+	if err := handle.InTx(ctx, func(tx *sql.Tx) error {
 		return trashSvc.Restore(ctx, tx, trash.Ref{Type: schema.EntityExperiment, ID: id}, actorOf(actor))
-	})
+	}); err != nil {
+		return err
+	}
+	s.notifyIndex(ctx, id, schema.EventEntityRestored, "恢复实验")
+	return nil
 }
 
 // Get returns the experiment detail. Directory status comes from storage and
@@ -415,6 +470,9 @@ func (s *Service) BindDirectory(ctx context.Context, experimentID, absPath strin
 			return err
 		}
 		if err := s.setExperimentDirRef(ctx, tx, experimentID, dir); err != nil {
+			return err
+		}
+		if err := s.writeScanRules(ctx, tx, experimentID, rules); err != nil {
 			return err
 		}
 		refs := externalrefs.New(handle.DB(), handle.Events(), s.clock)

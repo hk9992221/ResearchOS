@@ -41,8 +41,11 @@ func (s *service) CollectActivities(ctx context.Context, in CollectInput) (*Acti
 		return nil, err
 	}
 
+	// events.Query.Until is inclusive (created_at <= Until) while the report
+	// window is [Start, EndExclusive). Subtracting one nanosecond is the
+	// narrowest equivalent exclusive bound (SPEC-09 §2.3, O17).
 	since := period.Start
-	until := period.EndExclusive.Add(-time.Millisecond)
+	until := period.EndExclusive.Add(-time.Nanosecond)
 	var all []events.Activity
 	for offset := 0; ; {
 		page, err := h.Reader().List(ctx, events.Query{
@@ -76,6 +79,14 @@ func (s *service) CollectActivities(ctx context.Context, in CollectInput) (*Acti
 		kept = truncateEvents(kept, maxEvents)
 		truncated = true
 	}
+	// events.Reader.List returns newest first; sections are rendered in
+	// ascending time order (SPEC-09 §7.3).
+	sort.SliceStable(kept, func(i, j int) bool {
+		if !kept[i].CreatedAt.Equal(kept[j].CreatedAt) {
+			return kept[i].CreatedAt.Before(kept[j].CreatedAt)
+		}
+		return kept[i].ID < kept[j].ID
+	})
 
 	refs := collectRefs(kept)
 	briefs, err := s.resolveBriefs(ctx, refs)
@@ -211,6 +222,9 @@ func digestItem(ev events.Activity, briefs map[EntityRef]EntityBrief, loc *time.
 	}
 
 	summary := strings.TrimSpace(ev.Payload.Summary)
+	if summary == "" && ev.Type == schema.EventStatusChanged && ev.EntityType == schema.EntityTask {
+		summary = taskChangeSummary(ev.Payload.Old, ev.Payload.New, brief.Title)
+	}
 	if summary == "" {
 		summary = defaultSummary(ev)
 	}
@@ -338,13 +352,20 @@ func classify(ev events.Activity, brief EntityBrief) (SectionKey, string) {
 	case schema.EventReportGenerated, schema.EventProjectExported:
 		return SectionWork, ""
 	case schema.EventAIAnalysisCompleted:
-		if entity == string(schema.EntitySnapshot) || entity == string(schema.EntityExperiment) || entity == string(schema.EntityRun) {
+		switch entity {
+		case string(schema.EntitySnapshot), string(schema.EntityExperiment), string(schema.EntityRun):
 			return SectionExperiment, ""
+		case string(schema.EntityIdea):
+			// SPEC-06 emits ai.analysis_completed on the idea entity (§2.3).
+			return SectionIdea, ""
+		case string(schema.EntityWeeklyReport):
+			return SectionWork, ""
+		default:
+			return classifyEntity(entity, brief)
 		}
-		return SectionWork, ""
 	case schema.EventStatusChanged:
 		if entity == string(schema.EntityTask) {
-			return taskSection(ev)
+			return taskSection(ev.Payload.Old, ev.Payload.New)
 		}
 		return classifyEntity(entity, brief)
 	default:
@@ -376,18 +397,52 @@ func relationSection(ev events.Activity) (SectionKey, string) {
 	}
 }
 
-func taskSection(ev events.Activity) (SectionKey, string) {
-	_, _, _, blocked, archived := taskShape(ev.Payload.New)
-	if blocked != nil && *blocked {
-		return SectionProblem, ""
-	}
-	if blocked != nil && !*blocked {
-		return SectionProblem, ""
-	}
-	if archived != nil {
+// taskSection maps a task status.changed event. The payload old/new objects
+// carry the full SPEC-08 task shape; a blocked transition belongs to
+// 「遇到的问题」, everything else (column move, completion, archive) to
+// 「本周工作内容」. Archive classification is still unconfirmed (SPEC-08 N10),
+// so it stays in work and adds a warning.
+func taskSection(oldObj, newObj *events.Object) (SectionKey, string) {
+	_, _, _, oldBlocked, _ := taskShape(oldObj)
+	_, _, _, newBlocked, newArchived := taskShape(newObj)
+	if newArchived != nil && *newArchived {
 		return SectionWork, "任务归档事件的归类待确认，暂归「工作内容」"
 	}
+	if newBlocked != nil {
+		if *newBlocked && (oldBlocked == nil || !*oldBlocked) {
+			return SectionProblem, ""
+		}
+		if !*newBlocked && oldBlocked != nil && *oldBlocked {
+			return SectionProblem, ""
+		}
+	}
 	return SectionWork, ""
+}
+
+// taskChangeSummary renders a SPEC-08 status.changed object as readable text.
+// It is used when the event carries no summary so the digest never surfaces
+// raw JSON (SPEC-09 §2.3).
+func taskChangeSummary(oldObj, newObj *events.Object, title string) string {
+	if title == "" {
+		title = "任务"
+	}
+	newColumn, newDone, _, newBlocked, newArchived := taskShape(newObj)
+	oldColumn, _, _, oldBlocked, _ := taskShape(oldObj)
+	switch {
+	case newArchived != nil && *newArchived:
+		return "归档任务：" + title
+	case newBlocked != nil && ((*newBlocked && (oldBlocked == nil || !*oldBlocked)) ||
+		(!*newBlocked && oldBlocked != nil && *oldBlocked)):
+		if *newBlocked {
+			return title + " 标记受阻"
+		}
+		return title + " 解除受阻"
+	case newDone && newColumn != "":
+		return fmt.Sprintf("完成任务：%s（进入 %s）", title, newColumn)
+	case newColumn != "" && newColumn != oldColumn && oldColumn != "":
+		return fmt.Sprintf("%s：%s → %s", title, oldColumn, newColumn)
+	}
+	return ""
 }
 
 func classifyEntity(entity string, brief EntityBrief) (SectionKey, string) {
@@ -496,38 +551,39 @@ func taskStatusText(obj *events.Object) string {
 	return strings.Join(parts, "，")
 }
 
-// collapseStatuses keeps at most three status transitions per entity and
-// folds the rest into one deterministic summary item, preserving the position
-// of the first dropped transition.
+// collapseStatuses keeps at most three consecutive status transitions per
+// entity and folds the rest into one deterministic summary item, preserving
+// the position of the first dropped transition.
 func collapseStatuses(items []DigestItem) []DigestItem {
-	counts := map[EntityRef]int{}
-	for _, item := range items {
-		if item.Kind == "status" {
-			counts[item.Ref]++
-		}
-	}
-	seen := map[EntityRef]int{}
-	var out []DigestItem
-	for _, item := range items {
-		if item.Kind != "status" || counts[item.Ref] <= 3 {
-			out = append(out, item)
+	const maxRun = 3
+	out := make([]DigestItem, 0, len(items))
+	for i := 0; i < len(items); {
+		if items[i].Kind != "status" {
+			out = append(out, items[i])
+			i++
 			continue
 		}
-		seen[item.Ref]++
-		if seen[item.Ref] <= 3 {
-			out = append(out, item)
+		j := i
+		for j < len(items) && items[j].Kind == "status" && items[j].Ref == items[i].Ref {
+			j++
+		}
+		run := items[i:j]
+		if len(run) <= maxRun {
+			out = append(out, run...)
+			i = j
 			continue
 		}
-		if seen[item.Ref] == 4 {
-			folded := item
-			folded.Summary = truncateRunes("[状态变更折叠] "+item.Summary, maxSummaryRunes)
-			folded.Detail = fmt.Sprintf("另有 %d 次状态变更", counts[item.Ref]-3)
-			folded.EventIDs = append([]string(nil), item.EventIDs...)
-			out = append(out, folded)
-			continue
+		out = append(out, run[:maxRun]...)
+		folded := run[maxRun]
+		folded.Summary = truncateRunes("[状态变更折叠] "+folded.Summary, maxSummaryRunes)
+		folded.Detail = fmt.Sprintf("另有 %d 次状态变更", len(run)-maxRun)
+		folded.EventIDs = nil
+		for _, dropped := range run[maxRun:] {
+			folded.EventIDs = append(folded.EventIDs, dropped.EventIDs...)
 		}
-		out[len(out)-1].EventIDs = append(out[len(out)-1].EventIDs, item.EventIDs...)
-		out[len(out)-1].LastAt = item.LastAt
+		folded.LastAt = run[len(run)-1].LastAt
+		out = append(out, folded)
+		i = j
 	}
 	return out
 }

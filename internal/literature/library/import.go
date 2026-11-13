@@ -118,6 +118,9 @@ func (s *Service) Import(ctx context.Context, sel literature.ImportSelection, ac
 		outcome := s.importEntry(ctx, reader, libraryID, sel, entry, actor)
 		result.Outcomes = append(result.Outcomes, outcome)
 		accumulateImportResult(&result, outcome.Status)
+		if outcome.PaperID != "" && (outcome.Status == literature.ImportCreated || outcome.Status == literature.ImportLinkedExisting) {
+			s.notifyIndex(ctx, outcome.PaperID, schema.EventPaperImported, "导入文献")
+		}
 		if progress != nil {
 			progress(literature.ImportProgress{
 				Index:   index + 1,
@@ -191,6 +194,15 @@ func (s *Service) previewEntry(ctx context.Context, reader literature.ZoteroRead
 		entry.ExistingHash = row.FileHash
 		if s.copyMissing(ctx, row.ID) {
 			entry.Warnings = append(entry.Warnings, "local_file_missing")
+		}
+		if entry.AttachmentKey == "" && len(pdfs) == 1 {
+			entry.AttachmentKey = pdfs[0].Key
+		}
+		if chosen, _, err := chooseAttachment(attachments, entry.AttachmentKey); err == nil {
+			if hash, known := s.sourceHash(ctx, reader, chosen); known {
+				entry.IncomingHash = hash
+				entry.HashEqual = hash == row.FileHash
+			}
 		}
 	}
 	return entry, nil

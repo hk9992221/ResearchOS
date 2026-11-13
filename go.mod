@@ -5,6 +5,7 @@ go 1.27.4
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/egoist/mygo v0.9.0
+	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.44.0
 	gopkg.in/yaml.v3 v3.0.1

@@ -16,6 +16,7 @@ const (
 	ErrEvidenceDeleted         ErrorCode = "evidence.deleted"
 	ErrEvidenceConfirmed       ErrorCode = "evidence.confirmed"
 	ErrEvidenceDirectionLocked ErrorCode = "evidence.direction_locked"
+	ErrEvidenceNotAIDraft      ErrorCode = "evidence.not_ai_draft"
 	ErrInvalidStatus           ErrorCode = "idea.invalid_status"
 	ErrRejectionReasonRequired ErrorCode = "idea.rejection_reason_required"
 	ErrNotRejected             ErrorCode = "idea.not_rejected"

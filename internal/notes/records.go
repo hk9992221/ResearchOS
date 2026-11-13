@@ -421,7 +421,20 @@ func (s *recordService) SetTags(ctx context.Context, recordID string, tagIDs []s
 		if err := insertEntityTags(ctx, tx, recordID, unique, now); err != nil {
 			return err
 		}
-		_ = actor // tag changes emit nothing (SPEC-05 §5.3)
+		if err := syncRecordTagsData(ctx, tx, recordID, clock.Format(now)); err != nil {
+			return err
+		}
+		// Tag changes surface as note.updated on the backing note (§7.1).
+		if s.events != nil && record.NoteID != "" {
+			if err := s.events.EmitNoteUpdated(ctx, tx, events.NoteUpdatedEvent{
+				NoteID:  record.NoteID,
+				Summary: "更新标签",
+				Actor:   actor,
+				At:      s.clock.Now(),
+			}); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }

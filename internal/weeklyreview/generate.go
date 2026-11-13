@@ -291,7 +291,7 @@ func (s *service) storeDraft(ctx context.Context, h interface {
 		meta.Coverage = coverageFrom(digest)
 		meta.Refs = digestRefs(digest)
 		if violations != nil {
-			meta.Checks = &CheckState{CheckedAt: now, Violations: capViolations(violations)}
+			meta.Checks = buildCheckState(violations, now)
 		}
 		report.Meta = meta
 		if err := updateReport(ctx, tx, report); err != nil {

@@ -618,34 +618,6 @@ func escapeLike(s string) string {
 	return r.Replace(s)
 }
 
-// summariesByIDs loads card summaries for an explicit id set (back-links).
-func (m *Module) summariesByIDs(ctx context.Context, ids []string) ([]TaskSummary, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	where := []string{"1 = 1", "t.id IN (" + placeholders(len(ids)) + ")"}
-	args := make([]any, 0, len(ids))
-	for _, id := range ids {
-		args = append(args, id)
-	}
-	rows, err := m.db().QueryContext(ctx, `SELECT `+taskSummaryColumns+` FROM tasks t WHERE `+
-		strings.Join(where, " AND ")+` ORDER BY t.sort_order, t.id`,
-		append([]any{string(schema.EntityTask)}, args...)...)
-	if err != nil {
-		return nil, fmt.Errorf("kanban: summaries by id: %w", err)
-	}
-	defer rows.Close()
-	var out []TaskSummary
-	for rows.Next() {
-		s, _, err := scanSummary(rows, 0)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
-}
-
 // ---------------------------------------------------------------------------
 // counts
 // ---------------------------------------------------------------------------

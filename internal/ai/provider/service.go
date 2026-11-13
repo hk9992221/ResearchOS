@@ -565,6 +565,13 @@ func (s *store) Test(ctx context.Context, id string) (TestResult, error) {
 	res.LatencyMS = durationMS(s.clock.Now().Sub(start))
 	if err != nil {
 		res.ErrorKind, res.Message = classify(err, key)
+		// A relay without a /models endpoint is a listing-capability gap, not
+		// a missing model (§5.3.5, AC-03). The provider stays saveable.
+		switch res.ErrorKind {
+		case string(aierr.ErrKindModelNotFound), string(aierr.ErrKindInvalidRequest):
+			res.ErrorKind = string(aierr.ErrKindUnsupported)
+			res.Message = "列表接口不可用：" + res.Message
+		}
 		if p.cfg.APIKeyRef == "" && res.ErrorKind == string(aierr.ErrKindAuth) {
 			// Keyless services surfacing 401: the upstream demands auth; say
 			// so in plain terms (§5.3.5 中转不支持 /models 等错误可见).

@@ -21,6 +21,7 @@ var (
 	ErrProjectLinkExists    = errors.New("literature: 项目已关联该文献")
 	ErrProjectLinkMissing   = errors.New("literature: 项目未关联该文献")
 	ErrPaperNoteExists      = errors.New("literature: 该项目已存在该论文的 Paper Note")
+	ErrPaperNoteNotFound    = errors.New("literature: Paper Note 不存在")
 	ErrNoteDeleted          = errors.New("literature: Paper Note 已删除")
 	ErrSyncReportExpired    = errors.New("literature: 同步差异报告已过期，请重新比对")
 	ErrSyncSourceChanged    = errors.New("literature: 源文件在比对后发生变化")

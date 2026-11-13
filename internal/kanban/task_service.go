@@ -326,11 +326,11 @@ func (s *taskService) ListArchived(ctx context.Context, q Query) (Page[TaskSumma
 // ---------------------------------------------------------------------------
 
 func (s *taskService) Update(ctx context.Context, actor events.Actor, in UpdateInput) (Task, error) {
-	t, err := s.m.loadGateTask(ctx, in.ID)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return Task{}, err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, in.ID)
+	if err != nil {
 		return Task{}, err
 	}
 	if in.ExpectedUpdatedAt != nil && *in.ExpectedUpdatedAt != t.Version() {
@@ -543,11 +543,11 @@ func joinSet(set []string) string {
 // ---------------------------------------------------------------------------
 
 func (s *taskService) SetWeekPlan(ctx context.Context, actor events.Actor, id string, week *string, expected *Version) (Task, error) {
-	t, err := s.m.loadGateTask(ctx, id)
-	if err != nil {
+	if err := s.m.assertWritable(ctx); err != nil {
 		return Task{}, err
 	}
-	if err := s.m.assertWritable(ctx); err != nil {
+	t, err := s.m.loadGateTask(ctx, id)
+	if err != nil {
 		return Task{}, err
 	}
 	if err := validateWeekPlan(week); err != nil {

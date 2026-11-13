@@ -81,6 +81,12 @@ func (s *service) History(ctx context.Context, q HistoryQuery) (Page[HistoryEntr
 }
 
 func entryID(e HistoryEntry) string {
+	if e.ActivityID != "" {
+		return e.ActivityID
+	}
+	if e.Synthesized && e.Ref != nil {
+		return "derived:" + e.Ref.ID
+	}
 	if e.Ref != nil {
 		return e.Ref.ID
 	}
@@ -124,13 +130,14 @@ func (s *service) historyEntries(ctx context.Context, handle *workspace.ProjectH
 			return nil, fmt.Errorf("ideas: history created_at: %w", err)
 		}
 		entry := HistoryEntry{
-			At:        at,
-			Kind:      classify(eventType, entityType),
-			EventType: eventType,
-			Summary:   payload.Summary,
-			Actor:     events.Actor(actor),
-			Old:       statusValue(payload.Old),
-			New:       statusValue(payload.New),
+			At:         at,
+			ActivityID: id,
+			Kind:       classify(eventType, entityType),
+			EventType:  eventType,
+			Summary:    payload.Summary,
+			Actor:      events.Actor(actor),
+			Old:        statusValue(payload.Old),
+			New:        statusValue(payload.New),
 		}
 		if schema.EntityType(entityType) == schema.EntityIdea {
 			entry.Ref = ideaRef
