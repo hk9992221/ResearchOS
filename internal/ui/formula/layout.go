@@ -5,6 +5,8 @@ import (
 	"unicode"
 
 	"github.com/egoist/mygo/ui"
+
+	"researchos/internal/ui/tokens"
 )
 
 // style is a TeX math style: how large its text is, how deeply nested in
@@ -163,9 +165,10 @@ func runMetrics(text string, size float32) (h, d float32) {
 	return up * size, down * size
 }
 
-// shape shapes a string at a style's size.
+// shape shapes a string at a style's size, in the math face: TeX set in the
+// interface sans reads as broken.
 func shape(text string, s style, italic bool) ([]ui.Glyph, float32) {
-	g := ui.Shape(text, ui.Font{Size: s.size, Italic: italic, Weight: s.weight})
+	g := ui.Shape(text, ui.Font{Family: tokens.SystemFonts.Math, Size: s.size, Italic: italic, Weight: s.weight})
 	if len(g) == 0 {
 		return nil, 0.5 * s.size
 	}

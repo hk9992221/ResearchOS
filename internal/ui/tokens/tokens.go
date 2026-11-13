@@ -252,21 +252,29 @@ type Fonts struct {
 	CJK string
 	// Mono is the code face: JetBrains Mono, then Cascadia Code or Consolas.
 	Mono string
+	// Math is the TeX face: a text-math font first, then a serif stand-in.
+	// Sans-serif italics read as broken TeX, so the formula renderer never
+	// uses the interface font.
+	Math string
 }
 
 // FontsFor returns the font stacks that suit the given GOOS.
 func FontsFor(goos string) Fonts {
 	cjk := "Noto Sans CJK SC"
+	math := "STIX Two Math, Latin Modern Math, Noto Serif, DejaVu Serif, serif"
 	switch goos {
 	case "windows":
 		cjk = "Microsoft YaHei UI, Microsoft YaHei, Noto Sans CJK SC"
+		math = "STIX Two Math, Cambria Math, Times New Roman"
 	case "darwin":
 		cjk = "PingFang SC, Noto Sans CJK SC"
+		math = "STIX Two Math, Latin Modern Math, Times New Roman, Times"
 	}
 	return Fonts{
 		Sans: "Inter, Segoe UI, Helvetica Neue, Arial",
 		CJK:  cjk,
 		Mono: "JetBrains Mono, Cascadia Code, Consolas, monospace",
+		Math: math,
 	}
 }
 
