@@ -755,6 +755,21 @@ func (s *Service) rollbackCreate(ctx context.Context, id string, cause error) er
 	return cause
 }
 
+// ProjectDir returns the absolute path of the project's directory inside the
+// workspace, projects/<id>. It does not check existence: callers that act on
+// the folder surface their own errors.
+func (s *Service) ProjectDir(id string) (string, error) {
+	if s.ws == nil {
+		return "", errNoWorkspace
+	}
+	resolver := s.ws.Paths()
+	dir, err := resolver.Abs(resolver.ProjectDir(id))
+	if err != nil {
+		return "", fmt.Errorf("project: dir %s: %w", id, err)
+	}
+	return dir, nil
+}
+
 // dirBytes sums the regular files under projects/<id>. A missing directory is
 // reported as zero bytes: broken project data is surfaced by reconcile, not by
 // failing the stats page.
