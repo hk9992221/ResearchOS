@@ -118,7 +118,7 @@ func (s *Service) ListPapers(ctx context.Context, filter literature.PaperFilter)
 		return compareEntries(a, b, filter.Sort, filter.Desc)
 	})
 	total := len(entries)
-	start, end := pageBounds(total, filter.Offset, filter.Limit)
+	start, end := s.pageBounds(ctx, total, filter.Offset, filter.Limit)
 	items := make([]literature.Paper, 0, end-start)
 	for _, entry := range entries[start:end] {
 		items = append(items, entry.paper)
@@ -210,7 +210,7 @@ func (s *Service) QueryProjectPapers(ctx context.Context, projectID string, filt
 		return compareEntries(a.entry, b.entry, filter.Sort, filter.Desc)
 	})
 	total := len(candidates)
-	start, end := pageBounds(total, filter.Offset, filter.Limit)
+	start, end := s.pageBounds(ctx, total, filter.Offset, filter.Limit)
 	items := make([]literature.ProjectPaper, 0, end-start)
 	for _, c := range candidates[start:end] {
 		items = append(items, literature.ProjectPaper{
@@ -625,6 +625,22 @@ func compareEntriesAsc(a, b paperEntry, sort literature.PaperSort) int {
 		}
 	}
 	return strings.Compare(a.paper.ID, b.paper.ID)
+}
+
+// pageBounds clamps offset/limit to the §5.3 defaults, honoring the
+// literature.paper_page_size setting when the caller passes no limit.
+func (s *Service) pageBounds(ctx context.Context, total, offset, limit int) (int, int) {
+	if limit <= 0 {
+		limit = defaultPageLimit
+		if s.settings != nil {
+			if raw, ok, err := s.settings.Get(ctx, "literature.paper_page_size"); err == nil && ok {
+				if n, err := strconv.Atoi(strings.Trim(strings.TrimSpace(raw), `"`)); err == nil && n > 0 {
+					limit = n
+				}
+			}
+		}
+	}
+	return pageBounds(total, offset, limit)
 }
 
 // pageBounds clamps offset/limit to the §5.3 defaults.

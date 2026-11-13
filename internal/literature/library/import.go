@@ -192,6 +192,15 @@ func (s *Service) previewEntry(ctx context.Context, reader literature.ZoteroRead
 		if s.copyMissing(ctx, row.ID) {
 			entry.Warnings = append(entry.Warnings, "local_file_missing")
 		}
+		if entry.AttachmentKey == "" && len(pdfs) == 1 {
+			entry.AttachmentKey = pdfs[0].Key
+		}
+		if chosen, _, err := chooseAttachment(attachments, entry.AttachmentKey); err == nil {
+			if hash, known := s.sourceHash(ctx, reader, chosen); known {
+				entry.IncomingHash = hash
+				entry.HashEqual = hash == row.FileHash
+			}
+		}
 	}
 	return entry, nil
 }
