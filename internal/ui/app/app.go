@@ -282,6 +282,15 @@ func (a *App) RefreshProjects(ctx context.Context) error {
 	return err
 }
 
+// ProjectDir returns the absolute path of a project's directory inside the
+// workspace, so the shell can show or open it in the system file manager.
+func (a *App) ProjectDir(id string) (string, error) {
+	if a.projects == nil {
+		return "", ErrNoProjectService
+	}
+	return a.projects.ProjectDir(id)
+}
+
 // ProjectList returns the cached project list, whether it has loaded, and the
 // error of the last load.
 func (a *App) ProjectList() ([]project.Project, bool, error) {
