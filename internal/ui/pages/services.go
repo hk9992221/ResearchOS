@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"researchos/internal/foundation/config"
@@ -55,6 +56,10 @@ type Services struct {
 	// Notes binds the SPEC-05 note service. Nil means the module is not
 	// assembled, and the page says so instead of rendering an empty list.
 	Notes NotesAPI
+	// NoteFlush is the note editor's synchronous flush. The composition
+	// root allocates it, pages.Research installs the editor, and the window's
+	// close callback runs it before the process exits (SPEC-05 §5.7).
+	NoteFlush *NoteFlush
 	// Scan reports the marker and registry state of the open workspace.
 	Scan func(ctx context.Context) (foundationworkspace.WorkspaceScan, error)
 	// ChooseFolder opens the OS directory picker.
@@ -146,6 +151,39 @@ type NotesAPI interface {
 	ImageBaseDir(projectID, noteID string) (string, error)
 }
 
+// NoteFlush carries the note editor's close-time flush between the page and
+// the composition root: a save started through the shell's task machinery
+// would not finish before the process exits, so the window's close callback
+// calls it on the main thread instead. It holds one callback, set when the
+// pages are built and nil-safe while it is unset.
+type NoteFlush struct {
+	mu sync.Mutex
+	fn func()
+}
+
+// Set installs the editor's flush.
+func (f *NoteFlush) Set(fn func()) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	f.fn = fn
+	f.mu.Unlock()
+}
+
+// Run runs the installed flush, if any.
+func (f *NoteFlush) Run() {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	fn := f.fn
+	f.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
 // TrashRef identifies one trash entry for restore or purge.
 type TrashRef struct {
 	Type string
@@ -231,6 +269,7 @@ func Research(s Services) map[ports.RouteKind]shell.Page {
 	shared := &notesShared{}
 	notesList := &Notes{Services: &s, shared: shared}
 	noteEditor := &NoteEditor{Services: &s, shared: shared}
+	s.NoteFlush.Set(noteEditor.Flush)
 	return map[ports.RouteKind]shell.Page{
 		app.RouteLiterature: literature.Page,
 		app.RouteNotes:      notesList.Page,

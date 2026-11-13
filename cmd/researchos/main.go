@@ -30,7 +30,7 @@ func main() {
 		// The window's Content is the pure shell view: the normal MyGo window
 		// paints it on the GPU. No renderer or software backend is selected
 		// here, so MyGo keeps its default hardware-accelerated path.
-		mg.NewWindow(mg.WindowOptions{
+		window := mg.NewWindow(mg.WindowOptions{
 			Title:     "ResearchOS",
 			Width:     1440,
 			Height:    900,
@@ -38,6 +38,13 @@ func main() {
 			MinHeight: 700,
 			StateKey:  "main",
 			Content:   ui.View(runtime.View),
+		})
+
+		// SPEC-05 §5.7: the note editor's 600 ms debounce must not lose the
+		// last edits when the window closes, so its flush runs synchronously
+		// before the window goes away.
+		window.OnClose(func(e *mg.CloseEvent) {
+			runtime.Flush()
 		})
 
 		// Follow the desktop's appearance and reduced-motion setting; the

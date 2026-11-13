@@ -57,6 +57,10 @@ const noteSaveDelay = 600 * time.Millisecond
 // noteExcerptRunes is the length of a body excerpt on a card.
 const noteExcerptRunes = 160
 
+// noteFlushTimeout bounds the close-time flush: the window must close even
+// when the disk or the service hangs.
+const noteFlushTimeout = 2 * time.Second
+
 // The two views of the list.
 const (
 	notesViewCards = iota
@@ -1045,6 +1049,79 @@ func (e *NoteEditor) tick(v *components.UI, a *app.App, projectID string) {
 	}
 	e.savedPending = false
 	e.save(a, projectID)
+}
+
+// Flush writes the editor's unsaved buffer synchronously, for the window's
+// close callback: a save started through the shell's tasks would not finish
+// before the process exits (SPEC-05 §5.7). A conflict or a write error leaves
+// the file on disk untouched, because no frame is left to ask; the buffer
+// stays in memory until the process ends.
+func (e *NoteEditor) Flush() {
+	if e == nil || e.Services == nil || e.Services.Notes == nil {
+		return
+	}
+	e.waitSaving()
+	e.mu.Lock()
+	note, noteID, projectID := e.note, e.loadedID, e.project
+	ed, base, state := e.ed, e.hash, e.bodyState
+	title, description := e.title, e.description
+	conflict := e.conflict
+	e.mu.Unlock()
+	if note == nil || noteID == "" || ed == nil || note.DeletedAt != nil ||
+		state == notes.BodyMissing {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), noteFlushTimeout)
+	defer cancel()
+	api := e.Services.Notes
+	written := true
+	if ed.Buffer.Modified() {
+		version := ed.Buffer.Version()
+		result, err := api.SaveBody(ctx, projectID, notes.SaveBodyInput{
+			NoteID:   noteID,
+			Markdown: ed.Buffer.String(),
+			BaseHash: base,
+			Actor:    ports.ActorUser,
+		})
+		if err != nil || result == nil || result.Conflict {
+			written = false
+		} else {
+			e.mu.Lock()
+			e.hash = result.Hash
+			if ed.Buffer.Version() == version {
+				ed.Buffer.MarkSaved()
+			}
+			e.mu.Unlock()
+		}
+	}
+	// Metadata is written after the body: UpdateMeta rewrites the file, so a
+	// body save after it would carry a stale whole-file token.
+	name := strings.TrimSpace(title)
+	if !written || conflict || name == "" || (name == note.Title && description == note.Description) {
+		return
+	}
+	_, _ = api.UpdateMeta(ctx, projectID, notes.UpdateMetaInput{
+		NoteID:      noteID,
+		Title:       name,
+		Description: description,
+		Actor:       ports.ActorUser,
+	})
+}
+
+// waitSaving lets an in-flight debounced save finish, so the flush submits the
+// hash that save installed instead of a stale token. It is bounded: closing
+// must not hang on the disk.
+func (e *NoteEditor) waitSaving() {
+	deadline := time.Now().Add(noteFlushTimeout)
+	for {
+		e.mu.Lock()
+		saving := e.saving || e.accepting
+		e.mu.Unlock()
+		if !saving || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // saveNow flushes the buffer at once, for a blur, another note or a page

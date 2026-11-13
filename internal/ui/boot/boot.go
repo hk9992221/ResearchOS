@@ -117,6 +117,17 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 	return r, nil
 }
 
+// Flush writes the note editor's unsaved buffer before the window closes.
+// The window's close callback runs it on the main thread (SPEC-05 §5.7); it
+// runs synchronously, because a task would not finish before the process
+// exits.
+func (r *Runtime) Flush() {
+	r.mu.Lock()
+	flush := r.services.NoteFlush
+	r.mu.Unlock()
+	flush.Run()
+}
+
 // Provider returns the theme provider, which outlives workspaces.
 func (r *Runtime) Provider() *theme.Provider { return r.provider }
 
@@ -358,6 +369,8 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 		ChooseFolder: r.chooseFolder,
 		OnMigrated:   r.onMigrated,
 		MCPStatus:    r.mcpStatus,
+		// The notes page installs its editor's close-time flush here.
+		NoteFlush: &pages.NoteFlush{},
 	}
 	if ws == nil {
 		return s
