@@ -1,6 +1,7 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"researchos/internal/foundation/errs"
 	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/foundationtest"
+	"researchos/internal/foundation/ids"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/literature"
 )
@@ -874,4 +876,34 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestCompensateNewPaperIgnoresCanceledContext(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	service := newService(f)
+	store := NewFileStore(f.Workspace)
+
+	paperID := seedPaper(t, f, paperSeed{Key: "CANCEL-1", Title: "canceled import", Copy: true})
+	tempID := ids.MustNew(f.Clock)
+	content := []byte("temporary copy")
+	if _, err := store.Store(ctx, tempID, bytes.NewReader(content), int64(len(content))); err != nil {
+		t.Fatalf("store temp: %v", err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	service.compensateNewPaper(canceled, tempID, paperID, true)
+
+	if _, err := service.GetPaper(ctx, paperID); !errors.Is(err, literature.ErrPaperNotFound) {
+		t.Errorf("paper row not deleted: %v", err)
+	}
+	for _, id := range []string{tempID, paperID} {
+		if _, _, err := store.Stat(ctx, id); !errors.Is(err, literature.ErrPaperFileMissing) {
+			t.Errorf("copy %s not removed: %v", id, err)
+		}
+	}
+	if dirs := paperDirs(t, f); len(dirs) != 0 {
+		t.Errorf("copy directories left behind: %v", dirs)
+	}
 }

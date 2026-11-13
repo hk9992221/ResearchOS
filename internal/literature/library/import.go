@@ -461,12 +461,12 @@ func (s *Service) importNewPaper(ctx context.Context, reader literature.ZoteroRe
 	stored, err := s.files.Store(ctx, tempID, src, resolved.Size)
 	_ = src.Close()
 	if err != nil {
-		_ = s.files.Remove(ctx, tempID)
+		_ = s.files.Remove(context.WithoutCancel(ctx), tempID)
 		return importFailure(outcome, "复制 PDF 失败：%v", err)
 	}
 	metaJSON, err := zotero.MetadataJSON(item)
 	if err != nil {
-		_ = s.files.Remove(ctx, tempID)
+		_ = s.files.Remove(context.WithoutCancel(ctx), tempID)
 		return importFailure(outcome, "生成文献元数据失败：%v", err)
 	}
 
@@ -507,7 +507,7 @@ func (s *Service) importNewPaper(ctx context.Context, reader literature.ZoteroRe
 	if !created {
 		// A duplicate (concurrent import or repeated key) wins; the temporary
 		// copy is discarded and the existing row is only associated.
-		_ = s.files.Remove(ctx, tempID)
+		_ = s.files.Remove(context.WithoutCancel(ctx), tempID)
 		row, err := s.papers.Get(ctx, paperID)
 		if err != nil {
 			outcome.PaperID = paperID
@@ -559,21 +559,24 @@ func (s *Service) importNewPaper(ctx context.Context, reader literature.ZoteroRe
 // compensateNewPaper removes what this import created: the global row when no
 // project still references it, and the copy directories. The copy is kept when
 // the row cannot be removed, so the database never points at a missing file.
+// The context is detached from cancellation: cleanup must still run when the
+// import was canceled (SPEC-04 §5.0).
 func (s *Service) compensateNewPaper(ctx context.Context, tempID, paperID string, moved bool) {
+	cleanupCtx := context.WithoutCancel(ctx)
 	rowGone := true
 	if paperID != "" {
-		count, err := s.CountPaperRefs(ctx, paperID, "")
+		count, err := s.CountPaperRefs(cleanupCtx, paperID, "")
 		if err == nil && count > 0 {
 			rowGone = false
-		} else if err := s.ws.Global().InTx(ctx, func(tx *sql.Tx) error {
-			return s.papers.Delete(ctx, tx, paperID)
+		} else if err := s.ws.Global().InTx(cleanupCtx, func(tx *sql.Tx) error {
+			return s.papers.Delete(cleanupCtx, tx, paperID)
 		}); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			rowGone = false
 		}
 	}
-	_ = s.files.Remove(ctx, tempID)
+	_ = s.files.Remove(cleanupCtx, tempID)
 	if moved && paperID != "" && rowGone {
-		_ = s.files.Remove(ctx, paperID)
+		_ = s.files.Remove(cleanupCtx, paperID)
 	}
 }
 

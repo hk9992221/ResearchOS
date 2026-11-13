@@ -177,15 +177,16 @@ func (s *FileStore) Store(ctx context.Context, paperID string, src io.Reader, si
 
 // Remove deletes the imported copy of paperID together with its directory. It is
 // the compensation helper of the import flow; a missing copy is not an error.
-func (s *FileStore) Remove(ctx context.Context, paperID string) error {
+//
+// The context is deliberately not consulted: compensation often runs with an
+// already-canceled context, and skipping the deletion would strand temporary
+// copies (SPEC-04 §5.0).
+func (s *FileStore) Remove(_ context.Context, paperID string) error {
 	if s == nil || s.ws == nil {
 		return fmt.Errorf("library: 删除文献副本: 文件存储未绑定工作区")
 	}
 	if err := validPaperID(paperID); err != nil {
 		return fmt.Errorf("library: 删除文献副本: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("library: 删除文献副本 %s: %w", paperID, err)
 	}
 	p := s.ws.Paths()
 	target, err := p.Abs(p.PaperPDF(paperID))
