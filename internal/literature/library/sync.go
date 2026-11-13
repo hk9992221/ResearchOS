@@ -327,7 +327,11 @@ func (s *Service) applyOne(ctx context.Context, diff literature.SyncDiff, decisi
 	}); err != nil {
 		return err
 	}
-	return s.emitOverwrite(ctx, row.ID, actor)
+	if err := s.emitOverwrite(ctx, row.ID, actor); err != nil {
+		return err
+	}
+	s.notifyIndex(ctx, row.ID, schema.EventPaperOverwriteConfirmed, "覆盖文献副本")
+	return nil
 }
 
 func (s *Service) emitOverwrite(ctx context.Context, paperID string, actor literature.Actor) error {
@@ -517,6 +521,7 @@ func (a *syncAPI) RefreshMetadata(ctx context.Context, scope literature.SyncScop
 			continue
 		}
 		result.Updated = append(result.Updated, row.ID)
+		a.notifyIndex(ctx, row.ID, schema.EventPaperMetadataUpdated, "更新文献元数据")
 	}
 	return result, nil
 }

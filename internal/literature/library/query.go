@@ -14,7 +14,9 @@ import (
 
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/errs"
+	"researchos/internal/foundation/events"
 	"researchos/internal/foundation/ids"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/foundation/papers"
 	"researchos/internal/foundation/projectpapers"
 	"researchos/internal/foundation/projects"
@@ -50,6 +52,10 @@ type Options struct {
 	Zotero literature.ZoteroSource
 	// Opener launches external applications. Nil means the OS default opener.
 	Opener Opener
+	// Indexer is the post-commit search-index hook (SPEC-10 §5.3). Nil
+	// disables global literature indexing; failures never fail an import or a
+	// sync.
+	Indexer indexhook.Indexer
 }
 
 // Service implements the query, project-link and PDF contracts of SPEC-04.
@@ -62,6 +68,7 @@ type Service struct {
 	settings *settings.Store
 	zotero   literature.ZoteroSource
 	opener   Opener
+	indexer  indexhook.Indexer
 	importMu *sync.Mutex
 
 	syncMu      sync.Mutex
@@ -88,9 +95,31 @@ func New(ws *workspace.Workspace, opts Options) *Service {
 		settings:    settings.NewWorkspace(global.DB()).WithClock(c),
 		zotero:      opts.Zotero,
 		opener:      opener,
+		indexer:     opts.Indexer,
 		importMu:    importLockFor(ws.Root()),
 		syncReports: map[string]syncReportEntry{},
 	}
+}
+
+// notifyIndex fires the post-commit global literature index hook (SPEC-10
+// §5.3, §7.2). A hook failure is swallowed: the import or sync already
+// committed and the index can be rebuilt.
+func (s *Service) notifyIndex(ctx context.Context, paperID string, typ schema.EventType, summary string) {
+	if s.indexer == nil || paperID == "" {
+		return
+	}
+	ev := events.Activity{
+		Type:       typ,
+		EntityType: schema.EntityPaper,
+		EntityID:   paperID,
+		Payload: events.Payload{
+			EntityType: schema.EntityPaper,
+			EntityID:   paperID,
+			Summary:    summary,
+			Actor:      schema.ActorUser,
+		},
+	}
+	_ = s.indexer.OnEntityChanged(ctx, ev)
 }
 
 // ---------------------------------------------------------------------------

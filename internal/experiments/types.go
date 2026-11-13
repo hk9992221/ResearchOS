@@ -19,6 +19,7 @@ import (
 	"researchos/internal/ai/output"
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/events"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/workspace"
 )
@@ -553,6 +554,9 @@ type Options struct {
 	// AI wires SPEC-02. Nil disables Outline/Results generation and review
 	// (scanning, metrics, Git and history stay available, AC-15).
 	AI *AIConfig
+	// Indexer is the post-commit search-index hook (SPEC-10 §5.3). Nil
+	// disables indexing; a failure is logged and never fails a business write.
+	Indexer indexhook.Indexer
 }
 
 // actorOf treats an empty actor as the local user, mirroring the notes service
