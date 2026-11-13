@@ -145,10 +145,11 @@ func newNotesProvider(d Deps, ready func(context.Context) error) mcp.ToolProvide
 		tool(mod, mcp.CategoryWrite, "note_create", "创建自由笔记",
 			"创建一篇自由笔记（scratchpad）。论文笔记、记录页与文献综述请使用各自专用工具。",
 			sObj(map[string]any{
-				"project_id": sStr("项目 ID"),
-				"title":      sStrLen("标题", 1, 200),
-				"kind":       sEnum("笔记类型（仅允许 scratchpad）", "scratchpad"),
-				"body_md":    sStr("Markdown 正文"),
+				"project_id":  sStr("项目 ID"),
+				"title":       sStrLen("标题", 1, 200),
+				"description": sStr("描述"),
+				"kind":        sEnum("笔记类型（仅允许 scratchpad）", "scratchpad"),
+				"body_md":     sStr("Markdown 正文"),
 			}, "project_id", "title", "kind"), annWrite(),
 			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
 				projectID, err := requireID(a, "project_id")
@@ -167,15 +168,17 @@ func newNotesProvider(d Deps, ready func(context.Context) error) mcp.ToolProvide
 					return mcp.ToolOutcome{}, invalidf("note_create 只允许 kind=scratchpad")
 				}
 				body, _ := a.String("body_md")
+				description, _ := a.String("description")
 				svc, err := d.noteServices(ctx, projectID)
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
 				note, err := svc.notes.Create(ctx, notes.CreateNoteInput{
-					Kind:  notes.KindScratchpad,
-					Title: title,
-					Body:  body,
-					Actor: eventActor(),
+					Kind:        notes.KindScratchpad,
+					Title:       title,
+					Description: description,
+					Body:        body,
+					Actor:       eventActor(),
 				})
 				if err != nil {
 					return mcp.ToolOutcome{}, mapNotesError(err)
@@ -184,7 +187,7 @@ func newNotesProvider(d Deps, ready func(context.Context) error) mcp.ToolProvide
 			}),
 
 		tool(mod, mcp.CategoryWrite, "note_update_title", "修改笔记标题",
-			"修改笔记标题。正文请使用 note_save_body。",
+			"修改笔记标题，正文请使用 note_save_body。文件 frontmatter 与数据库同步更新。",
 			sObj(map[string]any{
 				"project_id": sStr("项目 ID"),
 				"note_id":    sStr("笔记 ID"),
@@ -204,6 +207,40 @@ func newNotesProvider(d Deps, ready func(context.Context) error) mcp.ToolProvide
 					return mcp.ToolOutcome{}, err
 				}
 				note, err := svc.notes.UpdateTitle(ctx, noteID, title, eventActor())
+				if err != nil {
+					return mcp.ToolOutcome{}, mapNotesError(err)
+				}
+				return okOut(map[string]any{"note": noteView(note)})
+			}),
+
+		tool(mod, mcp.CategoryWrite, "note_update_meta", "修改笔记元数据",
+			"修改笔记标题与描述（description 传空串清空）。正文请使用 note_save_body；文件 frontmatter 与数据库在同一事务内更新。",
+			sObj(map[string]any{
+				"project_id":  sStr("项目 ID"),
+				"note_id":     sStr("笔记 ID"),
+				"title":       sStrLen("新标题", 1, 200),
+				"description": sStr("新描述（空串清空）"),
+			}, "project_id", "note_id", "title"), annWrite(),
+			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
+				projectID, noteID, err := projectAndID(a, "note_id")
+				if err != nil {
+					return mcp.ToolOutcome{}, err
+				}
+				title, err := requireString(a, "title")
+				if err != nil {
+					return mcp.ToolOutcome{}, err
+				}
+				description, _ := a.String("description")
+				svc, err := d.noteServices(ctx, projectID)
+				if err != nil {
+					return mcp.ToolOutcome{}, err
+				}
+				note, err := svc.notes.UpdateMeta(ctx, notes.UpdateMetaInput{
+					NoteID:      noteID,
+					Title:       title,
+					Description: description,
+					Actor:       eventActor(),
+				})
 				if err != nil {
 					return mcp.ToolOutcome{}, mapNotesError(err)
 				}
@@ -799,6 +836,7 @@ func noteView(n *notes.Note) map[string]any {
 		"note_id":      n.ID,
 		"kind":         string(n.Kind),
 		"title":        n.Title,
+		"description":  n.Description,
 		"file_path":    n.FilePath,
 		"body_state":   string(n.BodyState),
 		"content_hash": n.ContentHash,

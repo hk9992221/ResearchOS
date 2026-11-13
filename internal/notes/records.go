@@ -227,7 +227,7 @@ func (s *recordService) CreateRecord(ctx context.Context, in CreateRecordInput) 
 				encoded, _ := json.Marshal(noteTitle)
 				data[titleField.ID] = encoded
 			}
-			if err := syncNoteTitle(ctx, tx, noteID, noteTitle, titleValue(data, titleField.ID), now); err != nil {
+			if err := s.syncNoteTitle(ctx, tx, noteID, noteTitle, titleValue(data, titleField.ID), now); err != nil {
 				return err
 			}
 		}
@@ -353,7 +353,7 @@ func (s *recordService) UpdateValues(ctx context.Context, in UpdateValuesInput) 
 			if err != nil {
 				return err
 			}
-			if err := syncNoteTitle(ctx, tx, record.NoteID, existingNoteTitle, title, now); err != nil {
+			if err := s.syncNoteTitle(ctx, tx, record.NoteID, existingNoteTitle, title, now); err != nil {
 				return err
 			}
 			if err := s.events.EmitNoteUpdated(ctx, tx, events.NoteUpdatedEvent{
@@ -918,9 +918,10 @@ func liveNoteTitle(ctx context.Context, q dbTX, noteID string) (string, error) {
 	return title, nil
 }
 
-// syncNoteTitle projects the title field onto notes.title. existingTitle is the
-// note's previous title; the row is only touched when it changes.
-func syncNoteTitle(ctx context.Context, tx *sql.Tx, noteID, existingTitle, title string, now time.Time) error {
+// syncNoteTitle projects the title field onto notes.title and onto the note
+// file frontmatter. existingTitle is the note's previous title; nothing is
+// written when it is unchanged.
+func (s *recordService) syncNoteTitle(ctx context.Context, tx *sql.Tx, noteID, existingTitle, title string, now time.Time) error {
 	if noteID == "" || existingTitle == title {
 		return nil
 	}
@@ -928,6 +929,9 @@ func syncNoteTitle(ctx context.Context, tx *sql.Tx, noteID, existingTitle, title
 		`UPDATE notes SET title = ?, updated_at = ? WHERE id = ?`,
 		title, clock.Format(now), noteID); err != nil {
 		return fmt.Errorf("notes: sync note title: %w", err)
+	}
+	if err := s.notes.RewriteMeta(ctx, tx, noteID); err != nil {
+		return err
 	}
 	return nil
 }
