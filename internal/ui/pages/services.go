@@ -56,6 +56,19 @@ type Services struct {
 	// Notes binds the SPEC-05 note service. Nil means the module is not
 	// assembled, and the page says so instead of rendering an empty list.
 	Notes NotesAPI
+	// Experiments binds the SPEC-07 experiment service. Nil means the module
+	// is not assembled, and the pages say so instead of faking data.
+	Experiments ExperimentsAPI
+	// Kanban binds the SPEC-08 task board. Nil means the module is not
+	// assembled, and the page says so instead of rendering an empty board.
+	Kanban KanbanAPI
+	// Weekly binds the SPEC-09 weekly review service. Nil means the module is
+	// not assembled, and the page says so instead of faking history.
+	Weekly WeeklyAPI
+	// Ideas binds the SPEC-06 Idea, evidence and history service. Nil means
+	// the module is not assembled, and the page says so instead of faking an
+	// empty list.
+	Ideas IdeasAPI
 	// NoteFlush is the note editor's synchronous flush. The composition
 	// root allocates it, pages.Research installs the editor, and the window's
 	// close callback runs it before the process exits (SPEC-05 §5.7).
@@ -266,10 +279,36 @@ func Research(s Services) map[ports.RouteKind]shell.Page {
 	notesList := &Notes{Services: &s, shared: shared}
 	noteEditor := &NoteEditor{Services: &s, shared: shared}
 	s.NoteFlush.Set(noteEditor.Flush)
+	kanbanPage := &Kanban{Services: &s}
+	// The experiment list and the detail share the generation the detail
+	// bumps after a write, so a returning list reloads its row.
+	experimentsPages := ExperimentsPages(&s)
+	// The weekly report list and detail share a generation counter for the
+	// same reason as the notes pair.
+	weeklyList := &Weekly{Services: &s, shared: &weeklyShared{}}
+	weeklyReport := &WeeklyReportView{Services: &s, shared: weeklyList.shared}
+	// The idea list and the detail share the generation the detail bumps
+	// after a write, so a returning list reloads its row.
+	ideasShared := &ideasShared{}
+	ideasList := &Ideas{Services: &s, shared: ideasShared}
+	ideaPage := &IdeaPage{Services: &s, shared: ideasShared}
 	return map[ports.RouteKind]shell.Page{
 		app.RouteLiterature: literature.Page,
 		app.RouteNotes:      notesList.Page,
 		ports.RouteNote:     noteEditor.Page,
+
+		app.RouteKanban: kanbanPage.Page,
+		ports.RouteTask: kanbanPage.TaskPage,
+
+		app.RouteExperiments:  experimentsPages[app.RouteExperiments],
+		ports.RouteExperiment: experimentsPages[ports.RouteExperiment],
+		ports.RouteRun:        experimentsPages[ports.RouteRun],
+
+		app.RouteWeeklyReview:   weeklyList.Page,
+		ports.RouteWeeklyReport: weeklyReport.Page,
+
+		app.RouteIdeas: ideasList.Page,
+		ports.RouteIdea: ideaPage.Page,
 	}
 }
 

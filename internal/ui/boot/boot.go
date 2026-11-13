@@ -379,6 +379,17 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	s.Scan = ws.Scan
 	s.Literature = lit
 	s.Notes = noteAPI
+	s.Kanban = newKanbanModule(ws)
+	// nil stack: the AI services are assembled by the integration agent;
+	// the adapter degrades to ErrAIUnavailable until then.
+	s.Experiments = newExperimentsModule(ws, nil)
+	// nil stack and nil settings: the composition root's AI stack and
+	// settings store are wired by the integration agent; weeklyreview falls
+	// back to the workspace settings and the deterministic skeleton.
+	s.Weekly = newWeeklyModule(ws, nil, nil)
+	// nil stack: the AI services are assembled by the integration agent;
+	// the Ideas adapter degrades to ai.disabled until then.
+	s.Ideas = newIdeasModule(ws, nil)
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
 	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}
