@@ -87,6 +87,14 @@ func (appLogger) Warn(msg string, kv ...any) { log.Printf("WARN  %s %v", msg, kv
 
 func (appLogger) Error(msg string, kv ...any) { log.Printf("ERROR %s %v", msg, kv) }
 
+// newSearch builds the SPEC-10 retrieval service shared by the MCP tools and
+// the Literature page's post-commit index hook. Keyword recall works without
+// an embedding provider; vector recall reports vector_unavailable
+// (SPEC-10 §5.1).
+func newSearch(ws *fworkspace.Workspace) (*search.Service, error) {
+	return search.New(ws, search.Options{Clock: clock.System{}, Logger: appLogger{}})
+}
+
 // mcpService is the MCP server bound to one open workspace. A workspace switch
 // stops it before the previous workspace handle is closed, because the server
 // holds database handles.
@@ -101,8 +109,10 @@ type mcpService struct {
 
 // startMCP wires and launches the server. A failure is recorded rather than
 // returned: the desktop application stays usable without the bridge, and the
-// diagnostics page reports why the server is down.
-func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service) *mcpService {
+// diagnostics page reports why the server is down. searchSvc may be nil, in
+// which case the SPEC-11 §2.2 rule applies and the search tools stay
+// unpublished.
+func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service, searchSvc *search.Service) *mcpService {
 	host := &mcpService{done: make(chan struct{})}
 	socket, err := mcp.SocketPath()
 	if err != nil {
@@ -110,13 +120,6 @@ func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore
 		return host
 	}
 	host.socket = socket
-
-	searchSvc, err := search.New(ws, search.Options{Clock: clock.System{}, Logger: appLogger{}})
-	if err != nil {
-		// SPEC-11 §2.2: an unready module publishes no tools instead of
-		// keeping the whole server down.
-		appLogger{}.Warn("mcp: 检索模块不可用", "err", err)
-	}
 
 	facade := mcpfacade.New(mcpfacade.Options{
 		Project:   projects,

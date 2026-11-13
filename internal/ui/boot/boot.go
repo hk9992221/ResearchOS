@@ -33,6 +33,7 @@ import (
 	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/project"
+	"researchos/internal/search"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
 	"researchos/internal/ui/errtext"
@@ -54,6 +55,10 @@ type Runtime struct {
 	shell    *shell.Shell
 	services pages.Services
 	mcp      *mcpService
+	// search and literature are the SPEC-10 and SPEC-04 services of the open
+	// workspace; both hold database handles and are released on a switch.
+	search     *search.Service
+	literature *literatureModule
 
 	// setupApp drives the wizard's tasks before a workspace exists.
 	setupApp *app.App
@@ -98,7 +103,7 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 
 	r.setupApp = app.New(app.Options{WorkspaceName: i18n.T("app.name")})
 	r.setupApp.Changed(mygo.InvalidateAll())
-	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil)
+	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil)
 	r.services = r.setupServices
 	r.wizard = &pages.Wizard{Services: &r.setupServices}
 
@@ -200,39 +205,64 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	a.Changed(mygo.InvalidateAll())
 
 	svc := workspace.New(ws)
-	pagesService := r.pageServices(ws, svc, a, migrations)
-	host := startMCP(ws, projects, settingsStore, r.confirm)
+	searchSvc, searchErr := newSearch(ws)
+	if searchErr != nil {
+		// Retrieval is an optional collaborator: without it the SPEC-10 tools
+		// stay unpublished and imports skip the index hook, but every other
+		// module still works (§SPEC-11 2.2).
+		appLogger{}.Warn("boot: 检索模块不可用", "err", searchErr)
+	}
+	lit := newLiteratureModule(ws, searchSvc)
+	pagesService := r.pageServices(ws, svc, a, migrations, lit)
+	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc)
 
 	pageSet := shell.DefaultPages(ctx, a)
-	for kind, page := range pages.System(pagesService) {
+	for kind, page := range pages.Research(pagesService) {
 		pageSet[kind] = page
 	}
 	sh := shell.New(shell.Config{App: a, Theme: provider, Pages: pageSet, Ctx: ctx})
 	r.mu.Lock()
-	prev := r.ws
+	prev, prevSearch, prevLit := r.ws, r.search, r.literature
 	r.ws = ws
 	r.app = a
 	r.shell = sh
 	r.services = pagesService
 	r.mcp = host
+	r.search = searchSvc
+	r.literature = lit
 	r.setupErr = ""
 	r.mu.Unlock()
 	mygo.InvalidateAll()()
 	if prev != nil {
+		// The module services hold handles of the previous workspace's
+		// databases, so they close before the workspace does.
+		_ = prevLit.Close()
+		if prevSearch != nil {
+			_ = prevSearch.Close()
+		}
 		_ = prev.Close()
 	}
 	return nil
 }
 
-// Close stops the MCP server and closes the workspace.
+// Close stops the MCP server and the module services, then closes the
+// workspace.
 func (r *Runtime) Close() error {
 	r.stopMCP()
 	r.mu.Lock()
 	ws := r.ws
+	lit := r.literature
+	searchSvc := r.search
 	r.ws = nil
 	r.shell = nil
 	r.mcp = nil
+	r.literature = nil
+	r.search = nil
 	r.mu.Unlock()
+	_ = lit.Close()
+	if searchSvc != nil {
+		_ = searchSvc.Close()
+	}
 	if ws == nil {
 		return nil
 	}
@@ -316,7 +346,7 @@ func (r *Runtime) setSetupErr(text string) {
 // only the setup service is available. migrations is the registered module band
 // so the self check compares against the real target version, and the MCP
 // status reaches the diagnostics page through the runtime.
-func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration) pages.Services {
+func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI) pages.Services {
 	s := pages.Services{
 		App:          a,
 		Setup:        r,
@@ -331,6 +361,7 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	}
 	s.Workspace = appWS
 	s.Scan = ws.Scan
+	s.Literature = lit
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
 	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}

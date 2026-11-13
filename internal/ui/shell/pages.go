@@ -141,7 +141,6 @@ func DefaultPages(ctx context.Context, a *app.App) map[ports.RouteKind]Page {
 	for _, kind := range []ports.RouteKind{
 		app.RouteInbox,
 		app.RoutePluginMarket,
-		app.RouteLiterature,
 		app.RouteNotes,
 		app.RouteIdeas,
 		app.RouteExperiments,
