@@ -1,0 +1,5094 @@
+{
+  "cacheScope": "private",
+  "tools": [
+    {
+      "name": "confirmation_cancel",
+      "title": "取消确认请求",
+      "description": "取消本客户端发起、仍处于 requested 状态的确认请求。已处理或属于其他客户端的请求返回冲突。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_id": {
+            "description": "确认 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "core"
+    },
+    {
+      "name": "confirmation_get",
+      "title": "确认请求详情",
+      "description": "返回一个确认请求的状态、影响摘要、结果或错误。该工具只读；MCP 不存在批准路径。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_id": {
+            "description": "确认 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "core"
+    },
+    {
+      "name": "confirmation_list",
+      "title": "确认请求列表",
+      "description": "列出当前客户端提交的确认请求（可按状态、项目过滤），按创建时间倒序。MCP 只能查看与取消，不能批准。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "state": {
+            "description": "确认状态",
+            "enum": [
+              "requested",
+              "approved",
+              "executing",
+              "executed",
+              "failed",
+              "denied",
+              "expired",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "core"
+    },
+    {
+      "name": "job_cancel",
+      "title": "取消后台作业",
+      "description": "请求取消一个排队或运行中的后台作业。取消是尽力而为：已提交的文件写入不可回滚，但不会留下半成品业务实体。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "description": "作业 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "core"
+    },
+    {
+      "name": "job_get",
+      "title": "后台作业详情",
+      "description": "返回后台作业的状态、进度、阶段、结果或错误。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "description": "作业 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "core"
+    },
+    {
+      "name": "job_list",
+      "title": "后台作业列表",
+      "description": "列出当前客户端提交的后台作业（可按项目、状态过滤），按创建时间倒序。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "state": {
+            "description": "作业状态",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "core"
+    },
+    {
+      "name": "server_status",
+      "title": "服务器状态",
+      "description": "返回 ResearchOS MCP 服务器的版本、协议版本、访问模式、工作区路径、已就绪模块与 AI/Zotero 可用性。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "core"
+    },
+    {
+      "name": "experiment_analyze_results",
+      "title": "分析实验结果",
+      "description": "用 AI 分析实验结果并保存快照（不覆盖旧快照；指标解析遵循 SPEC-07）。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "run_ids": {
+            "description": "运行 ID（可选）",
+            "items": {
+              "description": "运行 ID",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_create",
+      "title": "创建实验",
+      "description": "创建实验；提供 dir_ref 时同时绑定目录（必须是已存在的绝对目录且不在工作区内）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir_ref": {
+            "description": "实验目录绝对路径",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "purpose": {
+            "description": "实验目的",
+            "type": "string"
+          },
+          "scan_rules": {
+            "additionalProperties": true,
+            "description": "扫描规则",
+            "required": [],
+            "type": "object"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_delete",
+      "title": "删除实验",
+      "description": "软删除实验（进入回收站）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_generate_outline",
+      "title": "生成实验提纲",
+      "description": "用 AI 生成实验提纲草稿并保存为快照（不覆盖旧快照）。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_get",
+      "title": "实验详情",
+      "description": "返回实验、目录引用、运行、快照与关联 Idea。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_git_info",
+      "title": "实验 Git 信息",
+      "description": "只读检查实验或运行目录的 Git 仓库信息（分支、提交、脏状态）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "运行 ID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_list",
+      "title": "实验列表",
+      "description": "列出项目实验，可按标题过滤。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "include_deleted": {
+            "description": "包含已删除实验",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "q": {
+            "description": "标题关键字",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_relink_dir",
+      "title": "重新绑定实验目录",
+      "description": "把实验重新定位到已存在的绝对目录（修复 broken 引用，不清空旧快照）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir_ref": {
+            "description": "目录绝对路径",
+            "type": "string"
+          },
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dir_ref",
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_scan",
+      "title": "扫描实验目录",
+      "description": "只读扫描实验目录并返回文件清单与排除项（不落库）。返回 job_id。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "refresh": {
+            "description": "预留：当前扫描总是重新计算",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_snapshot_get",
+      "title": "快照详情",
+      "description": "返回快照的文件清单、Git 信息、指标、AI 分析与模型信息。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "description": "快照 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "snapshot_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_snapshot_list",
+      "title": "快照列表",
+      "description": "列出实验或运行的 AI 分析快照。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "运行 ID（可选，替代 experiment_id 目标）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "experiment_update",
+      "title": "更新实验",
+      "description": "更新实验标题、目的或扫描规则。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "purpose": {
+            "description": "实验目的",
+            "type": "string"
+          },
+          "scan_rules": {
+            "additionalProperties": true,
+            "description": "扫描规则",
+            "required": [],
+            "type": "object"
+          },
+          "title": {
+            "description": "标题",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "run_create",
+      "title": "创建运行",
+      "description": "在实验下创建运行，可指定目录与参数。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir_ref": {
+            "description": "运行目录绝对路径",
+            "type": "string"
+          },
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "参数 {name: {value, source?, confirmed?}}",
+            "required": [],
+            "type": "object"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "run_delete",
+      "title": "删除运行",
+      "description": "软删除运行（进入回收站）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "运行 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "run_list",
+      "title": "运行列表",
+      "description": "列出实验下的运行。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "description": "实验 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "experiments"
+    },
+    {
+      "name": "run_update",
+      "title": "更新运行",
+      "description": "单次调用只允许一组变更（params、status 或 dir_ref 之一）。状态仅接受 SPEC-07 定义的合法值，不做完成推断。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir_ref": {
+            "description": "运行目录绝对路径",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "参数 {name: {value, source?, confirmed?}}",
+            "required": [],
+            "type": "object"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "运行 ID",
+            "type": "string"
+          },
+          "status": {
+            "description": "运行状态",
+            "enum": [
+              "unknown",
+              "running",
+              "finished",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "experiments"
+    },
+    {
+      "name": "evidence_confirm",
+      "title": "确认证据",
+      "description": "请求把 AI 草稿证据转为已确认。工具只入队，必须在应用内人工批准后以 actor=user 逐条执行。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "description": "证据 ID",
+            "items": {
+              "description": "证据 ID",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_ids",
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_create",
+      "title": "新增证据",
+      "description": "为 Idea 新增人工证据（ai_generated=false, confirmed=true）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "证据内容",
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "direction": {
+            "description": "方向",
+            "enum": [
+              "support",
+              "oppose"
+            ],
+            "type": "string"
+          },
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "source_id": {
+            "description": "来源实体 ID",
+            "type": "string"
+          },
+          "source_type": {
+            "description": "来源类型",
+            "enum": [
+              "experiment",
+              "run",
+              "note",
+              "paper"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "direction",
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_delete",
+      "title": "删除已确认证据",
+      "description": "软删除已确认证据。草稿请使用 evidence_discard。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "description": "证据 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_discard",
+      "title": "丢弃草稿证据",
+      "description": "丢弃 AI 草稿证据（仅草稿，软删除）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "description": "证据 ID",
+            "type": "string"
+          },
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_extract",
+      "title": "AI 提取证据草稿",
+      "description": "从实验/运行/笔记来源提取证据草稿（AI 产出，actor=ai，不自动确认）。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "source_refs": {
+            "description": "来源 [{type, id}]",
+            "items": {
+              "additionalProperties": true,
+              "description": "来源",
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_list",
+      "title": "证据列表",
+      "description": "列出 Idea 证据，可按方向与确认状态过滤。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "description": "是否已确认",
+            "type": "boolean"
+          },
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "direction": {
+            "description": "方向",
+            "enum": [
+              "support",
+              "oppose"
+            ],
+            "type": "string"
+          },
+          "idea_id": {
+            "description": "Idea ID（可选）",
+            "type": "string"
+          },
+          "include_deleted": {
+            "description": "包含已删除证据",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "ideas"
+    },
+    {
+      "name": "evidence_update",
+      "title": "更新证据",
+      "description": "更新草稿证据的方向或内容；已确认证据不可改方向。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "证据内容",
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "direction": {
+            "description": "方向",
+            "enum": [
+              "support",
+              "oppose"
+            ],
+            "type": "string"
+          },
+          "evidence_id": {
+            "description": "证据 ID",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌（可选）",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "source_id": {
+            "description": "来源实体 ID",
+            "type": "string"
+          },
+          "source_type": {
+            "description": "来源类型",
+            "enum": [
+              "experiment",
+              "run",
+              "note",
+              "paper"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_change_status",
+      "title": "变更 Idea 状态",
+      "description": "变更 Idea 状态；Rejected 必须提供 rejection_reason。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "note": {
+            "description": "备注（可选）",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "description": "拒绝原因（Rejected 时必填）",
+            "type": "string"
+          },
+          "status": {
+            "description": "新状态",
+            "enum": [
+              "New",
+              "Researching",
+              "Validating",
+              "Supported",
+              "PartiallySupported",
+              "Inconclusive",
+              "Rejected",
+              "OnHold"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "idea_id",
+          "project_id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_create",
+      "title": "创建 Idea",
+      "description": "创建 Idea，初始状态恒为 New。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Markdown 描述",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_delete",
+      "title": "删除 Idea",
+      "description": "软删除 Idea（进入回收站）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_derive",
+      "title": "衍生 Idea",
+      "description": "从父 Idea 衍生新 Idea，并写入 derived_from 关系；初始状态恒为 New。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Markdown 描述",
+            "type": "string"
+          },
+          "parent_id": {
+            "description": "父 Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent_id",
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_get",
+      "title": "Idea 详情",
+      "description": "返回 Idea、证据、关系与近期历史。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_list",
+      "title": "Idea 列表",
+      "description": "列出项目 Idea，可按状态、关键字过滤。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "include_deleted": {
+            "description": "包含已软删除的 Idea",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "q": {
+            "description": "标题/描述关键字",
+            "type": "string"
+          },
+          "status": {
+            "description": "状态",
+            "enum": [
+              "New",
+              "Researching",
+              "Validating",
+              "Supported",
+              "PartiallySupported",
+              "Inconclusive",
+              "Rejected",
+              "OnHold"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "ideas"
+    },
+    {
+      "name": "idea_update",
+      "title": "更新 Idea",
+      "description": "更新 Idea 标题或描述。提供 expected_updated_at 时做乐观并发检查。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Markdown 描述",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌 RFC3339",
+            "type": "string"
+          },
+          "idea_id": {
+            "description": "Idea ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idea_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "ideas"
+    },
+    {
+      "name": "checklist_add",
+      "title": "添加检查项",
+      "description": "为任务添加检查项（不改变父任务 updated_at，不产生 Activity）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "before_id": {
+            "description": "插入到该检查项之前",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          },
+          "text": {
+            "description": "检查项文本",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "checklist_list",
+      "title": "检查项列表",
+      "description": "列出任务的检查项。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "kanban"
+    },
+    {
+      "name": "checklist_remove",
+      "title": "删除检查项",
+      "description": "物理删除检查项。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "description": "检查项 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "checklist_reorder",
+      "title": "重排检查项",
+      "description": "按给定顺序重排任务的检查项（必须覆盖全部检查项）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ordered_ids": {
+            "description": "检查项 ID 顺序",
+            "items": {
+              "description": "检查项 ID",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ordered_ids",
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "checklist_set_done",
+      "title": "勾选检查项",
+      "description": "设置检查项完成状态。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "description": "是否完成",
+            "type": "boolean"
+          },
+          "item_id": {
+            "description": "检查项 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "done",
+          "item_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "checklist_update",
+      "title": "修改检查项",
+      "description": "修改检查项文本。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "description": "检查项 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "text": {
+            "description": "检查项文本",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "project_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "column_create",
+      "title": "新建看板列",
+      "description": "新建看板列，可指定插入位置与是否为完成列。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "插入到该列之后",
+            "type": "string"
+          },
+          "is_done": {
+            "description": "是否为完成列",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "列类型",
+            "enum": [
+              "backlog",
+              "todo",
+              "in_progress",
+              "review",
+              "done",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "列名",
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "column_delete",
+      "title": "删除看板列",
+      "description": "请求删除看板列。任务必须迁移到 migrate_to 指定列；实际删除需在应用内人工批准。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "migrate_to": {
+            "description": "任务迁移到的列名",
+            "type": "string"
+          },
+          "name": {
+            "description": "要删除的列名",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "migrate_to",
+          "name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "kanban"
+    },
+    {
+      "name": "column_list",
+      "title": "看板列列表",
+      "description": "列出看板列（名称、类型、是否为完成列、位置）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "kanban"
+    },
+    {
+      "name": "column_move",
+      "title": "移动看板列",
+      "description": "调整列顺序（0 起始的目标位置）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "列名",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "to_position": {
+            "description": "目标位置（0 起始）",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "project_id",
+          "to_position"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "column_rename",
+      "title": "重命名看板列",
+      "description": "重命名看板列；该列全部任务（含已删除）的列值同步更新。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "new_name": {
+            "description": "新列名",
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "old_name": {
+            "description": "原列名",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_name",
+          "old_name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "column_set_done",
+      "title": "设置完成列",
+      "description": "标记或取消列的完成语义；不能移除最后一个完成列。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "description": "是否为完成列",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "列名",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "done",
+          "name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_archive",
+      "title": "归档任务",
+      "description": "归档任务（不级联子任务，不产生 Activity）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_create",
+      "title": "创建任务",
+      "description": "创建任务。省略 column_id/parent_id 即为快速捕获（Inbox）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "column_id": {
+            "description": "目标列名",
+            "type": "string"
+          },
+          "deadline": {
+            "description": "截止日期 YYYY-MM-DD",
+            "type": "string"
+          },
+          "description_md": {
+            "description": "Markdown 描述",
+            "type": "string"
+          },
+          "labels": {
+            "description": "标签",
+            "items": {
+              "description": "标签",
+              "maxLength": 32,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "parent_id": {
+            "description": "父任务 ID",
+            "type": "string"
+          },
+          "priority": {
+            "description": "优先级",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "none"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_delete",
+      "title": "删除任务",
+      "description": "软删除任务，级联其未删除的子任务。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_get",
+      "title": "任务详情",
+      "description": "返回任务、子任务、检查项、关系链接与所在列。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "kanban"
+    },
+    {
+      "name": "task_list",
+      "title": "任务列表",
+      "description": "列出项目任务，可按列、阻塞、截止日期、周计划、关键字过滤。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "description": "只看阻塞/未阻塞",
+            "type": "boolean"
+          },
+          "column_id": {
+            "description": "列名",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "deadline_before": {
+            "description": "截止日期上界 YYYY-MM-DD",
+            "type": "string"
+          },
+          "include_archived": {
+            "description": "包含已归档任务",
+            "type": "boolean"
+          },
+          "include_deleted": {
+            "description": "包含已删除任务",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "q": {
+            "description": "标题/描述关键字",
+            "type": "string"
+          },
+          "week_plan": {
+            "description": "周计划 YYYY-Www",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "kanban"
+    },
+    {
+      "name": "task_move",
+      "title": "移动任务",
+      "description": "把任务移动到目标列并可指定前后锚点。仅列变化时发 status.changed。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "after_id": {
+            "description": "插入到该任务之后",
+            "type": "string"
+          },
+          "before_id": {
+            "description": "插入到该任务之前",
+            "type": "string"
+          },
+          "column_id": {
+            "description": "目标列名",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column_id",
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_unarchive",
+      "title": "解除任务归档",
+      "description": "解除任务归档。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "task_update",
+      "title": "更新任务",
+      "description": "部分更新任务。提供 expected_updated_at 时执行乐观并发检查；不一致返回 CONFLICT。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "description": "是否阻塞",
+            "type": "boolean"
+          },
+          "column_id": {
+            "description": "目标列名",
+            "type": "string"
+          },
+          "deadline": {
+            "description": "截止日期 YYYY-MM-DD；空字符串表示清除",
+            "type": "string"
+          },
+          "description_md": {
+            "description": "Markdown 描述",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌",
+            "type": "string"
+          },
+          "labels": {
+            "description": "标签",
+            "items": {
+              "description": "标签",
+              "maxLength": 32,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "priority": {
+            "description": "优先级",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "none"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "任务 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "kanban"
+    },
+    {
+      "name": "literature_overview_get",
+      "title": "文献综述读取",
+      "description": "读取项目的 Literature Overview（Markdown 正文）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "literature_overview_update",
+      "title": "保存文献综述",
+      "description": "保存 Literature Overview 正文；可带 expected_hash 做乐观并发。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "body_md": {
+            "description": "Markdown 正文",
+            "maxLength": 5242880,
+            "minLength": 0,
+            "type": "string"
+          },
+          "expected_hash": {
+            "description": "读取时的 body_hash（可选）",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body_md",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "paper_get",
+      "title": "文献详情",
+      "description": "返回文献元数据、文件状态与关联项目、Paper Note。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "paper_import",
+      "title": "导入文献",
+      "description": "从 Zotero 导入文献到项目（按 zotero_key 去重，固定复制 PDF）。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_keys": {
+            "description": "分类 key",
+            "items": {
+              "description": "分类 key",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "copy_pdfs": {
+            "description": "是否复制 PDF（仅允许 true）",
+            "type": "boolean"
+          },
+          "item_keys": {
+            "description": "条目 key",
+            "items": {
+              "description": "条目 key",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "library_id": {
+            "description": "Zotero 文库 ID，默认 0",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "literature"
+    },
+    {
+      "name": "paper_link",
+      "title": "关联文献到项目",
+      "description": "把全局文献关联到项目（只增删项目关联，不动全局副本）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "paper_list",
+      "title": "文献列表",
+      "description": "列出全局文献，或某项目关联的文献。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "imported_after": {
+            "description": "导入时间下界 RFC3339（实现不支持时忽略）",
+            "type": "string"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID（可选；提供时列出项目关联文献）",
+            "type": "string"
+          },
+          "q": {
+            "description": "标题/作者关键字",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "paper_note_create",
+      "title": "创建论文笔记",
+      "description": "为项目已关联的论文创建 Paper Note。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "paper_note_get",
+      "title": "论文笔记读取",
+      "description": "读取论文的 Paper Note（结构化字段、正文、关联）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "paper_note_save_body",
+      "title": "保存论文笔记正文",
+      "description": "以乐观并发保存 Paper Note 正文；base hash 不一致返回 CONFLICT。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "body_md": {
+            "description": "Markdown 正文",
+            "maxLength": 5242880,
+            "minLength": 0,
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "必填并发令牌 RFC3339",
+            "type": "string"
+          },
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body_md",
+          "expected_updated_at",
+          "note_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "paper_note_update",
+      "title": "更新论文笔记字段",
+      "description": "更新 Paper Note 的结构化字段或标题（整体替换 fields，未提供则不改）。expected_updated_at 必填。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_updated_at": {
+            "description": "必填并发令牌 RFC3339",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "description": "结构化字段 {summary, problem, method, contribution, limitations, understanding}",
+            "required": [],
+            "type": "object"
+          },
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at",
+          "note_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "paper_reconcile",
+      "title": "文献一致性诊断",
+      "description": "只读诊断文献副本：文件是否存在、哈希是否一致、上游状态。不自动修改。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "paper_refresh_metadata",
+      "title": "刷新文献元数据",
+      "description": "只刷新文献元数据，不触碰 PDF 副本。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_ids": {
+            "description": "文献 ID（可选）",
+            "items": {
+              "description": "文献 ID",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "description": "项目 ID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "literature"
+    },
+    {
+      "name": "paper_sync_apply",
+      "title": "确认覆盖本地文献副本",
+      "description": "请求用 Zotero 上游文件覆盖一篇文献的本地副本。工具只入队并冻结差异，必须在应用内逐篇人工批准；执行前重新校验上游哈希，变化则冲突不覆盖。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_new_hash": {
+            "description": "批准时所基于的上游哈希",
+            "type": "string"
+          },
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_new_hash",
+          "paper_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "literature"
+    },
+    {
+      "name": "paper_sync_check",
+      "title": "检查文献同步差异",
+      "description": "只读比对 Zotero 上游与本地副本（不写数据、不覆盖）。返回 job_id。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_ids": {
+            "description": "文献 ID（可选）",
+            "items": {
+              "description": "文献 ID",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "description": "项目 ID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "literature"
+    },
+    {
+      "name": "paper_unlink",
+      "title": "解除文献关联",
+      "description": "解除项目与文献的关联。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paper_id": {
+            "description": "文献 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "literature"
+    },
+    {
+      "name": "zotero_collections",
+      "title": "Zotero 分类列表",
+      "description": "列出 Zotero 文库下的分类。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "library_id": {
+            "description": "文库 ID，默认 0",
+            "type": "string"
+          },
+          "parent_key": {
+            "description": "父分类 key（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "zotero_items",
+      "title": "Zotero 条目列表",
+      "description": "浏览 Zotero 条目（导入前预览，不创建任何数据）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_key": {
+            "description": "分类 key",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "library_id": {
+            "description": "文库 ID，默认 0",
+            "type": "string"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 100",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "description": "查询关键字",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "zotero_libraries",
+      "title": "Zotero 文库列表",
+      "description": "列出 Zotero 文库。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "zotero_status",
+      "title": "Zotero 状态",
+      "description": "返回 Zotero 连接状态：数据目录、metadata 来源（本地 API/SQLite）与最近错误。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "literature"
+    },
+    {
+      "name": "activity_list",
+      "title": "活动列表",
+      "description": "读取项目 Activity（只读，按时间倒序）。MCP 与 AI 的写入分别以 actor=mcp / ai 记录。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "description": "操作者",
+            "enum": [
+              "user",
+              "mcp",
+              "ai"
+            ],
+            "type": "string"
+          },
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "entity_id": {
+            "description": "实体 ID",
+            "type": "string"
+          },
+          "entity_type": {
+            "description": "实体类型",
+            "type": "string"
+          },
+          "event_types": {
+            "description": "事件类型",
+            "items": {
+              "description": "事件类型",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "since": {
+            "description": "起始时间 RFC3339（含）",
+            "type": "string"
+          },
+          "until": {
+            "description": "结束时间 RFC3339（含）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "database_create",
+      "title": "创建数据库",
+      "description": "创建 Research Database，可同时创建初始字段。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "描述",
+            "type": "string"
+          },
+          "fields": {
+            "description": "初始字段",
+            "items": {
+              "additionalProperties": true,
+              "description": "字段 {name*, type*, options?}",
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "数据库名称",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "database_delete",
+      "title": "删除数据库",
+      "description": "软删除数据库（进入回收站，字段与记录保留）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "database_field_create",
+      "title": "新增字段",
+      "description": "为数据库新增字段。类型创建后不可修改。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "name": {
+            "description": "字段名称",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "options": {
+            "description": "字段配置（如选项数组）"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "type": {
+            "description": "字段类型",
+            "enum": [
+              "text",
+              "number",
+              "select",
+              "multi_select",
+              "date",
+              "checkbox",
+              "url",
+              "relation",
+              "tags"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "name",
+          "project_id",
+          "type"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "database_field_delete",
+      "title": "删除字段",
+      "description": "软删除字段，已录入的值保留。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌（可选）",
+            "type": "string"
+          },
+          "field_id": {
+            "description": "字段 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "field_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "database_field_update",
+      "title": "更新字段",
+      "description": "更新字段名称或选项。字段类型不可修改。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌（可选）",
+            "type": "string"
+          },
+          "field_id": {
+            "description": "字段 ID",
+            "type": "string"
+          },
+          "name": {
+            "description": "新名称",
+            "type": "string"
+          },
+          "options": {
+            "description": "字段配置"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "field_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "database_get",
+      "title": "数据库详情",
+      "description": "返回数据库定义、字段列表与记录数。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "database_list",
+      "title": "数据库列表",
+      "description": "列出项目的 Research Database。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_deleted": {
+            "description": "包含已删除的数据库",
+            "type": "boolean"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "database_update",
+      "title": "重命名数据库",
+      "description": "重命名 Research Database。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "name": {
+            "description": "新名称",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "name",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "note_create",
+      "title": "创建自由笔记",
+      "description": "创建一篇自由笔记（scratchpad）。论文笔记、记录页与文献综述请使用各自专用工具。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "body_md": {
+            "description": "Markdown 正文",
+            "type": "string"
+          },
+          "kind": {
+            "description": "笔记类型（仅允许 scratchpad）",
+            "enum": [
+              "scratchpad"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "note_delete",
+      "title": "删除笔记",
+      "description": "软删除笔记（进入回收站，可恢复）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "note_get",
+      "title": "笔记详情",
+      "description": "返回笔记元数据、Markdown 正文与附件列表。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_body": {
+            "description": "是否返回正文，默认 true",
+            "type": "boolean"
+          },
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "note_list",
+      "title": "笔记列表",
+      "description": "列出项目笔记，可按类型、标题关键字、标签过滤。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "include_deleted": {
+            "description": "包含已软删除的笔记",
+            "type": "boolean"
+          },
+          "kind": {
+            "description": "笔记类型",
+            "enum": [
+              "scratchpad",
+              "paper_note",
+              "db_record",
+              "overview"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "q": {
+            "description": "标题关键字",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "note_save_body",
+      "title": "保存笔记正文",
+      "description": "以乐观并发保存笔记正文。expected_hash 取自 note_get 的 body_hash；不一致返回 CONFLICT，不覆盖。同日多次保存合并为一条 note.updated。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "body_md": {
+            "description": "Markdown 正文",
+            "maxLength": 5242880,
+            "minLength": 0,
+            "type": "string"
+          },
+          "expected_hash": {
+            "description": "note_get 返回的 body_hash",
+            "type": "string"
+          },
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body_md",
+          "expected_hash",
+          "note_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "note_update_title",
+      "title": "修改笔记标题",
+      "description": "修改笔记标题。正文请使用 note_save_body。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "note_id": {
+            "description": "笔记 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "title": {
+            "description": "新标题",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "note_id",
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "record_create",
+      "title": "创建记录",
+      "description": "在数据库中创建一条记录，服务会同时创建记录页笔记。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": true,
+            "description": "字段值 {field_id: value}",
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [
+          "database_id",
+          "project_id",
+          "values"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "record_delete",
+      "title": "删除记录",
+      "description": "软删除记录，可选择同时删除记录页笔记。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "delete_note": {
+            "description": "同时删除记录页笔记",
+            "type": "boolean"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "记录 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "record_get",
+      "title": "记录详情",
+      "description": "返回一条记录及其字段值与关联笔记 ID。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "记录 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "record_list",
+      "title": "记录列表",
+      "description": "列出数据库记录，可带过滤树与排序。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "database_id": {
+            "description": "数据库 ID",
+            "type": "string"
+          },
+          "filter": {
+            "description": "过滤树 JSON"
+          },
+          "include_deleted": {
+            "description": "包含已删除记录",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "sort": {
+            "description": "排序 [{field_id, desc}]",
+            "items": {
+              "additionalProperties": true,
+              "description": "排序键",
+              "required": [
+                "field_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "database_id",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "record_update",
+      "title": "更新记录",
+      "description": "更新记录中提供的字段值（未提供的字段保持不变）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_updated_at": {
+            "description": "并发令牌（可选）",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "记录 ID",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": true,
+            "description": "字段值 {field_id: value}",
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [
+          "project_id",
+          "record_id",
+          "values"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "relation_add",
+      "title": "添加关系",
+      "description": "在两个实体间添加关系。仅接受注册表内的关系类型；跨项目关系被拒绝。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dst_id": {
+            "description": "目标实体 ID",
+            "type": "string"
+          },
+          "dst_type": {
+            "description": "目标实体类型",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "relation": {
+            "description": "关系类型",
+            "enum": [
+              "references",
+              "derived_from",
+              "validates",
+              "deliverable_of",
+              "related_to"
+            ],
+            "type": "string"
+          },
+          "src_id": {
+            "description": "来源实体 ID",
+            "type": "string"
+          },
+          "src_type": {
+            "description": "来源实体类型",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dst_id",
+          "dst_type",
+          "project_id",
+          "relation",
+          "src_id",
+          "src_type"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "relation_list",
+      "title": "关系列表",
+      "description": "列出一个实体的关系（按来源或目标）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dst_id": {
+            "description": "目标实体 ID",
+            "type": "string"
+          },
+          "dst_type": {
+            "description": "目标实体类型",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "relation": {
+            "description": "关系类型",
+            "enum": [
+              "references",
+              "derived_from",
+              "validates",
+              "deliverable_of",
+              "related_to"
+            ],
+            "type": "string"
+          },
+          "src_id": {
+            "description": "来源实体 ID",
+            "type": "string"
+          },
+          "src_type": {
+            "description": "来源实体类型",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "relation_remove",
+      "title": "移除关系",
+      "description": "移除两个实体间的关系。服务层没有按关系 ID 删除的入口，因此除 relation_id 外必须同时提供关系三元组。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dst_id": {
+            "description": "目标实体 ID",
+            "type": "string"
+          },
+          "dst_type": {
+            "description": "目标实体类型",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "relation": {
+            "description": "关系类型",
+            "enum": [
+              "references",
+              "derived_from",
+              "validates",
+              "deliverable_of",
+              "related_to"
+            ],
+            "type": "string"
+          },
+          "relation_id": {
+            "description": "关系 ID（用于审计回显）",
+            "type": "string"
+          },
+          "src_id": {
+            "description": "来源实体 ID",
+            "type": "string"
+          },
+          "src_type": {
+            "description": "来源实体类型",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dst_id",
+          "dst_type",
+          "project_id",
+          "relation",
+          "relation_id",
+          "src_id",
+          "src_type"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "trash_empty",
+      "title": "清空回收站",
+      "description": "请求永久清空项目回收站。必须携带预览得到的 expected_counts；执行前重算，不一致则冲突。实际清空需在应用内人工批准。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "只返回预览，不入队",
+            "type": "boolean"
+          },
+          "expected_counts": {
+            "additionalProperties": true,
+            "description": "预览得到的 {entity_type: count}",
+            "required": [],
+            "type": "object"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_counts",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "notes"
+    },
+    {
+      "name": "trash_empty_preview",
+      "title": "清空回收站预览",
+      "description": "返回回收站按类型计数与最早删除时间。清空前必须用该结果作为 expected_counts。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "trash_list",
+      "title": "回收站列表",
+      "description": "列出回收站内容。省略 project_id 时聚合所有项目。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID（可选）",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "notes"
+    },
+    {
+      "name": "trash_restore",
+      "title": "从回收站恢复",
+      "description": "恢复一个软删除实体。归档项目拒绝恢复，需先解归档。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "description": "实体 ID",
+            "type": "string"
+          },
+          "entity_type": {
+            "description": "实体类型",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_type",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "notes"
+    },
+    {
+      "name": "project_archive",
+      "title": "归档项目",
+      "description": "归档项目：项目变为只读，数据与目录保留，可随时解除归档。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "project"
+    },
+    {
+      "name": "project_create",
+      "title": "创建项目",
+      "description": "创建一个新项目。创建后可在应用内继续编辑焦点与设置。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "goals": {
+            "description": "项目目标",
+            "type": "string"
+          },
+          "name": {
+            "description": "项目名称",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "summary": {
+            "description": "项目摘要",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "project"
+    },
+    {
+      "name": "project_delete",
+      "title": "永久删除项目",
+      "description": "请求永久删除项目及其数据。工具只计算影响并入队，必须在 ResearchOS 应用内人工批准；dry_run=true 只返回影响预览。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "只返回影响预览，不入队",
+            "type": "boolean"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "project"
+    },
+    {
+      "name": "project_export",
+      "title": "导出项目",
+      "description": "导出项目为 folder/zip/tar.gz 包，固定包含全部关联文献 PDF。返回 job_id，可用 job_get 轮询。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dest_dir": {
+            "description": "目标目录（绝对路径，必须存在且可写；省略时为 \u003c工作区\u003e/exports）",
+            "type": "string"
+          },
+          "format": {
+            "description": "导出格式",
+            "enum": [
+              "folder",
+              "zip",
+              "tar_gz"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "project"
+    },
+    {
+      "name": "project_get",
+      "title": "项目详情",
+      "description": "返回一个项目的元数据、实体计数与数据目录状态。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "project"
+    },
+    {
+      "name": "project_list",
+      "title": "项目列表",
+      "description": "列出工作区项目，可按状态与关键词过滤。归档项目仅在 status=archived 或显式包含时返回。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "limit": {
+            "description": "返回条数，默认 50，上限 200",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "description": "名称/摘要关键字",
+            "type": "string"
+          },
+          "status": {
+            "description": "项目状态",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "project"
+    },
+    {
+      "name": "project_overview",
+      "title": "项目总览",
+      "description": "返回项目总览聚合（焦点、活跃 Idea、近期实验、我的任务、近期笔记、文献、阻塞任务、周进度）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "project"
+    },
+    {
+      "name": "project_unarchive",
+      "title": "解除归档",
+      "description": "解除项目归档，恢复读写。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "project"
+    },
+    {
+      "name": "project_update",
+      "title": "更新项目",
+      "description": "更新项目名称、摘要、目标或焦点。重命名不会改变项目目录名。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_updated_at": {
+            "description": "并发令牌（可选）",
+            "type": "string"
+          },
+          "goals": {
+            "description": "项目目标",
+            "type": "string"
+          },
+          "name": {
+            "description": "项目名称",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "summary": {
+            "description": "项目摘要",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "project"
+    },
+    {
+      "name": "report_confirm",
+      "title": "确认周报",
+      "description": "请求确认周报。工具只入队，必须在应用内人工批准后以 actor=user 执行。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "C",
+      "module": "weekly"
+    },
+    {
+      "name": "report_create",
+      "title": "创建周报",
+      "description": "创建一个空 draft 周报。内容可用 report_generate 生成或 report_update 写入。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "period_end": {
+            "description": "周期结束日期 YYYY-MM-DD",
+            "maxLength": 10,
+            "minLength": 10,
+            "type": "string"
+          },
+          "period_start": {
+            "description": "周期开始日期 YYYY-MM-DD",
+            "maxLength": 10,
+            "minLength": 10,
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_end",
+          "period_start",
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "weekly"
+    },
+    {
+      "name": "report_delete",
+      "title": "删除周报",
+      "description": "软删除周报（进入回收站）。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "weekly"
+    },
+    {
+      "name": "report_export",
+      "title": "导出周报",
+      "description": "把周报导出为 Markdown 文件。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dest_dir": {
+            "description": "目标目录（绝对路径，可省略）",
+            "type": "string"
+          },
+          "format": {
+            "description": "导出格式（仅 md）",
+            "enum": [
+              "md"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "weekly"
+    },
+    {
+      "name": "report_generate",
+      "title": "生成周报草稿",
+      "description": "依据活动汇总生成周报 draft（AI 不可用时降级为确定性骨架）。返回 job_id。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "replace": {
+            "description": "是否覆盖已有内容，默认 false",
+            "type": "boolean"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "weekly"
+    },
+    {
+      "name": "report_get",
+      "title": "周报详情",
+      "description": "返回周报元数据与 Markdown 正文。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "weekly"
+    },
+    {
+      "name": "report_list",
+      "title": "周报列表",
+      "description": "列出项目周报，按周期倒序。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "上一页返回的 next_cursor",
+            "type": "string"
+          },
+          "limit": {
+            "description": "每页条数，默认 20，上限 100",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "weekly"
+    },
+    {
+      "name": "report_update",
+      "title": "编辑周报正文",
+      "description": "替换周报 Markdown 正文（仅 draft 可改）。可带 expected_updated_at 做乐观并发。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "content_md": {
+            "description": "Markdown 正文",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "description": "并发令牌 RFC3339",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "report_id": {
+            "description": "周报 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_md",
+          "project_id",
+          "report_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "W",
+      "module": "weekly"
+    }
+  ],
+  "ttlMs": 60000
+}
