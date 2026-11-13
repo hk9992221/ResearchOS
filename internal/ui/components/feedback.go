@@ -243,3 +243,53 @@ func (u *UI) Spinner(size float32) ui.Element {
 	}
 	return ui.Spinner(u.C).Size(size, size)
 }
+
+// ToastOptions configures one global feedback message.
+type ToastOptions struct {
+	Tone    Tone
+	Title   string
+	Message string
+	// OnDismiss closes the toast.
+	OnDismiss func()
+}
+
+// ToastCard builds one feedback message: a surface panel with the tone icon,
+// the title, the message and a close button. The panel floats above the page
+// but never takes the keyboard focus by itself.
+func (u *UI) ToastCard(o ToastOptions) ui.Element {
+	p := u.T.Palette
+	fg := u.foreground(o.Tone)
+	row := ui.Row(u.C).
+		FillWidth().
+		Padding(tokens.Space3, tokens.PanelPadding).
+		Gap(tokens.RelatedGap).
+		AlignItems(ui.Start).
+		Background(mygo.Color(p.BgSurface)).
+		Border(1, mygo.Color(fg.Mix(p.BgSurface, 0.55))).
+		Radius(tokens.RadiusLG).
+		Shadow(0, 4, 12, 0, mygo.Color(tokens.Shadow))
+	row.Children(func() {
+		u.Icon(bannerIcon(o.Tone), icons.SizeAction).TextColor(mygo.Color(fg))
+		ui.Column(u.C).Grow(1).Gap(tokens.Space1).Children(func() {
+			if o.Title != "" {
+				ui.Text(u.C, o.Title).
+					FontSize(tokens.Typography.Body.Size).
+					FontWeight(int(tokens.WeightSemibold)).
+					TextColor(mygo.Color(p.TextPrimary))
+			}
+			if o.Message != "" {
+				ui.Text(u.C, o.Message).
+					FontSize(tokens.Typography.Secondary.Size).
+					TextColor(mygo.Color(p.TextSecondary))
+			}
+		})
+		if o.OnDismiss != nil {
+			u.IconButton(icons.Close, "Dismiss", IconButtonOptions{
+				Variant: VariantGhost,
+				Size:    SizeSmall,
+				OnClick: o.OnDismiss,
+			})
+		}
+	})
+	return row
+}
