@@ -201,3 +201,35 @@ func (m *Service) resolveJob(id string) string {
 	}
 	return id
 }
+
+// CreateProject creates a project through SPEC-03's service. The SPEC-03
+// Create signature carries no actor parameter (its entity.created event is
+// fixed to the local user); SPEC-11 records that deviation instead of forking
+// the service. See the SPEC-11 §7.1 actor note.
+func (m *Service) CreateProject(ctx context.Context, in project.CreateInput) (*project.Project, error) {
+	svc, err := m.projects()
+	if err != nil {
+		return nil, err
+	}
+	return svc.Create(ctx, in)
+}
+
+// UpdateProject edits a project as actor=mcp so the entity.updated event is
+// attributable to the tool call (§7.1).
+func (m *Service) UpdateProject(ctx context.Context, in project.UpdateInput) (*project.Project, error) {
+	svc, err := m.projects()
+	if err != nil {
+		return nil, err
+	}
+	in.Actor = ports.ActorMCP
+	return svc.Update(ctx, in)
+}
+
+// ProjectResources returns the §5.3 resource summary used by project_get.
+func (m *Service) ProjectResources(ctx context.Context, projectID string) (*project.Resources, error) {
+	svc, err := m.projects()
+	if err != nil {
+		return nil, err
+	}
+	return svc.Resources(ctx, projectID)
+}
