@@ -32,8 +32,11 @@ type WireOptions struct {
 	Confirm  confirm.Service
 	Settings *settings.Store
 
-	AI      output.GenerationService
-	Outputs output.AIOutputService
+	// AIFor resolves the SPEC-02 generation and output services bound to one
+	// project's database. The composition root owns the stack: generation
+	// writes the project's ai_outputs rows, so a single service cannot serve
+	// several projects. Nil leaves AI-backed tools reporting ai_unavailable.
+	AIFor func(ctx context.Context, projectID string) (output.GenerationService, output.AIOutputService, error)
 
 	// Facade is the SPEC-03 project allow-list.
 	Facade *mcpfacade.Service
@@ -127,8 +130,7 @@ func Wire(opts WireOptions) (*App, error) {
 		Version:       opts.Version,
 		Confirm:       opts.Confirm,
 		Settings:      settingsStore,
-		AI:            opts.AI,
-		Outputs:       opts.Outputs,
+		AIFor:         opts.AIFor,
 		Confirmations: confirmations,
 		Jobs:          jobs,
 		Facade:        opts.Facade,
@@ -297,7 +299,7 @@ func (r RuntimeStatus) Status(ctx context.Context) (mcp.Status, error) {
 		AccessMode:      values.AccessMode,
 		WorkspaceRoot:   root,
 		Modules:         modules,
-		AIAvailable:     r.Deps.AI != nil,
+		AIAvailable:     r.Deps.aiAvailable(),
 		ZoteroAvailable: zoteroOK,
 		Transports:      []string{mcp.TransportStdio, mcp.TransportHTTP},
 	}, nil

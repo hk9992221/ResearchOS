@@ -307,7 +307,7 @@ func Research(s Services) map[ports.RouteKind]shell.Page {
 		app.RouteWeeklyReview:   weeklyList.Page,
 		ports.RouteWeeklyReport: weeklyReport.Page,
 
-		app.RouteIdeas: ideasList.Page,
+		app.RouteIdeas:  ideasList.Page,
 		ports.RouteIdea: ideaPage.Page,
 	}
 }

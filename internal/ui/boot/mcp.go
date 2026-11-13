@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"researchos/internal/ai/gateway"
 	aimigrations "researchos/internal/ai/migrations"
 	"researchos/internal/export"
 	"researchos/internal/foundation/clock"
@@ -87,6 +88,18 @@ func (appLogger) Warn(msg string, kv ...any) { log.Printf("WARN  %s %v", msg, kv
 
 func (appLogger) Error(msg string, kv ...any) { log.Printf("ERROR %s %v", msg, kv) }
 
+// LogCall implements the SPEC-02 gateway logger: one line per AI call with
+// metadata only, never prompts, bodies or keys (§5.8.8).
+func (appLogger) LogCall(m gateway.CallMeta) {
+	if m.OK {
+		log.Printf("AI    %s provider=%s model=%s attempts=%d elapsed=%s",
+			m.Operation, m.ProviderName, m.Model, m.Attempts, m.Elapsed)
+		return
+	}
+	log.Printf("AIERR %s provider=%s model=%s attempts=%d elapsed=%s kind=%s status=%d",
+		m.Operation, m.ProviderName, m.Model, m.Attempts, m.Elapsed, m.ErrorKind, m.StatusCode)
+}
+
 // newSearch builds the SPEC-10 retrieval service shared by the MCP tools and
 // the Literature page's post-commit index hook. Keyword recall works without
 // an embedding provider; vector recall reports vector_unavailable
@@ -111,8 +124,10 @@ type mcpService struct {
 // returned: the desktop application stays usable without the bridge, and the
 // diagnostics page reports why the server is down. searchSvc may be nil, in
 // which case the SPEC-11 §2.2 rule applies and the search tools stay
-// unpublished.
-func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service, searchSvc *search.Service) *mcpService {
+// unpublished. ai carries the workspace's SPEC-02 stack so the AI-backed tools
+// work exactly like the pages; a nil stack leaves them reporting
+// ai_unavailable.
+func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service, searchSvc *search.Service, ai *aiModule) *mcpService {
 	host := &mcpService{done: make(chan struct{})}
 	socket, err := mcp.SocketPath()
 	if err != nil {
@@ -127,7 +142,7 @@ func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore
 		Export:    export.New(export.Options{Workspace: ws}),
 		Workspace: ws,
 	})
-	bound, err := mcpbind.Wire(mcpbind.WireOptions{
+	wireOpts := mcpbind.WireOptions{
 		Workspace:    ws,
 		Clock:        ws.Clock(),
 		Logger:       appLogger{},
@@ -136,7 +151,13 @@ func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore
 		Facade:       facade,
 		Search:       searchSvc,
 		ProjectAdmin: projects,
-	})
+	}
+	if ai.available() {
+		// The stack is workspace-scoped; the bindings need one output service
+		// per project database, so they resolve it through this factory.
+		wireOpts.AIFor = ai.servicesFor
+	}
+	bound, err := mcpbind.Wire(wireOpts)
 	if err != nil {
 		host.fail(err)
 		return host

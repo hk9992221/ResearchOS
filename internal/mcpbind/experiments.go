@@ -15,8 +15,8 @@ func (d *Deps) experimentService(ctx context.Context, projectID string) (*experi
 		return nil, err
 	}
 	opts := experiments.Options{Clock: d.clock(), Logger: d.Logger}
-	if d.AI != nil && d.Outputs != nil {
-		opts.AI = &experiments.AIConfig{Generator: d.AI, Outputs: d.Outputs}
+	if gen, outs, ok := d.ai(ctx, projectID); ok {
+		opts.AI = &experiments.AIConfig{Generator: gen, Outputs: outs}
 	}
 	return experiments.New(d.Workspace, projectID, opts), nil
 }
@@ -313,7 +313,7 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if d.AI == nil {
+				if !d.aiAvailable() {
 					return mcp.ToolOutcome{}, mcp.Errorf(mcp.CodeAIUnavailable, "AI 服务未配置，无法生成实验提纲")
 				}
 				svc, err := d.experimentService(ctx, projectID)
@@ -358,7 +358,7 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if d.AI == nil {
+				if !d.aiAvailable() {
 					return mcp.ToolOutcome{}, mcp.Errorf(mcp.CodeAIUnavailable, "AI 服务未配置，无法分析实验结果")
 				}
 				runIDs, _, err := a.Strings("run_ids")
