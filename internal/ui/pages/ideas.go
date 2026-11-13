@@ -118,9 +118,9 @@ type IdeasAPI interface {
 	// PaperURL resolves the Zotero selection URI of a paper, so a click on a
 	// paper relation opens it in the library that owns it.
 	PaperURL(ctx context.Context, projectID, paperID string) (string, error)
-	// AIAvailable reports whether the SPEC-02 chat client was wired for this
-	// workspace. A false value disables the evidence skill with a pointer to
-	// Settings (SPEC-06 §6.6, AC-21).
+	// AIAvailable reports whether a chat provider is assigned for this workspace
+	// (the local check, no network). A false value disables the evidence skill
+	// with a pointer to Settings (SPEC-06 §6.6, AC-21).
 	AIAvailable() bool
 }
 

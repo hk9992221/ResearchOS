@@ -32,12 +32,15 @@ type weeklyModule struct {
 	ws       *fworkspace.Workspace
 	stack    *wire.Stack
 	settings *settings.Store
+	// ready reports whether a chat provider is assigned; nil disables AI
+	// generation and leaves the deterministic skeleton path.
+	ready func() bool
 }
 
 var _ pages.WeeklyAPI = (*weeklyModule)(nil)
 
-func newWeeklyModule(ws *fworkspace.Workspace, stack *wire.Stack, settings *settings.Store) *weeklyModule {
-	return &weeklyModule{ws: ws, stack: stack, settings: settings}
+func newWeeklyModule(ws *fworkspace.Workspace, stack *wire.Stack, settings *settings.Store, ready func() bool) *weeklyModule {
+	return &weeklyModule{ws: ws, stack: stack, settings: settings, ready: ready}
 }
 
 // service resolves the SPEC-09 service of one project. The AI collaborators
@@ -178,9 +181,11 @@ func (m *weeklyModule) Export(ctx context.Context, projectID string, in weeklyre
 	return svc.Export(ctx, in)
 }
 
-// AIEnabled reports whether a generation stack is bound for this workspace.
+// AIEnabled reports whether a chat provider is assigned, so the generation
+// dialog names the deterministic skeleton and points at Settings instead of
+// letting the model stage fail.
 func (m *weeklyModule) AIEnabled(projectID string) bool {
-	return m.stack != nil && m.stack.Gateway != nil
+	return m != nil && m.stack != nil && m.stack.Gateway != nil && m.ready != nil && m.ready()
 }
 
 // RevealFolder opens dir with the OS file manager (SPEC-09 §6.4). It is the

@@ -404,11 +404,14 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	s.Notes = noteAPI
 	s.Kanban = newKanbanModule(ws)
 	// The stack is nil when the AI build failed: every module then runs its
-	// documented manual path instead of failing construction.
+	// documented manual path instead of failing construction. ready answers the
+	// local "is a chat provider assigned" check, so a workspace without one
+	// shows the disabled entry instead of an enabled one that fails.
 	stack := ai.stackOrNil()
-	s.Experiments = newExperimentsModule(ws, stack)
-	s.Weekly = newWeeklyModule(ws, stack, settingsStore)
-	s.Ideas = newIdeasModule(ws, stack)
+	ready := ai.chatReady
+	s.Experiments = newExperimentsModule(ws, stack, ready)
+	s.Weekly = newWeeklyModule(ws, stack, settingsStore, ready)
+	s.Ideas = newIdeasModule(ws, stack, ready)
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
 	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}

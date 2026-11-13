@@ -75,6 +75,11 @@ type ExperimentsAPI interface {
 	LinkIdea(ctx context.Context, projectID, experimentID, ideaID string, actor ports.Actor) error
 	UnlinkIdea(ctx context.Context, projectID, experimentID, ideaID string, actor ports.Actor) error
 	ListIdeas(ctx context.Context, projectID, experimentID string) ([]experiments.IdeaRef, error)
+
+	// AIAvailable reports whether a chat provider is assigned for this
+	// workspace. A false value disables the generation footer with the 去设置
+	// hint instead of failing per call (SPEC-07 AC-15).
+	AIAvailable() bool
 }
 
 const (

@@ -30,6 +30,9 @@ import (
 type experimentsModule struct {
 	ws    *fworkspace.Workspace
 	stack *wire.Stack
+	// ready reports whether a chat provider is assigned; nil disables the AI
+	// actions, exactly like a nil stack.
+	ready func() bool
 
 	mu       sync.Mutex
 	services map[string]*experiments.Service
@@ -37,10 +40,11 @@ type experimentsModule struct {
 
 var _ pages.ExperimentsAPI = (*experimentsModule)(nil)
 
-func newExperimentsModule(ws *fworkspace.Workspace, stack *wire.Stack) *experimentsModule {
+func newExperimentsModule(ws *fworkspace.Workspace, stack *wire.Stack, ready func() bool) *experimentsModule {
 	return &experimentsModule{
 		ws:       ws,
 		stack:    stack,
+		ready:    ready,
 		services: make(map[string]*experiments.Service),
 	}
 }
@@ -76,6 +80,14 @@ func (m *experimentsModule) service(ctx context.Context, projectID string) *expe
 	m.services[projectID] = svc
 	m.mu.Unlock()
 	return svc
+}
+
+// AIAvailable reports whether a chat provider is assigned for this workspace:
+// the SPEC-02 stack must exist and chat_main must resolve locally, so the
+// generation footer disables its entry with the 去设置 hint instead of failing
+// per call (SPEC-07 AC-15).
+func (m *experimentsModule) AIAvailable() bool {
+	return m != nil && m.stack != nil && m.stack.Gateway != nil && m.ready != nil && m.ready()
 }
 
 // aiConfig builds the SPEC-02 generation and output services of one project.

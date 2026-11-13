@@ -40,6 +40,7 @@
   "pages.weekly_review.btn_restore": "Restore",
   "pages.weekly_review.btn_reveal": "Show in folder",
   "pages.weekly_review.btn_revert": "Reopen as draft",
+  "pages.weekly_review.btn_settings": "Open settings",
   "pages.weekly_review.btn_undo_regen": "Undo, restore the previous body",
   "pages.weekly_review.checks_clean_message": "No findings: errors, warnings and acknowledgements are all clear.",
   "pages.weekly_review.checks_clean_title": "The report passes validation",

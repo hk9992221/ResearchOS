@@ -40,6 +40,7 @@
   "pages.weekly_review.btn_restore": "恢复",
   "pages.weekly_review.btn_reveal": "打开所在文件夹",
   "pages.weekly_review.btn_revert": "撤回为草稿",
+  "pages.weekly_review.btn_settings": "去设置",
   "pages.weekly_review.btn_undo_regen": "撤销，恢复原正文",
   "pages.weekly_review.checks_clean_message": "没有校验项：错误、警告与确认均无遗留。",
   "pages.weekly_review.checks_clean_title": "报告通过校验",

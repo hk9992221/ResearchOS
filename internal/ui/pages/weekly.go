@@ -62,9 +62,10 @@ func (s *weeklyShared) version() int {
 // open project, because one adapter serves the workspace; a nil field means the
 // module is not assembled and the page says so instead of faking data.
 //
-// AIEnabled reports whether the composition root bound the SPEC-02 generation
-// service. False is a supported mode: generation then writes the deterministic
-// seven-section skeleton (weeklyreview's documented degradation).
+// AIEnabled reports whether a chat provider is assigned for this workspace
+// (the local check, no network). False is a supported mode: generation then
+// writes the deterministic seven-section skeleton and the dialog points at
+// Settings.
 //
 // RevealFolder opens a directory in the operating system's file manager. It
 // lives here because shell.revealFolder is package-private; the boot adapter
@@ -698,6 +699,12 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 					ui.Text(v.C, i18n.T("pages.weekly_review.preview_no_ai")).
 						FontSize(tokens.Typography.Secondary.Size).
 						TextColor(mygo.Color(v.T.Palette.StatusWarning))
+					v.Button(i18n.T("pages.weekly_review.btn_settings"), components.ButtonOptions{
+						Variant: components.VariantGhost,
+						Size:    components.SizeSmall,
+						Icon:    icons.Settings,
+						OnClick: func() { a.Navigate(ports.Route{Kind: ports.RouteSettings}) },
+					})
 				}
 				if n.needOverwrite {
 					v.Checkbox(&n.genOverwrite, i18n.T("pages.weekly_review.preview_overwrite"), components.ToggleOptions{

@@ -154,8 +154,11 @@ func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore
 	}
 	if ai.available() {
 		// The stack is workspace-scoped; the bindings need one output service
-		// per project database, so they resolve it through this factory.
+		// per project database, so they resolve it through this factory. The
+		// readiness probe keeps the tool gates and server_status truthful
+		// when no chat provider is assigned yet.
 		wireOpts.AIFor = ai.servicesFor
+		wireOpts.AIReady = ai.chatReady
 	}
 	bound, err := mcpbind.Wire(wireOpts)
 	if err != nil {

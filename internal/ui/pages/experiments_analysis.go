@@ -313,15 +313,30 @@ func (d *ExperimentDetail) generationFooter(v *components.UI, a *app.App, projec
 	confirming := d.confirmingSnap != ""
 	d.mu.Unlock()
 	confirmed := meta != nil && strings.EqualFold(strings.TrimSpace(meta.AIStatus), "confirmed")
+	available := d.API.AIAvailable()
+	tooltip := expReadOnlyTooltip(readOnly)
+	if !available && !readOnly {
+		tooltip = i18n.T("pages.experiments.err_ai_unavailable")
+	}
 	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Wrap().Children(func() {
 		if v.Button(expGenerateLabel(snap != nil, readOnly), components.ButtonOptions{
 			Variant:  components.VariantPrimary,
 			Icon:     icons.Refresh,
 			Loading:  busy,
-			Disabled: busy || readOnly,
-			Tooltip:  expReadOnlyTooltip(readOnly),
+			Disabled: busy || readOnly || !available,
+			Tooltip:  tooltip,
 		}).Clicked() {
 			d.generate(a, projectID, exp, run, kind)
+		}
+		if !available {
+			// The SPEC-07 AC-15 hint: the entry stays visible, disabled, and
+			// points at the only place a provider can be assigned.
+			v.Button(i18n.T("pages.experiments.btn_settings"), components.ButtonOptions{
+				Variant: components.VariantGhost,
+				Size:    components.SizeSmall,
+				Icon:    icons.Settings,
+				OnClick: func() { a.Navigate(ports.Route{Kind: ports.RouteSettings}) },
+			})
 		}
 		if v.Button(i18n.T("pages.experiments.btn_context_preview"), components.ButtonOptions{
 			Variant: components.VariantSecondary,

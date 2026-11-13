@@ -14,8 +14,10 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"researchos/internal/ai/output"
+	"researchos/internal/ai/role"
 	"researchos/internal/ai/wire"
 	"researchos/internal/foundation/clock"
 	fworkspace "researchos/internal/foundation/workspace"
@@ -25,11 +27,53 @@ import (
 // services cannot be. Callers treat it as ai.disabled, never as a hard error.
 var errAIUnavailable = errors.New("boot: AI 服务栈未构建")
 
+// chatProbeTTL bounds how long a chat readiness answer is cached: the pages ask
+// on every frame, while a provider assigned in Settings should light the AI
+// entries up without reopening the workspace.
+const chatProbeTTL = 30 * time.Second
+
+// chatProbe answers "is a chat provider assigned to chat_main" from global.db
+// only. role.Resolve reads the assignment, the provider row and the model row
+// (never the network and never a secret), so the check is safe to run from the
+// UI thread; the TTL keeps it off the hot path.
+type chatProbe struct {
+	roles role.Service
+
+	mu    sync.Mutex
+	at    time.Time
+	ready bool
+	known bool
+}
+
+func newChatProbe(roles role.Service) *chatProbe { return &chatProbe{roles: roles} }
+
+// readyNow reports whether chat_main resolves to an enabled provider and an
+// available model. A nil probe is not ready.
+func (p *chatProbe) readyNow() bool {
+	if p == nil || p.roles == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.known && time.Since(p.at) < chatProbeTTL {
+		return p.ready
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := p.roles.Resolve(ctx, role.RoleChatMain)
+	p.ready, p.at, p.known = err == nil, time.Now(), true
+	return p.ready
+}
+
 // aiModule serves one open workspace. The stack is workspace-scoped; the
 // generation and output services are project-scoped and cached by project id.
 type aiModule struct {
 	ws    *fworkspace.Workspace
 	stack *wire.Stack
+	// ready is the local chat_main assignment check the pages and MCP use for
+	// their AI availability signals; the per-call role_unassigned error stays
+	// the backstop when an assignment disappears mid-session.
+	ready *chatProbe
 
 	mu       sync.Mutex
 	services map[string]aiProjectServices
@@ -44,13 +88,21 @@ type aiProjectServices struct {
 }
 
 func newAIModule(ws *fworkspace.Workspace, stack *wire.Stack) *aiModule {
-	return &aiModule{ws: ws, stack: stack, services: map[string]aiProjectServices{}}
+	return &aiModule{ws: ws, stack: stack, ready: newChatProbe(stack.Roles), services: map[string]aiProjectServices{}}
 }
 
 // available reports whether the workspace has a usable stack. It is the flag
 // the modules and the MCP status surface as AI availability.
 func (m *aiModule) available() bool {
 	return m != nil && m.stack != nil && m.stack.Gateway != nil
+}
+
+// chatReady reports whether the stack exists and a chat provider is actually
+// assigned. The pages and the MCP surface use it instead of available() so a
+// workspace without providers shows the disabled entry and the 去设置 hint
+// (§SPEC-06 6.6, §SPEC-09) instead of failing per call.
+func (m *aiModule) chatReady() bool {
+	return m.available() && m.ready.readyNow()
 }
 
 // stackOrNil returns the stack for the page adapters, which construct their

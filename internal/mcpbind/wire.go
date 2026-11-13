@@ -37,6 +37,10 @@ type WireOptions struct {
 	// writes the project's ai_outputs rows, so a single service cannot serve
 	// several projects. Nil leaves AI-backed tools reporting ai_unavailable.
 	AIFor func(ctx context.Context, projectID string) (output.GenerationService, output.AIOutputService, error)
+	// AIReady reports whether a chat provider is assigned right now. It keeps
+	// server_status and the AI tool gates truthful without a network call; nil
+	// means the composition root did not supply a probe, so AIFor decides.
+	AIReady func() bool
 
 	// Facade is the SPEC-03 project allow-list.
 	Facade *mcpfacade.Service
@@ -131,6 +135,7 @@ func Wire(opts WireOptions) (*App, error) {
 		Confirm:       opts.Confirm,
 		Settings:      settingsStore,
 		AIFor:         opts.AIFor,
+		AIReady:       opts.AIReady,
 		Confirmations: confirmations,
 		Jobs:          jobs,
 		Facade:        opts.Facade,

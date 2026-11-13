@@ -50,6 +50,7 @@
   "pages.experiments.btn_run_scan": "Run scan",
   "pages.experiments.btn_scan_preview": "Scan preview",
   "pages.experiments.btn_set_status": "Set status",
+  "pages.experiments.btn_settings": "Open settings",
   "pages.experiments.btn_show_diff": "Show diff",
   "pages.experiments.btn_unlink": "Unlink idea",
   "pages.experiments.cand_create": "Create run",

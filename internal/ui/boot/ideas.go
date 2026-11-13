@@ -38,6 +38,9 @@ const ideaCandidateLimit = 20
 type ideasModule struct {
 	ws    *fworkspace.Workspace
 	stack *wire.Stack
+	// ready reports whether a chat provider is assigned; nil disables the AI
+	// entry, exactly like a nil stack.
+	ready func() bool
 
 	mu   sync.Mutex
 	gens map[string]output.GenerationService
@@ -45,8 +48,8 @@ type ideasModule struct {
 
 var _ pages.IdeasAPI = (*ideasModule)(nil)
 
-func newIdeasModule(ws *fworkspace.Workspace, stack *wire.Stack) *ideasModule {
-	return &ideasModule{ws: ws, stack: stack, gens: map[string]output.GenerationService{}}
+func newIdeasModule(ws *fworkspace.Workspace, stack *wire.Stack, ready func() bool) *ideasModule {
+	return &ideasModule{ws: ws, stack: stack, ready: ready, gens: map[string]output.GenerationService{}}
 }
 
 // service returns the Ideas service of one project.
@@ -108,9 +111,11 @@ func (m *ideasModule) generation(ctx context.Context, projectID string) output.G
 	return gen
 }
 
-// AIAvailable reports whether the SPEC-02 stack was built for this workspace.
+// AIAvailable reports whether a chat provider is assigned for this workspace:
+// the SPEC-02 stack must exist and chat_main must resolve locally. A false
+// value disables the evidence skill with the 去设置 hint (SPEC-06 §6.6).
 func (m *ideasModule) AIAvailable() bool {
-	return m != nil && m.stack != nil && m.stack.Gateway != nil
+	return m != nil && m.stack != nil && m.stack.Gateway != nil && m.ready != nil && m.ready()
 }
 
 func (m *ideasModule) CreateIdea(ctx context.Context, projectID string, in ideas.CreateIdeaInput) (*ideas.Idea, error) {

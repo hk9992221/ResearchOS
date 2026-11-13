@@ -48,6 +48,10 @@ type Deps struct {
 	// project's database. It is injected by the composition root, which owns
 	// the workspace stack; nil disables every AI-backed tool (see ai()).
 	AIFor func(ctx context.Context, projectID string) (output.GenerationService, output.AIOutputService, error)
+	// AIReady reports whether a chat provider is assigned right now, so the
+	// status and the tool gates match what a call would do. Nil defers to
+	// AIFor being wired at all.
+	AIReady func() bool
 
 	// Confirmations and Jobs are the runtime ports from internal/mcp.
 	Confirmations mcp.ConfirmationBroker
@@ -131,10 +135,14 @@ func (d *Deps) projectExists(ctx context.Context, projectID string) error {
 	return err
 }
 
-// aiAvailable reports whether the composition root supplied an AI stack. The
-// AI-backed tools use it to fail before submitting a job.
+// aiAvailable reports whether AI is usable now: the composition root supplied
+// the stack and a chat provider is assigned. The AI-backed tools use it to fail
+// before submitting a job.
 func (d *Deps) aiAvailable() bool {
-	return d != nil && d.AIFor != nil
+	if d == nil || d.AIFor == nil {
+		return false
+	}
+	return d.AIReady == nil || d.AIReady()
 }
 
 // ai resolves the SPEC-02 services of one project. A nil factory, or a failure

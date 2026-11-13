@@ -50,6 +50,7 @@
   "pages.experiments.btn_run_scan": "运行扫描",
   "pages.experiments.btn_scan_preview": "扫描预览",
   "pages.experiments.btn_set_status": "设置状态",
+  "pages.experiments.btn_settings": "去设置",
   "pages.experiments.btn_show_diff": "查看差异",
   "pages.experiments.btn_unlink": "取消关联",
   "pages.experiments.cand_create": "创建 Run",
