@@ -1,6 +1,7 @@
 {
   "shell.nav.section_workspace": "Workspace",
-  "shell.nav.section_project": "Project",
+  "shell.nav.projects_fold": "Collapse project navigation",
+  "shell.nav.projects_expand": "Expand project navigation",
   "shell.topbar.toggle_sidebar": "Toggle sidebar",
   "shell.topbar.search_placeholder": "Search (Ctrl+K)",
   "shell.topbar.search_label": "Global search",

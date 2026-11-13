@@ -59,7 +59,10 @@ type NavItemOptions struct {
 	// accessible name. The rail is 64px wide: the label must stay readable
 	// for assistive technology.
 	Collapsed bool
-	OnClick   func()
+	// Grow takes the free width of a parent row instead of filling it, so
+	// a control (a disclosure chevron, say) can sit beside the item.
+	Grow    bool
+	OnClick func()
 }
 
 // NavItem builds a navigation row with the design system's selected, hover,
@@ -68,7 +71,6 @@ func (u *UI) NavItem(o NavItemOptions) ui.Element {
 	p := u.T.Palette
 	item := ui.ButtonBase(u.C).
 		Key(o.ID).
-		FillWidth().
 		Height(tokens.Space8).
 		Padding(tokens.Space1, tokens.Space2).
 		Radius(tokens.RadiusMD).
@@ -76,8 +78,17 @@ func (u *UI) NavItem(o NavItemOptions) ui.Element {
 		Gap(tokens.Space2).
 		AlignItems(ui.Center).
 		Label(o.Label)
+	if o.Grow {
+		item.Grow(1)
+	} else {
+		item.FillWidth()
+	}
+	// ButtonBase centers its children; the sidebar reads as a list, so
+	// expanded rows start at the left edge and only the rail centers.
 	if o.Collapsed {
 		item.Justify(ui.Center).Tooltip(o.Label)
+	} else {
+		item.Justify(ui.Start)
 	}
 	if o.Selected {
 		item.Background(mygo.Color(p.AccentSubtle)).

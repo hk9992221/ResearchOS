@@ -62,6 +62,10 @@ type Shell struct {
 	paletteQuery string
 	paletteSel   int
 	projectsOnce atomic.Bool
+
+	// projectsFolded hides the project module entries nested under the
+	// Projects nav item; the chevron toggles it in place.
+	projectsFolded bool
 }
 
 // New builds a shell. App and Theme are required: without them the frame
@@ -164,25 +168,13 @@ func (s *Shell) sidebar(v *components.UI, collapsed bool, width float32) {
 			v.NavSection(i18n.T("shell.nav.section_workspace"), collapsed, func() {
 				s.navItems(v, collapsed, []navEntry{
 					{app.RouteHome, icons.Home, false},
-					{app.RouteProjects, icons.Projects, false},
+				})
+				s.projectsGroup(v, collapsed)
+				s.navItems(v, collapsed, []navEntry{
 					{app.RouteInbox, icons.Inbox, false},
 					{app.RoutePluginMarket, icons.PluginMarket, false},
 				})
 			})
-
-			if proj := s.app.Project(); proj != nil {
-				v.NavSection(i18n.T("shell.nav.section_project"), collapsed, func() {
-					s.navItems(v, collapsed, []navEntry{
-						{ports.RouteOverview, icons.Overview, true},
-						{app.RouteLiterature, icons.Literature, true},
-						{app.RouteNotes, icons.Note, true},
-						{app.RouteIdeas, icons.Ideas, true},
-						{app.RouteExperiments, icons.Experiments, true},
-						{app.RouteKanban, icons.Kanban, true},
-						{app.RouteWeeklyReview, icons.WeeklyReview, true},
-					})
-				})
-			}
 
 			v.Spacer()
 
@@ -194,6 +186,67 @@ func (s *Shell) sidebar(v *components.UI, collapsed bool, width float32) {
 			})
 		})
 	})
+}
+
+// projectsGroup is the Projects entry of the workspace section. When a
+// project is open its module pages nest under it, and the chevron folds
+// them away without leaving the project.
+func (s *Shell) projectsGroup(v *components.UI, collapsed bool) {
+	proj := s.app.Project()
+	// The rail has no room for a disclosure control: it keeps showing
+	// the module icons while a project is open.
+	expanded := proj != nil && (!s.projectsFolded || collapsed)
+	options := components.NavItemOptions{
+		ID:        string(app.RouteProjects),
+		Icon:      icons.Projects,
+		Label:     pageTitle(app.RouteProjects),
+		Selected:  s.route().Kind == app.RouteProjects,
+		Collapsed: collapsed,
+		OnClick:   func() { s.navigate(ports.Route{Kind: app.RouteProjects}) },
+	}
+	switch {
+	case collapsed || proj == nil:
+		v.NavItem(options)
+	default:
+		ui.Row(v.C).FillWidth().AlignItems(ui.Center).Children(func() {
+			options.Grow = true
+			v.NavItem(options)
+			chevron, tip := icons.ChevronDown, i18n.T("shell.nav.projects_fold")
+			if s.projectsFolded {
+				chevron, tip = icons.ChevronRight, i18n.T("shell.nav.projects_expand")
+			}
+			v.IconButton(chevron, tip, components.IconButtonOptions{
+				Variant: components.VariantGhost,
+				Size:    components.SizeSmall,
+				OnClick: func() { s.projectsFolded = !s.projectsFolded },
+			})
+		})
+	}
+	if !expanded {
+		return
+	}
+	if collapsed {
+		s.navItems(v, collapsed, projectEntries())
+		return
+	}
+	ui.Column(v.C).FillWidth().Gap(tokens.Space1).
+		Padding(0, 0, 0, tokens.Space4).
+		Children(func() {
+			s.navItems(v, false, projectEntries())
+		})
+}
+
+// projectEntries are the module destinations of the open project.
+func projectEntries() []navEntry {
+	return []navEntry{
+		{ports.RouteOverview, icons.Overview, true},
+		{app.RouteLiterature, icons.Literature, true},
+		{app.RouteNotes, icons.Note, true},
+		{app.RouteIdeas, icons.Ideas, true},
+		{app.RouteExperiments, icons.Experiments, true},
+		{app.RouteKanban, icons.Kanban, true},
+		{app.RouteWeeklyReview, icons.WeeklyReview, true},
+	}
 }
 
 // navEntry is one destination of the sidebar. Its label is the destination's
