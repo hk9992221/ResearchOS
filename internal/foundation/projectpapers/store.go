@@ -44,6 +44,18 @@ func New(projectID string, db *sql.DB, writer events.Writer, c clock.Clock) *Sto
 // Link associates a paper with the project. A duplicate association is
 // idempotent: created=false, no write, no event.
 func (s *Store) Link(ctx context.Context, tx *sql.Tx, l Link) (bool, error) {
+	return s.link(ctx, tx, l, true)
+}
+
+// LinkQuiet associates a paper with the project exactly like Link but never
+// emits relation.added. SPEC-04's import pipeline uses it because that flow
+// records paper.imported instead of a manual relation event; manual Link keeps
+// its audit event.
+func (s *Store) LinkQuiet(ctx context.Context, tx *sql.Tx, l Link) (bool, error) {
+	return s.link(ctx, tx, l, false)
+}
+
+func (s *Store) link(ctx context.Context, tx *sql.Tx, l Link, emitEvent bool) (bool, error) {
 	if tx == nil {
 		return false, fmt.Errorf("projectpapers: Link requires a transaction")
 	}
@@ -76,6 +88,9 @@ func (s *Store) Link(ctx context.Context, tx *sql.Tx, l Link) (bool, error) {
 	}
 	if rows == 0 {
 		return false, nil
+	}
+	if !emitEvent {
+		return true, nil
 	}
 	obj := tuple(l.ProjectID, l.PaperID)
 	if err := s.events.Emit(ctx, tx, events.Event{
