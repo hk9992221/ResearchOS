@@ -1,0 +1,5 @@
+{
+  "app.name": "ResearchOS",
+  "app.task.stage_queued": "排队中",
+  "app.task.stage_starting": "正在启动"
+}

@@ -2,16 +2,17 @@ package pages
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/foundation/diag"
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -47,11 +48,11 @@ type Migration struct {
 func (m *Migration) Page(v *components.UI, r ports.Route) {
 	if m.Services.Workspace == nil {
 		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
-			v.PageHeader(components.PageHeaderOptions{Title: "Move workspace"})
+			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.migration.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.FolderOpen,
-				Title:  "No workspace is open",
-				Reason: "Open or set up a workspace before moving it.",
+				Title:  i18n.T("pages.migration.empty_no_ws_title"),
+				Reason: i18n.T("pages.migration.empty_no_ws_reason"),
 			})
 		}})
 		return
@@ -72,30 +73,30 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 
 	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.3, Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
-			Title:       "Move workspace",
-			Description: "Copy the workspace into an empty folder, verify every file, then switch to the copy. The old folder is kept as a backup.",
+			Title:       i18n.T("pages.migration.title"),
+			Description: i18n.T("pages.migration.description"),
 		})
 		if done != "" {
-			v.Banner(components.BannerOptions{Tone: components.Success, Title: "Migration finished", Message: done})
+			v.Banner(components.BannerOptions{Tone: components.Success, Title: i18n.T("pages.migration.banner_done"), Message: done})
 		}
 		if taskErr != nil {
-			v.Banner(components.BannerOptions{Tone: components.Danger, Title: "Migration failed", Message: taskErr.Error()})
+			v.Banner(components.BannerOptions{Tone: components.Danger, Title: i18n.T("pages.migration.banner_failed"), Message: errtext.Text(taskErr)})
 		}
 		if cancel != "" {
-			v.Banner(components.BannerOptions{Tone: components.Warning, Title: "Cancel not possible", Message: cancel})
+			v.Banner(components.BannerOptions{Tone: components.Warning, Title: i18n.T("pages.migration.banner_cancel_blocked"), Message: cancel})
 		}
 		if task != nil && !task.Snapshot().Finished {
-			v.Card(components.CardOptions{Title: "Migrating"}, func() {
+			v.Card(components.CardOptions{Title: i18n.T("pages.migration.card_migrating")}, func() {
 				ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 					ui.Text(v.C, stage).FontSize(tokens.Typography.Body.Size)
-					v.Progress(components.ProgressOptions{Value: -1, Label: "Migration in progress"})
+					v.Progress(components.ProgressOptions{Value: -1, Label: i18n.T("pages.migration.progress_in_progress")})
 					if bytesText != "" || filesText != "" {
 						ui.Row(v.C).Gap(tokens.SectionGap).Children(func() {
 							ui.Text(v.C, filesText).Font(tokens.SystemFonts.Mono)
 							ui.Text(v.C, bytesText).Font(tokens.SystemFonts.Mono)
 						})
 					}
-					v.Button("Cancel migration", components.ButtonOptions{
+					v.Button(i18n.T("pages.migration.btn_cancel"), components.ButtonOptions{
 						Variant: components.VariantDanger,
 						OnClick: func() { m.cancelMigration() },
 					})
@@ -103,11 +104,11 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 			})
 			return
 		}
-		v.Card(components.CardOptions{Title: "New location"}, func() {
+		v.Card(components.CardOptions{Title: i18n.T("pages.migration.card_new_location")}, func() {
 			ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 				in := v.Input(&m.target, components.FieldOptions{
-					Label:       "Target folder",
-					Description: "It must be empty or not exist yet. Migration never merges two workspaces.",
+					Label:       i18n.T("pages.migration.field_target_label"),
+					Description: i18n.T("pages.migration.field_target_desc"),
 					Placeholder: "E:/ResearchOS-Workspace",
 				})
 				if in.Changed() {
@@ -116,13 +117,13 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 					m.mu.Unlock()
 				}
 				ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
-					v.Button("Browse…", components.ButtonOptions{
+					v.Button(i18n.T("pages.common.btn_browse"), components.ButtonOptions{
 						Variant: components.VariantSecondary,
 						Icon:    icons.FolderOpen,
 						OnClick: func() { m.browse() },
 					})
-					v.Checkbox(&m.exports, "Include exports", components.ToggleOptions{})
-					v.Button("Plan migration", components.ButtonOptions{
+					v.Checkbox(&m.exports, i18n.T("pages.migration.check_include_exports"), components.ToggleOptions{})
+					v.Button(i18n.T("pages.migration.btn_plan"), components.ButtonOptions{
 						Variant:  components.VariantPrimary,
 						Disabled: m.target == "",
 						OnClick:  func() { m.planMigration() },
@@ -130,38 +131,47 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 				})
 			})
 		})
-		v.Card(components.CardOptions{Title: "Schema versions", Description: "A backup is written before a database migrates."}, func() {
+		v.Card(components.CardOptions{Title: i18n.T("pages.migration.card_schema"), Description: i18n.T("pages.migration.card_schema_desc")}, func() {
 			ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 				if !m.schemaLoaded {
-					v.Button("Check schema", components.ButtonOptions{
+					v.Button(i18n.T("pages.migration.btn_check_schema"), components.ButtonOptions{
 						Icon:    icons.Scan,
 						Loading: m.schemaLoading,
 						OnClick: func() { m.checkSchema() },
 					})
 					if m.schemaErr != nil {
-						v.StatusIndicator(components.Danger, m.schemaErr.Error())
+						v.StatusIndicator(components.Danger, errtext.Text(m.schemaErr))
 					}
 					return
 				}
-				m.row(v, "Global database", fmt.Sprintf("version %d / %d", m.schemaGlobal.SchemaVersion, m.schemaGlobal.TargetVersion))
+				m.row(v, i18n.T("pages.migration.row_global_db"), i18n.Tf("pages.migration.schema_version", map[string]string{
+					"current": strconv.Itoa(m.schemaGlobal.SchemaVersion),
+					"target":  strconv.Itoa(m.schemaGlobal.TargetVersion),
+				}))
 				for _, p := range m.schemaProjects {
-					version := "unavailable"
+					version := i18n.T("pages.common.status_unavailable")
 					if p.DB != nil {
-						version = fmt.Sprintf("version %d / %d", p.DB.SchemaVersion, p.DB.TargetVersion)
+						version = i18n.Tf("pages.migration.schema_version", map[string]string{
+							"current": strconv.Itoa(p.DB.SchemaVersion),
+							"target":  strconv.Itoa(p.DB.TargetVersion),
+						})
 					}
-					m.row(v, "Project "+p.ProjectID, version)
+					m.row(v, i18n.Tf("pages.migration.row_project", map[string]string{"id": p.ProjectID}), version)
 				}
 			})
 		})
 
 		if plan != nil {
-			v.Card(components.CardOptions{Title: "Plan", Description: plan.SourceRoot + " → " + plan.TargetRoot}, func() {
+			v.Card(components.CardOptions{Title: i18n.T("pages.migration.card_plan"), Description: i18n.Tf("pages.migration.plan_paths", map[string]string{
+				"source": plan.SourceRoot,
+				"target": plan.TargetRoot,
+			})}, func() {
 				ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-					m.row(v, "Files", strconv.Itoa(plan.Files))
-					m.row(v, "Bytes", humanBytes(plan.Bytes))
-					m.row(v, "Verification", "Full SHA-256 of every file")
-					m.row(v, "Old folder", "Kept as a backup")
-					v.Button("Start migration", components.ButtonOptions{
+					m.row(v, i18n.T("pages.migration.row_files"), strconv.Itoa(plan.Files))
+					m.row(v, i18n.T("pages.migration.row_bytes"), humanBytes(plan.Bytes))
+					m.row(v, i18n.T("pages.migration.row_verification"), i18n.T("pages.migration.verification_value"))
+					m.row(v, i18n.T("pages.migration.row_old_folder"), i18n.T("pages.migration.old_folder_value"))
+					v.Button(i18n.T("pages.migration.btn_start"), components.ButtonOptions{
 						Variant: components.VariantDanger,
 						OnClick: func() { m.start() },
 					})
@@ -193,7 +203,7 @@ func (m *Migration) browse() {
 
 // planMigration probes the target without touching it.
 func (m *Migration) planMigration() {
-	m.Services.App.RunTask("Plan workspace migration", func(ctx context.Context, t *app.Task) error {
+	m.Services.App.RunTask(i18n.T("pages.migration.task_plan"), func(ctx context.Context, t *app.Task) error {
 		m.mu.Lock()
 		target := m.target
 		exports := m.exports
@@ -223,7 +233,7 @@ func (m *Migration) start() {
 	if plan == nil {
 		return
 	}
-	task := m.Services.App.RunTask("Migrate workspace", func(ctx context.Context, t *app.Task) error {
+	task := m.Services.App.RunTask(i18n.T("pages.migration.task_migrate"), func(ctx context.Context, t *app.Task) error {
 		ch, err := m.Services.Workspace.Migrate(ctx, plan.ID)
 		if err != nil {
 			return err
@@ -231,8 +241,14 @@ func (m *Migration) start() {
 		for p := range ch {
 			m.mu.Lock()
 			m.stage = phaseLabel(p.Phase)
-			m.files = fmt.Sprintf("%d / %d files", p.FilesDone, p.FilesTotal)
-			m.bytes = fmt.Sprintf("%s / %s", humanBytes(p.BytesDone), humanBytes(p.BytesTotal))
+			m.files = i18n.Tf("pages.migration.progress_files", map[string]string{
+				"done":  strconv.Itoa(p.FilesDone),
+				"total": strconv.Itoa(p.FilesTotal),
+			})
+			m.bytes = i18n.Tf("pages.migration.progress_bytes", map[string]string{
+				"done":  humanBytes(p.BytesDone),
+				"total": humanBytes(p.BytesTotal),
+			})
 			m.mu.Unlock()
 			t.Stage(phaseLabel(p.Phase))
 			t.Progress(p.FilesDone, p.FilesTotal)
@@ -241,7 +257,7 @@ func (m *Migration) start() {
 			}
 		}
 		m.mu.Lock()
-		m.done = "The workspace now lives at " + plan.TargetRoot + ". The previous folder was kept as a backup."
+		m.done = i18n.Tf("pages.migration.done_message", map[string]string{"path": plan.TargetRoot})
 		m.stage = ""
 		m.mu.Unlock()
 		if m.Services.OnMigrated != nil {
@@ -251,7 +267,7 @@ func (m *Migration) start() {
 	})
 	m.mu.Lock()
 	m.task = task
-	m.stage = "Starting"
+	m.stage = i18n.T("pages.migration.stage_starting")
 	m.done = ""
 	m.cancel = ""
 	m.mu.Unlock()
@@ -269,7 +285,7 @@ func (m *Migration) cancelMigration() {
 	}
 	if err := m.Services.Workspace.CancelMigration(context.Background(), plan.ID); err != nil {
 		m.mu.Lock()
-		m.cancel = err.Error()
+		m.cancel = errtext.Text(err)
 		m.mu.Unlock()
 		return
 	}
@@ -286,7 +302,7 @@ func (m *Migration) checkSchema() {
 	m.mu.Lock()
 	m.schemaLoading = true
 	m.mu.Unlock()
-	m.Services.App.RunTask("Check schema versions", func(ctx context.Context, t *app.Task) error {
+	m.Services.App.RunTask(i18n.T("pages.migration.task_check_schema"), func(ctx context.Context, t *app.Task) error {
 		rep, err := m.Services.Diagnostics.Run(ctx, diag.Options{})
 		m.mu.Lock()
 		m.schemaLoading = false
@@ -320,19 +336,19 @@ func (m *Migration) settle() {
 func phaseLabel(phase string) string {
 	switch phase {
 	case "probe":
-		return "Probing the target"
+		return i18n.T("pages.migration.phase_probe")
 	case "lock":
-		return "Locking the workspace"
+		return i18n.T("pages.migration.phase_lock")
 	case "copy":
-		return "Copying files"
+		return i18n.T("pages.migration.phase_copy")
 	case "verify":
-		return "Verifying the copy"
+		return i18n.T("pages.migration.phase_verify")
 	case "commit":
-		return "Switching to the new root"
+		return i18n.T("pages.migration.phase_commit")
 	case "reopen":
-		return "Reopening the workspace"
+		return i18n.T("pages.migration.phase_reopen")
 	case "done":
-		return "Done"
+		return i18n.T("pages.migration.phase_done")
 	}
 	return phase
 }

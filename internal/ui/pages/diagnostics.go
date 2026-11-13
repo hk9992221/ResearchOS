@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/foundation/diag"
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -34,11 +37,11 @@ type Diagnostics struct {
 func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 	if s.Services.Diagnostics == nil || s.Services.App == nil {
 		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
-			v.PageHeader(components.PageHeaderOptions{Title: "Diagnostics"})
+			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.diagnostics.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Diagnostics,
-				Title:  "Diagnostics need an open workspace",
-				Reason: "The self check reads the workspace databases and configuration. Set up a workspace first.",
+				Title:  i18n.T("pages.diagnostics.empty_no_ws_title"),
+				Reason: i18n.T("pages.diagnostics.empty_no_ws_reason"),
 			})
 		}})
 		return
@@ -50,31 +53,31 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 
 	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.5, Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
-			Title:       "Diagnostics",
-			Description: "Read-only checks of the workspace databases, note files and configuration.",
+			Title:       i18n.T("pages.diagnostics.title"),
+			Description: i18n.T("pages.diagnostics.description"),
 		})
 		if errText != nil {
-			v.Banner(components.BannerOptions{Tone: components.Danger, Title: "The self check failed", Message: errText.Error()})
+			v.Banner(components.BannerOptions{Tone: components.Danger, Title: i18n.T("pages.diagnostics.banner_failed"), Message: errtext.Text(errText)})
 		}
-		v.Toolbar("Diagnostics actions", func() {
-			v.Checkbox(&s.includeFileScan, "Scan note files too", components.ToggleOptions{
-				Description: "Checks that every active note body exists on disk; slower on large libraries.",
+		v.Toolbar(i18n.T("pages.diagnostics.toolbar_label"), func() {
+			v.Checkbox(&s.includeFileScan, i18n.T("pages.diagnostics.check_file_scan"), components.ToggleOptions{
+				Description: i18n.T("pages.diagnostics.check_file_scan_desc"),
 			})
 			if s.includeFileScan != include {
 				s.rescan()
 			}
 			v.Spacer()
-			v.Button("Run again", components.ButtonOptions{
+			v.Button(i18n.T("pages.diagnostics.btn_run_again"), components.ButtonOptions{
 				Icon:    icons.Refresh,
 				Loading: loading,
 				OnClick: func() { s.rescan() },
 			})
-			v.Button("Copy report", components.ButtonOptions{
+			v.Button(i18n.T("pages.diagnostics.btn_copy"), components.ButtonOptions{
 				Icon:     icons.Copy,
 				Disabled: !loaded,
 				OnClick: func() {
 					v.C.WriteClipboard(diagText(report))
-					s.Services.App.Toast(app.LevelSuccess, "Report copied", "The diagnostic report is on the clipboard.")
+					s.Services.App.Toast(app.LevelSuccess, i18n.T("pages.diagnostics.toast_copied_title"), i18n.T("pages.diagnostics.toast_copied_message"))
 				},
 			})
 		})
@@ -86,37 +89,40 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 		if !loaded {
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:        icons.Diagnostics,
-				Title:       "No report yet",
-				Reason:      "Run the self check to read database versions, integrity and note-file state.",
-				ActionLabel: "Run diagnostics",
+				Title:       i18n.T("pages.diagnostics.empty_title"),
+				Reason:      i18n.T("pages.diagnostics.empty_reason"),
+				ActionLabel: i18n.T("pages.diagnostics.btn_run"),
 				OnAction:    func() { s.rescan() },
 			})
 			return
 		}
 
-		v.Card(components.CardOptions{Title: "Global database", Description: report.Global.Path}, func() {
+		v.Card(components.CardOptions{Title: i18n.T("pages.diagnostics.card_global"), Description: report.Global.Path}, func() {
 			ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-				s.row(v, "Schema version", versionText(report.Global))
-				s.row(v, "Integrity", integrityText(report.Global))
-				s.row(v, "Foreign keys", fkText(report.Global))
-				s.row(v, "Size", humanBytes(report.Global.SizeBytes)+" + "+humanBytes(report.Global.WALBytes)+" WAL")
+				s.row(v, i18n.T("pages.diagnostics.row_schema"), versionText(report.Global))
+				s.row(v, i18n.T("pages.diagnostics.row_integrity"), integrityText(report.Global))
+				s.row(v, i18n.T("pages.diagnostics.row_foreign_keys"), fkText(report.Global))
+				s.row(v, i18n.T("pages.diagnostics.row_size"), i18n.Tf("pages.diagnostics.size_wal", map[string]string{
+					"main": humanBytes(report.Global.SizeBytes),
+					"wal":  humanBytes(report.Global.WALBytes),
+				}))
 			})
 		})
 
-		v.Card(components.CardOptions{Title: "Projects", Description: fmt.Sprintf("%d registered", len(report.Projects))}, func() {
+		v.Card(components.CardOptions{Title: i18n.T("pages.diagnostics.card_projects"), Description: i18n.Tf("pages.diagnostics.projects_registered", map[string]string{"count": strconv.Itoa(len(report.Projects))})}, func() {
 			if len(report.Projects) == 0 {
-				v.StatusIndicator(components.Neutral, "No projects registered")
+				v.StatusIndicator(components.Neutral, i18n.T("pages.diagnostics.projects_none"))
 				return
 			}
 			rows := sortedProjectReports(report.Projects)
 			cols := []components.Column{
-				{Title: "Project"},
-				{Title: "Schema", Width: 80},
-				{Title: "Integrity", Width: 90},
-				{Title: "Notes", Width: 70, Align: ui.End},
-				{Title: "Missing", Width: 80, Align: ui.End},
-				{Title: "Broken refs", Width: 100, Align: ui.End},
-				{Title: "Folder", Width: 80},
+				{Title: i18n.T("pages.diagnostics.col_project")},
+				{Title: i18n.T("pages.diagnostics.col_schema"), Width: 80},
+				{Title: i18n.T("pages.diagnostics.col_integrity"), Width: 90},
+				{Title: i18n.T("pages.diagnostics.col_notes"), Width: 70, Align: ui.End},
+				{Title: i18n.T("pages.diagnostics.col_missing"), Width: 80, Align: ui.End},
+				{Title: i18n.T("pages.diagnostics.col_broken_refs"), Width: 100, Align: ui.End},
+				{Title: i18n.T("pages.diagnostics.col_folder"), Width: 80},
 			}
 			state := components.NewTableState()
 			state.Key = func(i int) any { return rows[i].ProjectID }
@@ -132,19 +138,19 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 						ui.Text(v.C, p.ProjectID).SingleLine()
 					case 1:
 						if p.DB == nil {
-							ui.Text(v.C, "unavailable")
+							ui.Text(v.C, i18n.T("pages.common.status_unavailable"))
 							return
 						}
 						ui.Text(v.C, versionText(*p.DB)).FontFeatures("tnum")
 					case 2:
 						if p.DB == nil {
-							ui.Text(v.C, "unavailable")
+							ui.Text(v.C, i18n.T("pages.common.status_unavailable"))
 							return
 						}
 						if p.DB.IntegrityOK {
-							v.StatusIndicator(components.Success, "ok")
+							v.StatusIndicator(components.Success, i18n.T("pages.diagnostics.val_ok"))
 						} else {
-							v.StatusIndicator(components.Danger, "failed")
+							v.StatusIndicator(components.Danger, i18n.T("pages.diagnostics.val_failed"))
 						}
 					case 3:
 						ui.Text(v.C, fmt.Sprint(p.NotesTotal)).FontFeatures("tnum")
@@ -162,9 +168,9 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 						}
 					case 6:
 						if p.DirExists {
-							v.StatusIndicator(components.Success, "present")
+							v.StatusIndicator(components.Success, i18n.T("pages.diagnostics.val_present"))
 						} else {
-							v.StatusIndicator(components.Danger, "missing")
+							v.StatusIndicator(components.Danger, i18n.T("pages.diagnostics.val_missing"))
 						}
 					}
 				},
@@ -172,19 +178,19 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 			table.Height(tokens.Space8 + tokens.Space11*float32(len(rows)))
 		})
 
-		v.Card(components.CardOptions{Title: "Configuration"}, func() {
+		v.Card(components.CardOptions{Title: i18n.T("pages.diagnostics.card_config")}, func() {
 			ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-				s.row(v, "File", report.Config.Path)
-				s.row(v, "Exists", boolText(report.Config.Exists))
-				s.row(v, "Workspace root", report.Config.WorkspaceRoot)
-				s.row(v, "Root reachable", boolText(report.Config.RootReachable))
+				s.row(v, i18n.T("pages.diagnostics.row_file"), report.Config.Path)
+				s.row(v, i18n.T("pages.diagnostics.row_exists"), boolText(report.Config.Exists))
+				s.row(v, i18n.T("pages.diagnostics.row_workspace_root"), report.Config.WorkspaceRoot)
+				s.row(v, i18n.T("pages.diagnostics.row_root_reachable"), boolText(report.Config.RootReachable))
 				zotero := report.Config.ZoteroDataDir
 				if zotero == "" {
-					zotero = "Not configured"
+					zotero = i18n.T("pages.settings.status_not_configured")
 				}
-				s.row(v, "Zotero data", zotero)
+				s.row(v, i18n.T("pages.diagnostics.row_zotero"), zotero)
 				if report.Config.CorruptBackup != "" {
-					s.row(v, "Corrupt backup", report.Config.CorruptBackup)
+					s.row(v, i18n.T("pages.diagnostics.row_corrupt_backup"), report.Config.CorruptBackup)
 				}
 			})
 		})
@@ -192,7 +198,7 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 		if len(report.Warnings) > 0 {
 			v.Banner(components.BannerOptions{
 				Tone:    components.Warning,
-				Title:   fmt.Sprintf("%d warnings", len(report.Warnings)),
+				Title:   i18n.Tf("pages.diagnostics.banner_warnings", map[string]string{"count": strconv.Itoa(len(report.Warnings))}),
 				Message: strings.Join(report.Warnings, "\n"),
 			})
 		}
@@ -217,7 +223,7 @@ func (s *Diagnostics) load() {
 	s.loading = true
 	include := s.includeFileScan
 	s.mu.Unlock()
-	s.Services.App.RunTask("Run diagnostics", func(ctx context.Context, t *app.Task) error {
+	s.Services.App.RunTask(i18n.T("pages.diagnostics.task_run"), func(ctx context.Context, t *app.Task) error {
 		rep, err := s.Services.Diagnostics.Run(ctx, diag.Options{IncludeFileScan: include})
 		s.mu.Lock()
 		s.loading = false
@@ -240,33 +246,38 @@ func (s *Diagnostics) rescan() {
 
 // versionText formats a schema version pair.
 func versionText(db diag.DBReport) string {
-	return fmt.Sprintf("%d / %d", db.SchemaVersion, db.TargetVersion)
+	return i18n.Tf("pages.diagnostics.version_pair", map[string]string{
+		"current": strconv.Itoa(db.SchemaVersion),
+		"target":  strconv.Itoa(db.TargetVersion),
+	})
 }
 
-// integrityText describes the integrity check.
+// integrityText describes the integrity check. The detail text is the raw
+// database message: diagnostic detail, not interface copy, so it passes
+// through untranslated.
 func integrityText(db diag.DBReport) string {
 	if db.IntegrityOK {
-		return "ok"
+		return i18n.T("pages.diagnostics.val_ok")
 	}
 	if db.IntegrityErr != "" {
-		return "failed: " + db.IntegrityErr
+		return i18n.Tf("pages.diagnostics.integrity_failed_detail", map[string]string{"error": db.IntegrityErr})
 	}
-	return "failed"
+	return i18n.T("pages.diagnostics.val_failed")
 }
 
 // fkText counts foreign key violations.
 func fkText(db diag.DBReport) string {
 	if len(db.ForeignKeyViolations) == 0 {
-		return "0 violations"
+		return i18n.T("pages.diagnostics.fk_none")
 	}
-	return fmt.Sprintf("%d violations", len(db.ForeignKeyViolations))
+	return i18n.Tf("pages.diagnostics.fk_count", map[string]string{"count": strconv.Itoa(len(db.ForeignKeyViolations))})
 }
 
 func boolText(b bool) string {
 	if b {
-		return "Yes"
+		return i18n.T("pages.common.bool_yes")
 	}
-	return "No"
+	return i18n.T("pages.common.bool_no")
 }
 
 // sortedProjectReports orders projects by id, so the report is deterministic.
@@ -277,32 +288,54 @@ func sortedProjectReports(in []diag.ProjectReport) []diag.ProjectReport {
 }
 
 // diagText serializes the report for the clipboard: stable, human-readable and
-// complete.
+// complete. Its labels follow the interface language; paths, project ids and
+// numbers stay verbatim.
 func diagText(rep diag.Report) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "ResearchOS diagnostic report\nGenerated: %s\n\n", rep.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
-	fmt.Fprintf(&b, "Global database: %s\n  schema %s\n  integrity %s\n  foreign keys %s\n  size %s + %s WAL\n\n",
-		rep.Global.Path, versionText(rep.Global), integrityText(rep.Global), fkText(rep.Global),
-		humanBytes(rep.Global.SizeBytes), humanBytes(rep.Global.WALBytes))
-	fmt.Fprintf(&b, "Configuration: %s\n  exists %s\n  root %s\n  reachable %s\n  zotero %s\n\n",
-		rep.Config.Path, boolText(rep.Config.Exists), rep.Config.WorkspaceRoot, boolText(rep.Config.RootReachable), rep.Config.ZoteroDataDir)
-	b.WriteString("Projects:\n")
+	b.WriteString(i18n.Tf("pages.diagnostics.clip_header", map[string]string{
+		"time": rep.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}))
+	b.WriteString(i18n.Tf("pages.diagnostics.clip_global", map[string]string{
+		"path":      rep.Global.Path,
+		"schema":    versionText(rep.Global),
+		"integrity": integrityText(rep.Global),
+		"keys":      fkText(rep.Global),
+		"size": i18n.Tf("pages.diagnostics.size_wal", map[string]string{
+			"main": humanBytes(rep.Global.SizeBytes),
+			"wal":  humanBytes(rep.Global.WALBytes),
+		}),
+	}))
+	b.WriteString(i18n.Tf("pages.diagnostics.clip_config", map[string]string{
+		"path":      rep.Config.Path,
+		"exists":    boolText(rep.Config.Exists),
+		"root":      rep.Config.WorkspaceRoot,
+		"reachable": boolText(rep.Config.RootReachable),
+		"zotero":    rep.Config.ZoteroDataDir,
+	}))
+	b.WriteString(i18n.T("pages.diagnostics.clip_projects"))
 	for _, p := range sortedProjectReports(rep.Projects) {
-		version := "unavailable"
-		integrity := "unavailable"
+		version := i18n.T("pages.common.status_unavailable")
+		integrity := i18n.T("pages.common.status_unavailable")
 		if p.DB != nil {
 			version = versionText(*p.DB)
 			integrity = integrityText(*p.DB)
 		}
-		fmt.Fprintf(&b, "  %s: schema %s, integrity %s, notes %d, missing %d, broken refs %d, folder %s\n",
-			p.ProjectID, version, integrity, p.NotesTotal, p.NotesMissing, p.BrokenRefs, boolText(p.DirExists))
+		b.WriteString(i18n.Tf("pages.diagnostics.clip_project_row", map[string]string{
+			"id":        p.ProjectID,
+			"schema":    version,
+			"integrity": integrity,
+			"notes":     strconv.Itoa(p.NotesTotal),
+			"missing":   strconv.Itoa(p.NotesMissing),
+			"refs":      strconv.Itoa(p.BrokenRefs),
+			"folder":    boolText(p.DirExists),
+		}))
 	}
-	b.WriteString("\nWarnings:\n")
+	b.WriteString(i18n.T("pages.diagnostics.clip_warnings"))
 	if len(rep.Warnings) == 0 {
-		b.WriteString("  none\n")
+		b.WriteString(i18n.T("pages.diagnostics.clip_warnings_none"))
 	}
 	for _, w := range rep.Warnings {
-		fmt.Fprintf(&b, "  - %s\n", w)
+		b.WriteString(i18n.Tf("pages.diagnostics.clip_warning_item", map[string]string{"warning": w}))
 	}
 	return b.String()
 }

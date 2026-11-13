@@ -1,0 +1,7 @@
+{
+  "settings.language.title": "Language",
+  "settings.language.label": "Interface language",
+  "settings.language.description": "The language of the interface. Each language is a pack that updates with the app.",
+  "settings.language.system_hint": "Follow system ({language})",
+  "settings.language.saved": "The interface language was updated."
+}

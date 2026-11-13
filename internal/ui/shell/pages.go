@@ -6,67 +6,70 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ports"
 	"researchos/internal/project"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
+	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/tokens"
 )
 
-// pageTitle is the name of a destination in the breadcrumb and page header.
+// pageTitle is the name of a destination in the breadcrumb, the page header,
+// the sidebar and the command palette.
 func pageTitle(kind ports.RouteKind) string {
 	switch kind {
 	case app.RouteHome:
-		return "Home"
+		return i18n.T("shell.page.home")
 	case app.RouteProjects:
-		return "Projects"
+		return i18n.T("shell.page.projects")
 	case app.RouteInbox:
-		return "Inbox"
+		return i18n.T("shell.page.inbox")
 	case app.RoutePluginMarket:
-		return "Plugin Market"
+		return i18n.T("shell.page.plugin_market")
 	case ports.RouteOverview:
-		return "Overview"
+		return i18n.T("shell.page.overview")
 	case app.RouteLiterature:
-		return "Literature"
+		return i18n.T("shell.page.literature")
 	case app.RouteNotes:
-		return "Research Notes"
+		return i18n.T("shell.page.notes")
 	case app.RouteIdeas:
-		return "Ideas"
+		return i18n.T("shell.page.ideas")
 	case app.RouteExperiments:
-		return "Experiments"
+		return i18n.T("shell.page.experiments")
 	case app.RouteKanban:
-		return "Kanban"
+		return i18n.T("shell.page.kanban")
 	case app.RouteWeeklyReview:
-		return "Weekly Review"
+		return i18n.T("shell.page.weekly_review")
 	case ports.RouteSettings:
-		return "Settings"
+		return i18n.T("shell.page.settings")
 	case ports.RouteTrash:
-		return "Recycle Bin"
+		return i18n.T("shell.page.trash")
 	case app.RouteDiagnostics:
-		return "Diagnostics"
+		return i18n.T("shell.page.diagnostics")
 	case app.RouteConsistency:
-		return "File Consistency"
+		return i18n.T("shell.page.consistency")
 	case app.RouteHelp:
-		return "Help / About"
+		return i18n.T("shell.page.help")
 	case ports.RouteNote:
-		return "Note"
+		return i18n.T("shell.page.note")
 	case ports.RoutePaper:
-		return "Paper"
+		return i18n.T("shell.page.paper")
 	case ports.RouteIdea:
-		return "Idea"
+		return i18n.T("shell.page.idea")
 	case ports.RouteExperiment:
-		return "Experiment"
+		return i18n.T("shell.page.experiment")
 	case ports.RouteRun:
-		return "Run"
+		return i18n.T("shell.page.run")
 	case ports.RouteTask:
-		return "Task"
+		return i18n.T("shell.page.task")
 	case ports.RouteWeeklyReport:
-		return "Weekly Report"
+		return i18n.T("shell.page.weekly_report")
 	case ports.RouteExport:
-		return "Export"
+		return i18n.T("shell.page.export")
 	}
-	return "ResearchOS"
+	return i18n.T("app.name")
 }
 
 // pageTitleOf returns the title of a route, with its entity name when the
@@ -79,27 +82,27 @@ func (s *Shell) pageTitle(route ports.Route) string {
 func downstream(kind ports.RouteKind) string {
 	switch kind {
 	case app.RouteLiterature:
-		return "The Literature module (SPEC-04)"
+		return i18n.T("shell.downstream.literature")
 	case app.RouteNotes:
-		return "The Research Notes module (SPEC-05)"
+		return i18n.T("shell.downstream.notes")
 	case app.RouteIdeas:
-		return "The Ideas module (SPEC-06)"
+		return i18n.T("shell.downstream.ideas")
 	case app.RouteExperiments:
-		return "The Experiments module (SPEC-07)"
+		return i18n.T("shell.downstream.experiments")
 	case app.RouteKanban:
-		return "The Kanban module (SPEC-08)"
+		return i18n.T("shell.downstream.kanban")
 	case app.RouteWeeklyReview:
-		return "The Weekly Review module (SPEC-09)"
+		return i18n.T("shell.downstream.weekly_review")
 	case app.RoutePluginMarket:
-		return "The plugin system"
+		return i18n.T("shell.downstream.plugins")
 	case app.RouteInbox:
-		return "The Inbox module"
+		return i18n.T("shell.downstream.inbox")
 	case ports.RouteOverview, ports.RouteProject:
-		return "The Projects module (SPEC-03)"
+		return i18n.T("shell.downstream.projects")
 	case ports.RouteSettings, ports.RouteTrash, app.RouteDiagnostics, app.RouteConsistency:
-		return "The system pages milestone"
+		return i18n.T("shell.downstream.system_pages")
 	}
-	return "A later module"
+	return i18n.T("shell.downstream.default")
 }
 
 // PlaceholderPage is the honest stand-in for a destination whose module is not
@@ -109,12 +112,14 @@ func PlaceholderPage(kind ports.RouteKind) Page {
 		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
 				Title:       pageTitle(kind),
-				Description: "This destination is part of the application shell and is not filled yet.",
+				Description: i18n.T("shell.placeholder.description"),
 			})
 			v.EmptyState(components.EmptyStateOptions{
-				Icon:   icons.FileText,
-				Title:  pageTitle(kind) + " is not available yet",
-				Reason: downstream(kind) + " builds this page. The shell, navigation and workspace are ready.",
+				Icon:  icons.FileText,
+				Title: i18n.Tf("shell.placeholder.title", map[string]string{"page": pageTitle(kind)}),
+				Reason: i18n.Tf("shell.placeholder.reason", map[string]string{
+					"module": downstream(kind),
+				}),
 			})
 		}})
 	}
@@ -157,21 +162,27 @@ func homePage(ctx context.Context, a *app.App) Page {
 		list, loaded, listErr := a.ProjectList()
 		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
-				Title:       "Home",
-				Description: "Your research workspace at a glance.",
+				Title:       pageTitle(app.RouteHome),
+				Description: i18n.T("shell.home.description"),
 			})
 			if listErr != nil {
 				v.Banner(components.BannerOptions{
 					Tone:    components.Danger,
-					Title:   "The project list could not be loaded",
-					Message: listErr.Error(),
+					Title:   i18n.T("shell.projects.banner_load_fail"),
+					Message: errtext.Text(listErr),
 				})
 			}
 			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-				v.Card(components.CardOptions{Title: "Workspace", Description: "Current root"}, func() {
+				v.Card(components.CardOptions{
+					Title:       i18n.T("shell.home.card_workspace"),
+					Description: i18n.T("shell.home.card_workspace_desc"),
+				}, func() {
 					ui.Text(v.C, a.WorkspaceName()).FontSize(tokens.Typography.SectionTitle.Size)
 				}).Grow(1)
-				v.Card(components.CardOptions{Title: "Projects", Description: "Registered in this workspace"}, func() {
+				v.Card(components.CardOptions{
+					Title:       i18n.T("shell.home.card_projects"),
+					Description: i18n.T("shell.home.card_projects_desc"),
+				}, func() {
 					ui.Text(v.C, strconv.Itoa(len(list))).FontSize(tokens.Typography.PageTitle.Size)
 				}).Grow(1)
 			})
@@ -181,11 +192,11 @@ func homePage(ctx context.Context, a *app.App) Page {
 			case len(list) == 0:
 				v.EmptyState(components.EmptyStateOptions{
 					Icon:   icons.Projects,
-					Title:  "No projects yet",
-					Reason: "Projects keep literature, notes, ideas and experiments together. Creating projects arrives with the Projects module (SPEC-03).",
+					Title:  i18n.T("shell.projects.empty_title"),
+					Reason: i18n.T("shell.projects.empty_reason_home"),
 				})
 			default:
-				v.Card(components.CardOptions{Title: "Recent projects"}, func() {
+				v.Card(components.CardOptions{Title: i18n.T("shell.home.card_recent")}, func() {
 					projectTable(v, ctx, a, state, list, len(list))
 				})
 			}
@@ -205,11 +216,15 @@ func (p *projectsPage) view(ctx context.Context, a *app.App) Page {
 		list, loaded, listErr := a.ProjectList()
 		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
-				Title:       "Projects",
-				Description: "Open a project to see its navigation. Project management arrives with SPEC-03.",
+				Title:       pageTitle(app.RouteProjects),
+				Description: i18n.T("shell.projects.description"),
 			})
 			if listErr != nil {
-				v.Banner(components.BannerOptions{Tone: components.Danger, Title: "The project list could not be loaded", Message: listErr.Error()})
+				v.Banner(components.BannerOptions{
+					Tone:    components.Danger,
+					Title:   i18n.T("shell.projects.banner_load_fail"),
+					Message: errtext.Text(listErr),
+				})
 			}
 			switch {
 			case !loaded:
@@ -217,8 +232,8 @@ func (p *projectsPage) view(ctx context.Context, a *app.App) Page {
 			case len(list) == 0:
 				v.EmptyState(components.EmptyStateOptions{
 					Icon:   icons.Projects,
-					Title:  "No projects yet",
-					Reason: "This workspace has no registered projects. Creating projects arrives with the Projects module (SPEC-03).",
+					Title:  i18n.T("shell.projects.empty_title"),
+					Reason: i18n.T("shell.projects.empty_reason_list"),
 				})
 			default:
 				v.Card(components.CardOptions{}, func() {
@@ -233,9 +248,9 @@ func (p *projectsPage) view(ctx context.Context, a *app.App) Page {
 func projectTable(v *components.UI, ctx context.Context, a *app.App, state *ui.ListState, list []project.Project, n int) {
 	state.Key = func(i int) any { return list[i].ID }
 	cols := []components.Column{
-		{Title: "Name", Sortable: true},
-		{Title: "Status", Width: 110, Sortable: true},
-		{Title: "Created", Width: 140, Sortable: true},
+		{Title: i18n.T("shell.table.col_name"), Sortable: true},
+		{Title: i18n.T("shell.table.col_status"), Width: 110, Sortable: true},
+		{Title: i18n.T("shell.table.col_created"), Width: 140, Sortable: true},
 		{Title: "", Width: 100, Align: ui.End},
 	}
 	v.Table(components.TableOptions{
@@ -248,18 +263,18 @@ func projectTable(v *components.UI, ctx context.Context, a *app.App, state *ui.L
 			case 0:
 				ui.Text(v.C, p.Name).SingleLine()
 			case 1:
-				status := "Active"
+				status := i18n.T("shell.project_status.active")
 				if p.Status == project.StatusArchived {
-					status = "Archived"
+					status = i18n.T("shell.project_status.archived")
 				}
 				v.StatusIndicator(statusTone(p.Status), status)
 			case 2:
 				ui.Text(v.C, p.CreatedAt.Format("2006-01-02")).FontFeatures("tnum")
 			case 3:
-				v.Button("Open", components.ButtonOptions{
+				v.Button(i18n.T("shell.projects.btn_open"), components.ButtonOptions{
 					Variant: components.VariantGhost,
 					Size:    components.SizeSmall,
-					Label:   "Open " + p.Name,
+					Label:   i18n.Tf("shell.projects.btn_open_aria", map[string]string{"name": p.Name}),
 					OnClick: func() { openProject(a, ctx, p.ID) },
 				})
 			}
@@ -274,11 +289,11 @@ func overviewPage(ctx context.Context, a *app.App) Page {
 		p := a.Project()
 		if p == nil {
 			v.PageContainer(components.PageContainerOptions{Children: func() {
-				v.PageHeader(components.PageHeaderOptions{Title: "Overview"})
+				v.PageHeader(components.PageHeaderOptions{Title: pageTitle(ports.RouteOverview)})
 				v.EmptyState(components.EmptyStateOptions{
 					Icon:   icons.Projects,
-					Title:  "No project is open",
-					Reason: "Open a project from Home or Projects to see its overview.",
+					Title:  i18n.T("shell.overview.empty_no_project_title"),
+					Reason: i18n.T("shell.overview.empty_no_project_reason"),
 				})
 			}})
 			return
@@ -288,7 +303,7 @@ func overviewPage(ctx context.Context, a *app.App) Page {
 				Title:       p.Name,
 				Description: p.Summary,
 				Actions: func() {
-					v.Button("Close project", components.ButtonOptions{
+					v.Button(i18n.T("shell.overview.btn_close"), components.ButtonOptions{
 						Variant: components.VariantGhost,
 						Size:    components.SizeSmall,
 						OnClick: func() { closeProject(a, ctx, p.ID) },
@@ -296,45 +311,46 @@ func overviewPage(ctx context.Context, a *app.App) Page {
 				},
 			})
 			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-				v.Card(components.CardOptions{Title: "Goals"}, func() {
+				v.Card(components.CardOptions{Title: i18n.T("shell.overview.card_goals")}, func() {
 					text := p.Goals
 					if text == "" {
-						text = "No goals written yet."
+						text = i18n.T("shell.overview.goals_empty")
 					}
 					ui.Text(v.C, text).FontSize(tokens.Typography.Body.Size)
 				}).Grow(1)
-				v.Card(components.CardOptions{Title: "Focus"}, func() {
+				v.Card(components.CardOptions{Title: i18n.T("shell.overview.card_focus")}, func() {
 					text := p.FocusMD
 					if text == "" {
-						text = "Nothing in focus."
+						text = i18n.T("shell.overview.focus_empty")
 					}
 					ui.Text(v.C, text).FontSize(tokens.Typography.Body.Size)
 				}).Grow(1)
 			})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Overview,
-				Title:  "Project statistics are not ready",
-				Reason: "Note, idea, experiment and task counts arrive with the Projects module (SPEC-03).",
+				Title:  i18n.T("shell.overview.stats_title"),
+				Reason: i18n.T("shell.overview.stats_reason"),
 			})
 		}})
 	}
 }
 
-// helpPage lists the shell's keyboard shortcuts and workspace identity.
+// helpPage lists the shell's keyboard shortcuts and workspace identity. Key
+// names are the same in every language; only their descriptions translate.
 func helpPage(a *app.App) Page {
 	return func(v *components.UI, r ports.Route) {
 		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
-				Title:       "Help / About",
-				Description: "ResearchOS desktop research workspace.",
+				Title:       pageTitle(app.RouteHelp),
+				Description: i18n.T("shell.help.description"),
 			})
-			v.Card(components.CardOptions{Title: "Keyboard"}, func() {
+			v.Card(components.CardOptions{Title: i18n.T("shell.help.card_keyboard")}, func() {
 				for _, row := range [][2]string{
-					{"Ctrl/Cmd + K", "Focus the global search"},
-					{"Ctrl/Cmd + Shift + P", "Open the command palette"},
-					{"Esc", "Close the palette, inspector or dialog"},
-					{"Tab / Shift + Tab", "Move the focus"},
-					{"Enter / Space", "Activate the focused control"},
+					{"Ctrl/Cmd + K", i18n.T("shell.help.keydesc_1")},
+					{"Ctrl/Cmd + Shift + P", i18n.T("shell.help.keydesc_2")},
+					{"Esc", i18n.T("shell.help.keydesc_3")},
+					{"Tab / Shift + Tab", i18n.T("shell.help.keydesc_4")},
+					{"Enter / Space", i18n.T("shell.help.keydesc_5")},
 				} {
 					ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
 						ui.Text(v.C, row[0]).Font(tokens.SystemFonts.Mono).Width(220)
@@ -342,9 +358,9 @@ func helpPage(a *app.App) Page {
 					})
 				}
 			})
-			v.Card(components.CardOptions{Title: "Workspace"}, func() {
+			v.Card(components.CardOptions{Title: i18n.T("shell.home.card_workspace")}, func() {
 				ui.Text(v.C, a.WorkspaceName()).FontSize(tokens.Typography.Body.Size)
-				ui.Text(v.C, "Theme and sidebar preferences are stored in the workspace settings.").
+				ui.Text(v.C, i18n.T("shell.help.workspace_note")).
 					FontSize(tokens.Typography.Caption.Size)
 			})
 		}})
@@ -356,7 +372,7 @@ func helpPage(a *app.App) Page {
 func openProject(a *app.App, ctx context.Context, id string) {
 	go func() {
 		if err := a.OpenProject(ctx, id); err != nil {
-			a.Toast(app.LevelDanger, "Could not open the project", err.Error())
+			a.Toast(app.LevelDanger, i18n.T("shell.projects.toast_open_fail"), errtext.Text(err))
 		}
 	}()
 }
@@ -365,7 +381,7 @@ func openProject(a *app.App, ctx context.Context, id string) {
 func closeProject(a *app.App, ctx context.Context, id string) {
 	go func() {
 		if err := a.CloseProject(ctx); err != nil {
-			a.Toast(app.LevelDanger, "Could not close the project", err.Error())
+			a.Toast(app.LevelDanger, i18n.T("shell.projects.toast_close_fail"), errtext.Text(err))
 		}
 	}()
 }

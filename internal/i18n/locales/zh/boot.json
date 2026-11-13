@@ -1,0 +1,12 @@
+{
+  "boot.dialog.select_workspace": "选择工作区文件夹",
+  "boot.error.config_not_saved": "工作区已打开，但配置无法保存：{error}",
+  "boot.error.not_a_folder": "{path} 不是文件夹",
+  "boot.inspect.empty": "该文件夹为空，可以初始化。",
+  "boot.inspect.existing": "这是一个已有的 ResearchOS 工作区。",
+  "boot.inspect.foreign": "该文件夹不为空，且不是 ResearchOS 工作区。",
+  "boot.inspect.global_missing": "标记文件存在，但缺少 global.db。",
+  "boot.inspect.marker_corrupt": ".researchos 标记存在，但无法作为 ResearchOS 标记读取。",
+  "boot.inspect.marker_missing": "global.db 存在，但缺少 .researchos 标记。",
+  "boot.inspect.not_exist": "该文件夹不存在，将会被创建。"
+}

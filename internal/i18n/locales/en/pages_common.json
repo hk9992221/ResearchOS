@@ -1,0 +1,9 @@
+{
+  "pages.common.bool_no": "No",
+  "pages.common.bool_yes": "Yes",
+  "pages.common.btn_browse": "Browse…",
+  "pages.common.empty_no_project_title": "No project is open",
+  "pages.common.size_bytes": "{n} B",
+  "pages.common.size_units": "{value} {unit}iB",
+  "pages.common.status_unavailable": "unavailable"
+}

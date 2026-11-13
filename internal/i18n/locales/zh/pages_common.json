@@ -1,0 +1,9 @@
+{
+  "pages.common.bool_no": "否",
+  "pages.common.bool_yes": "是",
+  "pages.common.btn_browse": "浏览…",
+  "pages.common.empty_no_project_title": "未打开项目",
+  "pages.common.size_bytes": "{n} B",
+  "pages.common.size_units": "{value} {unit}iB",
+  "pages.common.status_unavailable": "不可用"
+}

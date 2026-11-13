@@ -1,7 +1,8 @@
 package app
 
-import "errors"
+import "researchos/internal/ui/apperr"
 
-// errNoProjectService reports a project action in a window without a
-// workspace, where no project service is wired.
-var errNoProjectService = errors.New("app: no project service in this window")
+// ErrNoProjectService reports a project action in a window without a
+// workspace, where no project service is wired. The value lives in apperr so
+// that errtext can match it; it is exported here under the name callers use.
+var ErrNoProjectService = apperr.ErrNoProjectService

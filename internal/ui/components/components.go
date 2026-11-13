@@ -22,6 +22,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/i18n"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -129,15 +130,15 @@ func (u *UI) background(t Tone) tokens.Color {
 func label(t Tone) string {
 	switch t {
 	case Success:
-		return "Success"
+		return i18n.T("components.tone.success")
 	case Warning:
-		return "Warning"
+		return i18n.T("components.tone.warning")
 	case Danger:
-		return "Error"
+		return i18n.T("components.tone.danger")
 	case Info:
-		return "Info"
+		return i18n.T("components.tone.info")
 	case Accent:
-		return "Active"
+		return i18n.T("components.tone.accent")
 	}
-	return "Info"
+	return i18n.T("components.tone.info")
 }
