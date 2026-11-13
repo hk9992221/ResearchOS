@@ -191,7 +191,16 @@ func (r *LocalAPIReader) ListAttachments(ctx context.Context, libraryID, parentK
 				continue
 			}
 			filename := stringValue(data["filename"])
-			rawPath := stringValue(data["path"])
+			if filename == "" {
+				// A linked file carries its name in `title`, not `filename`.
+				filename = stringValue(data["title"])
+			}
+			rawPath := strings.TrimSpace(stringValue(data["path"]))
+			if rawPath == "" {
+				// The API leaves `path` empty for linked files: the local
+				// location lives in `links.linkedFile.href`.
+				rawPath = attachmentHref(data)
+			}
 			contentType := stringValue(data["contentType"])
 			if !isPDFAttachment(contentType, filename, rawPath) {
 				continue
@@ -450,4 +459,52 @@ func isPDFAttachment(contentType, filename, path string) bool {
 		}
 	}
 	return false
+}
+
+// attachmentHref recovers the local location of an attachment whose `path`
+// field is empty: the API keeps linked files in `links.linkedFile.href` as a
+// file:// URI and synced storage copies in `links.importedFile.href`.
+func attachmentHref(data map[string]any) string {
+	links, _ := data["links"].(map[string]any)
+	if links == nil {
+		return ""
+	}
+	for _, name := range []string{"linkedFile", "importedFile"} {
+		link, _ := links[name].(map[string]any)
+		if link == nil {
+			continue
+		}
+		if href := strings.TrimSpace(stringValue(link["href"])); href != "" {
+			return localPathFromHref(href)
+		}
+	}
+	return ""
+}
+
+// localPathFromHref turns a file:// URI into a readable filesystem path.
+// Storage references pass through for the resolver's `storage:` rule; a URI
+// that is not a plain local file passes through unchanged, so the resolver
+// names the real href in its error.
+func localPathFromHref(href string) string {
+	if !strings.HasPrefix(strings.ToLower(href), "file:") {
+		return href
+	}
+	u, err := url.Parse(href)
+	if err != nil || u.Path == "" || (u.Host != "" && !strings.EqualFold(u.Host, "localhost")) {
+		return href
+	}
+	p, err := url.PathUnescape(u.Path)
+	if err != nil {
+		p = u.Path
+	}
+	// file:///F:/papers/x.pdf decodes to "/F:/papers/x.pdf": the leading
+	// slash before a drive letter is an artifact of the URI form.
+	if len(p) >= 3 && p[0] == '/' && isDriveLetter(p[1]) && p[2] == ':' {
+		p = p[1:]
+	}
+	return p
+}
+
+func isDriveLetter(b byte) bool {
+	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
 }

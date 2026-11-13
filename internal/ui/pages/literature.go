@@ -26,9 +26,11 @@ import (
 	"researchos/internal/ui/tokens"
 )
 
-// literaturePageSize is the browser page size. The Zotero reader accepts at
-// most 100 items per call (SPEC-04 §5.2).
-const literaturePageSize = 100
+// literaturePageSize is the browser page size: one screenful of table rows,
+// so 上一页/下一页 walk the library instead of sitting disabled while a
+// 100-item page holds the whole collection. The Zotero reader accepts up to
+// 100 items per call (SPEC-04 §5.2); a page of ten stays well inside it.
+const literaturePageSize = litVisibleRows
 
 // litVisibleRows is how many table rows fit before the list scrolls inside its
 // own box (design system row height 44px).
@@ -608,12 +610,12 @@ func (l *Literature) loadItems(a *app.App) {
 	a.RunTask(i18n.T("pages.literature.task_items"), func(ctx context.Context, t *app.Task) error {
 		t.Stage(i18n.T("pages.literature.stage_items"))
 		l.mu.Lock()
-		offset, collection, query := l.state.offset, l.collection, l.query
+		offset := l.state.offset
 		l.mu.Unlock()
-		page, err := api.Items(ctx, "", collection, literature.ListItemsOptions{
+		page, err := api.Items(ctx, "", l.collectionKey(), literature.ListItemsOptions{
 			Offset: offset,
 			Limit:  literaturePageSize,
-			Query:  query,
+			Query:  l.queryText(),
 		})
 		l.record(err)
 		l.mu.Lock()
