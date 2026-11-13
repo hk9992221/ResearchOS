@@ -198,3 +198,46 @@ func TestLinkValidation(t *testing.T) {
 		return nil
 	})
 }
+
+func TestLinkQuietEmitsNoRelationEvent(t *testing.T) {
+	ctx := context.Background()
+	store, db, svc, projectID := openProject(t)
+	paperID := ids.MustNew(fixed)
+
+	var created bool
+	inTx(t, db, func(tx *sql.Tx) error {
+		var err error
+		created, err = store.LinkQuiet(ctx, tx, Link{ProjectID: projectID, PaperID: paperID, LinkedBy: schema.ActorUser})
+		return err
+	})
+	if !created {
+		t.Fatal("first LinkQuiet reported created=false")
+	}
+	inTx(t, db, func(tx *sql.Tx) error {
+		again, err := store.LinkQuiet(ctx, tx, Link{ProjectID: projectID, PaperID: paperID, LinkedBy: schema.ActorUser})
+		if err != nil {
+			return err
+		}
+		if again {
+			t.Error("second LinkQuiet reported created=true")
+		}
+		return nil
+	})
+	var rows int
+	if err := db.QueryRow(`SELECT count(*) FROM project_papers`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("project_papers rows = %d, want 1", rows)
+	}
+	n, err := svc.Count(ctx, events.Query{EventTypes: []events.Type{schema.EventRelationAdded}})
+	if err != nil {
+		t.Fatalf("count relation.added: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("relation.added events = %d, want 0", n)
+	}
+	if _, err := svc.Count(ctx, events.Query{}); err != nil {
+		t.Fatalf("count activities: %v", err)
+	}
+}
