@@ -195,6 +195,27 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 			})
 		})
 
+		if s.Services.MCPStatus != nil {
+			status := s.Services.MCPStatus()
+			v.Card(components.CardOptions{Title: i18n.T("pages.diagnostics.card_mcp"), Description: i18n.T("pages.diagnostics.card_mcp_desc")}, func() {
+				ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
+					state := i18n.T("pages.diagnostics.val_mcp_stopped")
+					if status.Running {
+						state = i18n.T("pages.diagnostics.val_mcp_running")
+					}
+					s.row(v, i18n.T("pages.diagnostics.row_mcp_state"), state)
+					s.row(v, i18n.T("pages.diagnostics.row_mcp_socket"), status.Socket)
+				})
+			})
+			if status.Error != "" {
+				v.Banner(components.BannerOptions{
+					Tone:    components.Danger,
+					Title:   i18n.T("pages.diagnostics.banner_mcp_failed"),
+					Message: status.Error,
+				})
+			}
+		}
+
 		if len(report.Warnings) > 0 {
 			v.Banner(components.BannerOptions{
 				Tone:    components.Warning,

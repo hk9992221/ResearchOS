@@ -43,6 +43,10 @@ type Services struct {
 	Diagnostics DiagnosticsAPI
 	External    ExternalAPI
 	Config      ConfigAPI
+	// MCPStatus reports the in-process MCP server of SPEC-11 §5.8. It is the
+	// only place a user can see whether the stdio bridge has something to talk
+	// to; a nil function means the composition root never started one.
+	MCPStatus func() MCPStatus
 	// Scan reports the marker and registry state of the open workspace.
 	Scan func(ctx context.Context) (foundationworkspace.WorkspaceScan, error)
 	// ChooseFolder opens the OS directory picker.
@@ -84,6 +88,15 @@ type DiagnosticsAPI interface {
 type ExternalAPI interface {
 	CheckOwner(ctx context.Context, projectID string, ownerType, ownerID string) ([]externalrefs.Status, error)
 	Relocate(ctx context.Context, req externalrefs.RelocateRequest) (externalrefs.RelocateResult, error)
+}
+
+// MCPStatus is the state of the in-process MCP server (SPEC-11 §5.8). Socket is
+// the local endpoint the stdio bridge connects to; Error explains why the
+// server is not running when it is not.
+type MCPStatus struct {
+	Running bool
+	Socket  string
+	Error   string
 }
 
 // TrashRef identifies one trash entry for restore or purge.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"researchos/internal/foundation/config"
+	"researchos/internal/foundation/indexhook"
 	"researchos/internal/literature"
 	"researchos/internal/literature/library"
 	"researchos/internal/literature/zotero"
@@ -38,7 +39,13 @@ func (d *Deps) libraryService() *library.Service {
 	}
 	source := zotero.NewSource(conn, sqlite, nil)
 	d.Infra.source = source
-	d.Infra.lib = library.New(d.Workspace, library.Options{Clock: c, Zotero: source})
+	// The imported paper is indexed post-commit (SPEC-10 §5.3). Without the
+	// search module the hook stays nil and the index is simply not updated.
+	var indexer indexhook.Indexer
+	if d.Search != nil {
+		indexer = d.Search
+	}
+	d.Infra.lib = library.New(d.Workspace, library.Options{Clock: c, Zotero: source, Indexer: indexer})
 	return d.Infra.lib
 }
 
