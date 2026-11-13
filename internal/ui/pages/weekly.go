@@ -12,6 +12,7 @@ package pages
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -336,6 +337,7 @@ func (n *Weekly) toolbar(v *components.UI, projectID string) {
 
 // tableView renders the report history.
 func (n *Weekly) tableView(v *components.UI, a *app.App, items []weeklyreview.ReportSummary, writable bool) {
+	items = sortedWeeklySummaries(items, n.table.Sort)
 	open := func(item weeklyreview.ReportSummary) {
 		a.Navigate(ports.Route{Kind: ports.RouteWeeklyReport, ProjectID: n.project, EntityID: item.ID})
 	}
@@ -1091,6 +1093,37 @@ func parseWeeklyDate(text string) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// sortedWeeklySummaries orders the loaded page by the column header the table
+// reports. The backend orders by period or updated_at; title and confirmation
+// are ordered here, across the page the table shows.
+func sortedWeeklySummaries(list []weeklyreview.ReportSummary, order *ui.SortOrder) []weeklyreview.ReportSummary {
+	out := append([]weeklyreview.ReportSummary(nil), list...)
+	if order == nil || order.Column == "" {
+		return out
+	}
+	less := func(a, b weeklyreview.ReportSummary) bool {
+		switch order.Column {
+		case "title":
+			return strings.ToLower(a.Title) < strings.ToLower(b.Title)
+		case "updated":
+			return a.UpdatedAt.Before(b.UpdatedAt)
+		case "confirmed":
+			if a.ConfirmedAt == nil || b.ConfirmedAt == nil {
+				return a.ConfirmedAt == nil && b.ConfirmedAt != nil
+			}
+			return a.ConfirmedAt.Before(*b.ConfirmedAt)
+		}
+		return a.Period.Start.Before(b.Period.Start)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if order.Descending {
+			return less(out[j], out[i])
+		}
+		return less(out[i], out[j])
+	})
+	return out
 }
 
 // visibleWeeklyRows is the table height for n rows.
