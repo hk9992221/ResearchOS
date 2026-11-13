@@ -57,15 +57,28 @@ func (s *Store) Create(ctx context.Context, tx *sql.Tx, name, summary, goals str
 	if err != nil {
 		return "", fmt.Errorf("projects: generate id: %w", err)
 	}
+	if err := s.CreateWithID(ctx, tx, id, name, summary, goals); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// CreateWithID inserts a project with a caller-supplied id. SPEC-03 generates
+// the UUIDv7 itself so that the data directory name equals the project id
+// (§5.4); the store only validates the shape.
+func (s *Store) CreateWithID(ctx context.Context, tx *sql.Tx, id, name, summary, goals string) error {
+	if !ids.Valid(id) {
+		return fmt.Errorf("projects: create: invalid project id %q", id)
+	}
 	now := clock.Format(s.clock.Now())
-	_, err = s.exec(ctx, tx,
+	_, err := s.exec(ctx, tx,
 		`INSERT INTO projects(id, name, summary, goals, focus_md, status, archived_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, '', 'active', NULL, ?, ?)`,
 		id, name, summary, goals, now, now)
 	if err != nil {
-		return "", fmt.Errorf("projects: create: %w", err)
+		return fmt.Errorf("projects: create: %w", err)
 	}
-	return id, nil
+	return nil
 }
 
 // Get returns one project. A missing row surfaces sql.ErrNoRows.
