@@ -113,12 +113,14 @@ func (u *UI) foreground(t Tone) tokens.Color {
 	return p.TextSecondary
 }
 
-// background is a subtle fill of the tone, for badges and banners.
+// background is a subtle fill of the tone, for badges and banners: the
+// surface tinted toward the tone, never the tone itself — dark text on the
+// full-strength warning or danger color is unreadable.
 func (u *UI) background(t Tone) tokens.Color {
 	p := u.T.Palette
 	switch t {
 	case Success, Warning, Danger, Info:
-		return u.foreground(t).Mix(p.BgSurface, 0.12)
+		return p.BgSurface.Mix(u.foreground(t), 0.12)
 	case Accent:
 		return p.AccentSubtle
 	}

@@ -21,9 +21,11 @@ type FieldOptions struct {
 }
 
 // Input builds a single-line text input. The label names it for assistive
-// technology and a click on it focuses the input.
+// technology and a click on it focuses the input. The returned element is
+// the input itself: Changed and Submitted report its state, which the field
+// wrapper around it does not carry.
 func (u *UI) Input(value *string, o FieldOptions) ui.Element {
-	in := func() {
+	in := func() ui.Element {
 		e := ui.TextInput(u.C, value).
 			Placeholder(o.Placeholder).
 			MinHeight(tokens.Space8).
@@ -32,13 +34,15 @@ func (u *UI) Input(value *string, o FieldOptions) ui.Element {
 		if o.AutoFocus {
 			e.AutoFocus()
 		}
+		return e
 	}
 	return u.field(o, in)
 }
 
-// Textarea builds a multi-line text input.
+// Textarea builds a multi-line text input. The returned element is the
+// textarea itself, so Changed reports its state.
 func (u *UI) Textarea(value *string, o FieldOptions) ui.Element {
-	in := func() {
+	in := func() ui.Element {
 		e := ui.TextArea(u.C, value).
 			Placeholder(o.Placeholder).
 			Disabled(o.Disabled).
@@ -46,6 +50,7 @@ func (u *UI) Textarea(value *string, o FieldOptions) ui.Element {
 		if o.AutoFocus {
 			e.AutoFocus()
 		}
+		return e
 	}
 	return u.field(o, in)
 }
@@ -64,7 +69,9 @@ type SelectOptions struct {
 	Width float32
 }
 
-// Select builds a drop-down choosing one of options into *selected.
+// Select builds a drop-down choosing one of options into *selected. The
+// returned element is the drop-down itself, so Changed reports a new choice
+// even when a field label wraps it.
 func (u *UI) Select(selected *string, o SelectOptions) ui.Element {
 	if o.Compact {
 		e := ui.Select(u.C, selected, o.Options).
@@ -78,8 +85,8 @@ func (u *UI) Select(selected *string, o SelectOptions) ui.Element {
 		}
 		return e
 	}
-	in := func() {
-		ui.Select(u.C, selected, o.Options).
+	in := func() ui.Element {
+		return ui.Select(u.C, selected, o.Options).
 			MinHeight(tokens.Space8).
 			Disabled(o.Disabled)
 	}
@@ -103,13 +110,14 @@ type SearchOptions struct {
 // text, and a clear button while it holds any. Query Changed and Submitted on
 // the returned element to filter or search.
 func (u *UI) SearchInput(query *string, o SearchOptions) ui.Element {
-	in := func() {
+	in := func() ui.Element {
 		e := ui.SearchField(u.C, query).
 			MinHeight(tokens.Space8).
 			Disabled(o.Disabled)
 		if o.Placeholder != "" {
 			e.Placeholder(o.Placeholder)
 		}
+		return e
 	}
 	return u.field(FieldOptions{Label: o.Label, Disabled: o.Disabled}, in)
 }
@@ -203,16 +211,22 @@ func (u *UI) toggle(o ToggleOptions, control func()) ui.Element {
 // field wraps a control in a labeled field, or draws the control with its
 // description and error when there is no label. The field draws the error in
 // the danger color and marks the control invalid for assistive technology.
-func (u *UI) field(o FieldOptions, control func()) ui.Element {
+// The returned element is the control, not the wrapper: mygo reports
+// Changed and Submitted on the widget's own state, which the field node
+// around it never carries.
+func (u *UI) field(o FieldOptions, control func() ui.Element) ui.Element {
+	var ctrl ui.Element
+	build := func() { ctrl = control() }
 	if o.Label == "" {
-		return u.toggle(ToggleOptions{Description: o.Description, Error: o.Error}, control)
+		u.toggle(ToggleOptions{Description: o.Description, Error: o.Error}, build)
+		return ctrl
 	}
-	f := ui.Field(u.C, o.Label, control)
+	f := ui.Field(u.C, o.Label, build)
 	if o.Description != "" {
 		f.Description(o.Description)
 	}
 	if o.Error != "" {
 		f.Error(o.Error)
 	}
-	return f
+	return ctrl
 }
