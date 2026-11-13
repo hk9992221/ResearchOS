@@ -468,6 +468,18 @@ func validateShape(ev Event) error {
 		if ev.Old == nil && ev.New == nil {
 			return shapeError("status.changed requires old or new")
 		}
+		// SPEC-00 §6: the shape follows the entity convention. task uses
+		// {column, column_name, is_done} / {blocked} / {archived} (plus
+		// completed_at on transitions); idea/evidence/report/run/
+		// experiment/project carry {status}.
+		if ev.EntityType == schema.EntityTask {
+			oldOK := ev.Old != nil && taskStatusShape(*ev.Old)
+			newOK := ev.New != nil && taskStatusShape(*ev.New)
+			if !oldOK && !newOK {
+				return shapeError("status.changed for task must carry column, blocked or archived")
+			}
+			break
+		}
 		if ev.Old != nil && !hasKey(*ev.Old, "status") {
 			return shapeError("status.changed old must carry status")
 		}
@@ -499,6 +511,14 @@ func validateRelationObject(obj Object) error {
 func hasKey(obj Object, key string) bool {
 	_, ok := obj[key]
 	return ok
+}
+
+// taskStatusShape reports whether one side carries a SPEC-00 §6 task
+// status.changed key set: {column...} for column transitions, {blocked} for
+// the blocked marker or {archived} for archiving. completed_at rides along
+// on column transitions and never names the shape by itself.
+func taskStatusShape(obj Object) bool {
+	return hasKey(obj, "column") || hasKey(obj, "blocked") || hasKey(obj, "archived")
 }
 
 func shapeError(format string, args ...any) error {
