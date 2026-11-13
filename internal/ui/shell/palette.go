@@ -17,6 +17,7 @@ func (s *Shell) togglePalette() {
 		return
 	}
 	s.paletteQuery = ""
+	s.paletteSel = 0
 	s.app.SetPalette(true)
 }
 
@@ -45,10 +46,22 @@ func (s *Shell) palette(v *components.UI) {
 			AutoFocus()
 		if field.Changed() {
 			s.paletteQuery = query
+			s.paletteSel = 0
+		}
+		cmds := filterCommands(s.commands(), s.paletteQuery)
+		if v.C.Shortcut(0, ui.KeyDown) {
+			s.paletteSel++
+		}
+		if v.C.Shortcut(0, ui.KeyUp) {
+			s.paletteSel--
+		}
+		if s.paletteSel >= len(cmds) {
+			s.paletteSel = len(cmds) - 1
+		}
+		if s.paletteSel < 0 {
+			s.paletteSel = 0
 		}
 		submitted := field.Submitted()
-
-		cmds := filterCommands(s.commands(), s.paletteQuery)
 		ui.Column(v.C).FillWidth().Gap(tokens.Space1).Children(func() {
 			if len(cmds) == 0 {
 				ui.Text(v.C, "No matching commands").
@@ -67,13 +80,13 @@ func (s *Shell) palette(v *components.UI) {
 					Title:       c.title,
 					Hint:        c.hint,
 					Icon:        c.icon,
-					Highlighted: i == 0,
+					Highlighted: i == s.paletteSel,
 					OnClick:     func() { s.runCommand(c) },
 				})
 			}
 		})
-		if submitted && len(cmds) > 0 {
-			s.runCommand(cmds[0])
+		if submitted && len(cmds) > 0 && s.paletteSel < len(cmds) {
+			s.runCommand(cmds[s.paletteSel])
 		}
 	})
 	if !open {

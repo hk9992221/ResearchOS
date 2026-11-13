@@ -116,6 +116,9 @@ func (u *UI) Button(text string, o ButtonOptions) ui.Element {
 		btn.Width(m.minHeight)
 	} else if o.Width > 0 {
 		btn.Width(o.Width)
+	} else {
+		// Hug the content instead of stretching across a column.
+		btn.AlignSelf(ui.Start)
 	}
 	if o.Tooltip != "" {
 		btn.Tooltip(o.Tooltip)

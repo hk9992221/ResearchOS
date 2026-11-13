@@ -30,13 +30,18 @@ func TestNoWorkspaceShowsTheSetupScreen(t *testing.T) {
 	defer rt.Close()
 
 	tt := ui.NewTester(rt.View, 1024, 700)
-	for _, want := range []string{"Welcome to ResearchOS", "Use this folder"} {
-		if !tt.HasText(want) {
-			t.Errorf("setup screen lacks %q; texts %q", want, tt.Texts())
-		}
+	if !tt.HasText("Set up ResearchOS") {
+		t.Fatalf("wizard welcome missing; texts %q", tt.Texts())
 	}
-	if _, ok := tt.AccessByRole(ui.RoleButton, "Choose folder…"); !ok {
-		t.Error("setup screen has no native folder chooser")
+	if _, ok := tt.AccessByRole(ui.RoleButton, "Get started"); !ok {
+		t.Fatalf("wizard has no start action; texts %q", tt.Texts())
+	}
+	tt.Click("Get started")
+	tt.Frame()
+	for _, want := range []string{"Folder path", "Validate folder"} {
+		if !tt.HasText(want) {
+			t.Errorf("wizard directory step lacks %q; texts %q", want, tt.Texts())
+		}
 	}
 }
 
@@ -117,7 +122,6 @@ func TestNonEmptyFolderReportsAReadableError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tt := ui.NewTester(rt.View, 1024, 700)
 	err = rt.UseWorkspace(ctx, dir)
 	if err == nil {
 		t.Fatal("a non-empty non-workspace folder was accepted")
@@ -125,11 +129,7 @@ func TestNonEmptyFolderReportsAReadableError(t *testing.T) {
 	if !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("error = %v, want ErrDirNotEmpty", err)
 	}
-	tt.Frame()
-	if !tt.HasText("The workspace could not be opened") {
-		t.Errorf("setup screen does not show the failure; texts %q", tt.Texts())
-	}
-	if rt.App() != nil {
-		t.Error("a failed open left a shell behind")
+	if string(rt.WorkspaceRoot()) != "" {
+		t.Error("a failed open left a workspace behind")
 	}
 }

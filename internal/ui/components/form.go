@@ -57,10 +57,27 @@ type SelectOptions struct {
 	Error       string
 	Disabled    bool
 	Options     []string
+	// Compact drops the field label and description for a toolbar filter,
+	// showing only the control sized for a toolbar row.
+	Compact bool
+	// Width of a compact select; zero uses the content width.
+	Width float32
 }
 
 // Select builds a drop-down choosing one of options into *selected.
 func (u *UI) Select(selected *string, o SelectOptions) ui.Element {
+	if o.Compact {
+		e := ui.Select(u.C, selected, o.Options).
+			MinHeight(tokens.Space8).
+			Disabled(o.Disabled)
+		if o.Label != "" {
+			e.Label(o.Label)
+		}
+		if o.Width > 0 {
+			e.Width(o.Width)
+		}
+		return e
+	}
 	in := func() {
 		ui.Select(u.C, selected, o.Options).
 			MinHeight(tokens.Space8).

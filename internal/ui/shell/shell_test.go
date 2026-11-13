@@ -307,3 +307,52 @@ func TestToastFeedback(t *testing.T) {
 // tokensPanel is the panel transition duration, for waiting out the sidebar
 // animation.
 const tokensPanel = 180 * time.Millisecond
+
+func TestPaletteArrowNavigation(t *testing.T) {
+	f := newFixture(t, 1440, 900)
+	f.tt.Key(ui.Cmd|ui.Shift, ui.KeyP)
+	f.tt.Frame()
+	f.tt.Key(0, ui.KeyDown)
+	f.tt.Frame()
+	f.tt.Key(0, ui.KeyDown)
+	f.tt.Frame()
+	f.tt.Key(0, ui.KeyEnter)
+	f.tt.Frame()
+	if got := f.app.Route().Kind; got != app.RouteInbox {
+		t.Fatalf("route = %q after two Down presses and Enter, want inbox", got)
+	}
+}
+
+func TestTaskStripShowsAndCancelsLongWork(t *testing.T) {
+	f := newFixture(t, 1440, 900)
+	started := make(chan struct{})
+	task := f.app.RunTask("Scan note files", func(ctx context.Context, t *app.Task) error {
+		t.Stage("Scanning")
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("task did not start")
+	}
+	f.tt.Frame()
+	if !f.tt.HasText("Scan note files · Scanning") {
+		t.Fatalf("task strip missing; texts %q", f.tt.Texts())
+	}
+	f.tt.Click("Cancel")
+	f.tt.Frame()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		f.tt.Frame()
+		if snap := task.Snapshot(); snap.Finished {
+			if snap.State != app.TaskCanceled {
+				t.Errorf("state = %v, want canceled", snap.State)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("task did not finish after cancel")
+}

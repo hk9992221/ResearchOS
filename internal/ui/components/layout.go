@@ -21,7 +21,7 @@ type PageContainerOptions struct {
 // PageContainer applies the design system's 24px page margin and an optional
 // maximum width, and lays its content out in a column.
 func (u *UI) PageContainer(o PageContainerOptions) ui.Element {
-	col := ui.Column(u.C).Fill().Padding(tokens.PagePadding).Gap(tokens.PageBlockGap)
+	col := ui.Column(u.C).FillWidth().Padding(tokens.PagePadding).Gap(tokens.PageBlockGap)
 	if o.MaxWidth > 0 {
 		col.MaxWidth(o.MaxWidth)
 	}
@@ -48,7 +48,7 @@ type PageHeaderOptions struct {
 // actions in the order the design system prescribes.
 func (u *UI) PageHeader(o PageHeaderOptions) ui.Element {
 	p := u.T.Palette
-	return ui.Column(u.C).Fill().Gap(tokens.Space2).Children(func() {
+	return ui.Column(u.C).FillWidth().Gap(tokens.Space2).Children(func() {
 		if len(o.Breadcrumbs) > 0 {
 			u.Breadcrumb(o.Breadcrumbs, o.BreadcrumbChosen)
 		}

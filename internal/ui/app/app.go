@@ -33,6 +33,7 @@ const (
 	RouteKanban       ports.RouteKind = "kanban"
 	RouteWeeklyReview ports.RouteKind = "weekly_review"
 	RouteDiagnostics  ports.RouteKind = "diagnostics"
+	RouteMigration    ports.RouteKind = "migration"
 	RouteConsistency  ports.RouteKind = "consistency"
 	RouteHelp         ports.RouteKind = "help"
 )
@@ -110,6 +111,8 @@ type App struct {
 	palette   bool
 	search    string
 	toasts    []Toast
+	tasks     []*Task
+	taskSeq   int64
 	list      []project.Project
 	listOK    bool
 	listErr   error
@@ -165,7 +168,19 @@ func (a *App) Project() *project.Project {
 }
 
 // WorkspaceName returns the display name of the workspace.
-func (a *App) WorkspaceName() string { return a.workspaceName }
+func (a *App) WorkspaceName() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.workspaceName
+}
+
+// SetWorkspaceName updates the display name, as after a workspace migration.
+func (a *App) SetWorkspaceName(name string) {
+	a.mu.Lock()
+	a.workspaceName = name
+	a.mu.Unlock()
+	a.changed()
+}
 
 // SetProject sets the open project context without a service call, for
 // composition roots and tests. OpenProject is the normal path.
@@ -408,6 +423,10 @@ func (a *App) Toasts() []Toast {
 	a.toasts = live
 	return append([]Toast(nil), live...)
 }
+
+// Notify asks the host to repaint without changing state, for page state the
+// App does not own.
+func (a *App) Notify() { a.changed() }
 
 // Changed registers the repaint hook after construction; the composition root
 // uses it once the window exists.

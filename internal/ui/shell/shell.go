@@ -58,6 +58,7 @@ type Shell struct {
 	lastTotal float32
 
 	paletteQuery string
+	paletteSel   int
 	projectsOnce atomic.Bool
 }
 
@@ -107,6 +108,7 @@ func (s *Shell) View(c *ui.Context) {
 		ui.Column(c).Fill().Children(func() {
 			s.topBar(v, narrow)
 			ui.Divider(c)
+			s.taskStrip(v)
 			if showInspector {
 				s.splitArea(v, width-sidebarWidth, inspector)
 			} else {
@@ -291,7 +293,9 @@ func (s *Shell) content(v *components.UI) {
 		page = PlaceholderPage(route.Kind)
 	}
 	ui.Column(v.C).Fill().Clip().Children(func() {
-		page(v, route)
+		ui.Scroll(v.C).Fill().Children(func() {
+			page(v, route)
+		})
 	})
 }
 

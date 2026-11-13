@@ -91,7 +91,7 @@ func TestToastsExpireAndAreCapped(t *testing.T) {
 }
 
 func TestTaskLifecycle(t *testing.T) {
-	task := NewTask()
+	task := NewTask("copy")
 	cancels := 0
 	task.SetCancel(func() { cancels++ })
 	task.Stage("copy")
@@ -146,4 +146,82 @@ func TestInspectorState(t *testing.T) {
 	if a.Inspector().Open {
 		t.Error("inspector did not close")
 	}
+}
+
+func TestRunTaskIsAsyncAndKeepsTerminalState(t *testing.T) {
+	a := New(Options{})
+	release := make(chan struct{})
+	started := make(chan struct{})
+	a.RunTask("migrate", func(ctx context.Context, snapshot *Task) error {
+		snapshot.Stage("copying")
+		close(started)
+		<-release
+		return nil
+	})
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("task did not start")
+	}
+	// The call returned while the task was still running.
+	live := a.Tasks()
+	if len(live) != 1 || live[0].Finished {
+		t.Fatalf("tasks = %+v", live)
+	}
+	if live[0].Stage != "copying" {
+		t.Errorf("stage = %q", live[0].Stage)
+	}
+	close(release)
+	waitTasks(t, a, func(list []TaskSnapshot) bool { return len(list) == 1 && list[0].Finished })
+	if got := a.Tasks()[0].State; got != TaskDone {
+		t.Errorf("state = %v, want done", got)
+	}
+
+	a.RunTask("broken", func(context.Context, *Task) error { return errors.New("boom") })
+	waitTasks(t, a, func(list []TaskSnapshot) bool {
+		for _, s := range list {
+			if s.Name == "broken" && s.Finished {
+				return true
+			}
+		}
+		return false
+	})
+	if got := a.Tasks(); len(got) != 2 {
+		t.Errorf("terminal task was dropped: %+v", got)
+	}
+}
+
+func TestTaskCancelReachesTheOperation(t *testing.T) {
+	a := New(Options{})
+	sawCancel := make(chan struct{})
+	task := a.RunTask("scan", func(ctx context.Context, snapshot *Task) error {
+		<-ctx.Done()
+		close(sawCancel)
+		return ctx.Err()
+	})
+	a.CancelTask(task.ID())
+	select {
+	case <-sawCancel:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancel did not reach the operation")
+	}
+	waitTasks(t, a, func(list []TaskSnapshot) bool { return list[0].Finished })
+	if got := a.Tasks()[0].State; got != TaskCanceled {
+		t.Errorf("state = %v, want canceled", got)
+	}
+	if !a.Tasks()[0].Canceled {
+		t.Error("snapshot does not report the cancel")
+	}
+}
+
+func waitTasks(t *testing.T, a *App, ok func([]TaskSnapshot) bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if ok(a.Tasks()) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("tasks did not settle: %+v", a.Tasks())
 }
