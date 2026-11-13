@@ -103,7 +103,7 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 
 	r.setupApp = app.New(app.Options{WorkspaceName: i18n.T("app.name")})
 	r.setupApp.Changed(mygo.InvalidateAll())
-	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil)
+	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil, nil)
 	r.services = r.setupServices
 	r.wizard = &pages.Wizard{Services: &r.setupServices}
 
@@ -213,7 +213,7 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 		appLogger{}.Warn("boot: 检索模块不可用", "err", searchErr)
 	}
 	lit := newLiteratureModule(ws, searchSvc)
-	pagesService := r.pageServices(ws, svc, a, migrations, lit)
+	pagesService := r.pageServices(ws, svc, a, migrations, lit, newNotesModule(ws))
 	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc)
 
 	pageSet := shell.DefaultPages(ctx, a)
@@ -349,7 +349,7 @@ func (r *Runtime) setSetupErr(text string) {
 // only the setup service is available. migrations is the registered module band
 // so the self check compares against the real target version, and the MCP
 // status reaches the diagnostics page through the runtime.
-func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI) pages.Services {
+func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI, noteAPI pages.NotesAPI) pages.Services {
 	s := pages.Services{
 		App:          a,
 		Setup:        r,
@@ -365,6 +365,7 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	s.Workspace = appWS
 	s.Scan = ws.Scan
 	s.Literature = lit
+	s.Notes = noteAPI
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
 	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}

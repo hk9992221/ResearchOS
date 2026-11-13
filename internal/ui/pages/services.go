@@ -22,6 +22,7 @@ import (
 	foundationworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/i18n"
 	"researchos/internal/literature"
+	"researchos/internal/notes"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/shell"
 	"researchos/internal/workspace"
@@ -51,6 +52,9 @@ type Services struct {
 	// Literature binds the SPEC-04 Zotero and import services. Nil means the
 	// module is not assembled, and the page says so instead of faking data.
 	Literature LiteratureAPI
+	// Notes binds the SPEC-05 note service. Nil means the module is not
+	// assembled, and the page says so instead of rendering an empty list.
+	Notes NotesAPI
 	// Scan reports the marker and registry state of the open workspace.
 	Scan func(ctx context.Context) (foundationworkspace.WorkspaceScan, error)
 	// ChooseFolder opens the OS directory picker.
@@ -118,6 +122,28 @@ type LiteratureAPI interface {
 	Preview(ctx context.Context, sel literature.ImportSelection) (literature.ImportPreview, error)
 	Import(ctx context.Context, sel literature.ImportSelection, progress literature.ProgressFunc) (literature.ImportResult, error)
 	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
+}
+
+// NotesAPI is the part of SPEC-05 the Research Notes page uses: the note list,
+// the editor's read and save calls, and the link resolution of the preview.
+// The composition root binds it to the note service, always as ActorUser: the
+// page is the user path, while MCP reaches the same methods with ActorMCP.
+// Every call names the open project, because one adapter serves the workspace.
+type NotesAPI interface {
+	Create(ctx context.Context, projectID string, in notes.CreateNoteInput) (*notes.Note, error)
+	Get(ctx context.Context, projectID, noteID string) (*notes.Note, error)
+	List(ctx context.Context, projectID string, q notes.ListNotesQuery) (notes.NotePage, error)
+	// LoadBody reads the Markdown without its frontmatter; Hash is the
+	// whole-file token the next save carries as BaseHash.
+	LoadBody(ctx context.Context, projectID, noteID string) (*notes.Body, error)
+	SaveBody(ctx context.Context, projectID string, in notes.SaveBodyInput) (*notes.SaveResult, error)
+	UpdateMeta(ctx context.Context, projectID string, in notes.UpdateMetaInput) (*notes.Note, error)
+	SoftDelete(ctx context.Context, projectID, noteID string, actor ports.Actor) error
+	ResolveTarget(ctx context.Context, projectID string, ref notes.EntityRef) (*notes.LinkTarget, error)
+	// ImageBaseDir is the absolute directory Markdown image paths of a note
+	// resolve from. The composition root owns paths; the page never joins
+	// workspace paths itself.
+	ImageBaseDir(projectID, noteID string) (string, error)
 }
 
 // TrashRef identifies one trash entry for restore or purge.
@@ -196,12 +222,19 @@ func System(s Services) map[ports.RouteKind]shell.Page {
 }
 
 // Research returns the module pages that operate on the open project. Today
-// that is the SPEC-04 literature browser and import page; the remaining
-// modules replace their shell placeholders as they are built.
+// that is the SPEC-04 literature browser, the SPEC-05 note list and editor;
+// the remaining modules replace their shell placeholders as they are built.
 func Research(s Services) map[ports.RouteKind]shell.Page {
 	literature := &Literature{Services: &s}
+	// The list and the editor share the generation the editor bumps after a
+	// write, so a returning list reloads instead of showing a stale row.
+	shared := &notesShared{}
+	notesList := &Notes{Services: &s, shared: shared}
+	noteEditor := &NoteEditor{Services: &s, shared: shared}
 	return map[ports.RouteKind]shell.Page{
 		app.RouteLiterature: literature.Page,
+		app.RouteNotes:      notesList.Page,
+		ports.RouteNote:     noteEditor.Page,
 	}
 }
 
