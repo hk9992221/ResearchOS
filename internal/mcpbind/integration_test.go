@@ -23,6 +23,8 @@ import (
 	notesmigrations "researchos/internal/notes/migrations"
 	"researchos/internal/overview"
 	"researchos/internal/project"
+	"researchos/internal/search"
+	searchmigrations "researchos/internal/search/migrations"
 
 	"researchos/internal/mcp"
 )
@@ -36,6 +38,7 @@ type harness struct {
 	projID  string
 	store   *settings.Store
 	confirm confirm.Service
+	search  *search.Service
 }
 
 func allMigrations(t *testing.T) map[storage.Kind][]storage.Migration {
@@ -51,11 +54,20 @@ func allMigrations(t *testing.T) map[storage.Kind][]storage.Migration {
 	add(kanbanmigrations.MustAll())
 	add(literaturemigrations.MustAll())
 	add(aimigrations.MustAll())
+	add(searchmigrations.MustAll())
 	add(mcpstoremigrations.MustAll())
 	return merged
 }
 
 func newHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessWith(t, search.Options{}, true)
+}
+
+// newHarnessWith builds the harness with an explicit SPEC-10 option set.
+// withSearch=false leaves the search service unassembled so the module
+// readiness trimming can be exercised (§2.2).
+func newHarnessWith(t *testing.T, searchOpt search.Options, withSearch bool) *harness {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -74,6 +86,14 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
+	var searchSvc *search.Service
+	if withSearch {
+		searchSvc, err = search.New(ws, searchOpt)
+		if err != nil {
+			t.Fatalf("search service: %v", err)
+		}
+		t.Cleanup(func() { _ = searchSvc.Close() })
+	}
 	facade := mcpfacade.New(mcpfacade.Options{
 		Project:  projectSvc,
 		Overview: overview.New(overview.Options{Workspace: ws}),
@@ -87,6 +107,7 @@ func newHarness(t *testing.T) *harness {
 		Settings:     store,
 		Facade:       facade,
 		ProjectAdmin: projectSvc,
+		Search:       searchSvc,
 		Limiter:      mcp.NewLimiter(1_000_000, 1_000_000, nil),
 	})
 	if err != nil {
@@ -101,6 +122,7 @@ func newHarness(t *testing.T) *harness {
 		projID:  proj.ID,
 		store:   store,
 		confirm: confirmSvc,
+		search:  searchSvc,
 	}
 }
 

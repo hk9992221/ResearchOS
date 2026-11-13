@@ -4771,6 +4771,166 @@
       "module": "project"
     },
     {
+      "name": "search",
+      "title": "检索",
+      "description": "检索项目或全局文献索引（关键词与向量融合；rerank 不可用时降级为融合排序）。scope=global 时归档项目默认参与；kinds 用实体类型过滤；只读，不记 Activity。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_deleted": {
+            "description": "是否包含已删除文档，默认 false",
+            "type": "boolean"
+          },
+          "kinds": {
+            "description": "实体类型过滤",
+            "items": {
+              "description": "实体类型",
+              "enum": [
+                "paper",
+                "note",
+                "db_record",
+                "idea",
+                "experiment"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "返回条数，默认 20，上限 100",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "偏移量，默认 0",
+            "type": "integer"
+          },
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "query": {
+            "description": "检索词",
+            "type": "string"
+          },
+          "rerank": {
+            "description": "是否启用 rerank，默认 true；不可用时降级并附 warning，不报错",
+            "type": "boolean"
+          },
+          "scope": {
+            "description": "检索作用域（project 时必须给 project_id）",
+            "enum": [
+              "project",
+              "global"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "search"
+    },
+    {
+      "name": "search_index_status",
+      "title": "索引状态",
+      "description": "返回项目或全局文献索引的健康度、进度与最近错误（只读）。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "scope": {
+            "description": "索引作用域（project 时必须给 project_id）",
+            "enum": [
+              "project",
+              "global"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "R",
+      "module": "search"
+    },
+    {
+      "name": "search_reindex",
+      "title": "重建索引",
+      "description": "提交索引重建作业。只读作业：不改变科研数据、不需要确认、不记 Activity。返回 MCP job_id；作业结果中的 job_id 是索引作业 ID。",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "description": "项目 ID",
+            "type": "string"
+          },
+          "rebuild_vector": {
+            "description": "是否重建向量，默认 false",
+            "type": "boolean"
+          },
+          "reparse_pdf": {
+            "description": "是否重新解析 PDF，默认 false",
+            "type": "boolean"
+          },
+          "scope": {
+            "description": "索引作用域（project 时必须给 project_id）",
+            "enum": [
+              "project",
+              "global"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "category": "J",
+      "module": "search"
+    },
+    {
       "name": "report_confirm",
       "title": "确认周报",
       "description": "请求确认周报。工具只入队，必须在应用内人工批准后以 actor=user 执行。\n\n写操作需要 idempotency_key（1–128 字符），放在 arguments.idempotency_key 或 params._meta.idempotencyKey。",

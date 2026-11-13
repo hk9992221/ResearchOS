@@ -18,6 +18,7 @@ import (
 	"researchos/internal/mcpfacade"
 	"researchos/internal/mcpstore"
 	"researchos/internal/project"
+	"researchos/internal/search"
 )
 
 // WireOptions is the application composition surface for the MCP server.
@@ -36,6 +37,11 @@ type WireOptions struct {
 
 	// Facade is the SPEC-03 project allow-list.
 	Facade *mcpfacade.Service
+	// Search is the SPEC-10 retrieval service (search.New over the workspace,
+	// with Embedding/Rerank from the ai/wire stack). Nil leaves the module
+	// unready: search, search_index_status and search_reindex are not
+	// published (§2.2). The caller owns its lifecycle.
+	Search *search.Service
 	// ProjectAdmin is only used by the in-app confirmation executor (the
 	// permanent-delete path); it is never part of the tool surface.
 	ProjectAdmin *project.Service
@@ -126,6 +132,7 @@ func Wire(opts WireOptions) (*App, error) {
 		Confirmations: confirmations,
 		Jobs:          jobs,
 		Facade:        opts.Facade,
+		Search:        opts.Search,
 		Infra:         &Infra{},
 	}
 	notifier := mcp.NewNotifier()

@@ -29,6 +29,7 @@ import (
 	"researchos/internal/literature/library"
 	"researchos/internal/mcp"
 	"researchos/internal/mcpfacade"
+	"researchos/internal/search"
 )
 
 // Deps is the composition-root surface the bindings need. Every field is an
@@ -53,6 +54,10 @@ type Deps struct {
 
 	// Facade is the SPEC-03 project allow-list.
 	Facade *mcpfacade.Service
+
+	// Search is the SPEC-10 retrieval and index coordinator. Nil hides the
+	// search module and its three tools (§2.2).
+	Search *search.Service
 
 	// Infra caches expensive collaborators (the Zotero-backed library
 	// service) so a tool call does not reopen Zotero's database every time.
@@ -146,9 +151,9 @@ func (p *provider) Ready(ctx context.Context) error {
 
 func (p *provider) Tools() []mcp.ToolBinding { return p.tools }
 
-// Providers returns every SPEC-11 tool provider except the SPEC-10 search tools
-// (search, search_index_status, search_reindex), which are added after SPEC-10
-// lands on main.
+// Providers returns every SPEC-11 tool provider. The search provider stays
+// registered even without a service: its Ready check then hides the module's
+// tools (§2.2) instead of failing host construction.
 func Providers(d Deps) []mcp.ToolProvider {
 	baseReady := func(context.Context) error { return d.Ready() }
 	return []mcp.ToolProvider{
@@ -161,6 +166,7 @@ func Providers(d Deps) []mcp.ToolProvider {
 		newKanbanProvider(d, baseReady),
 		newWeeklyProvider(d, baseReady),
 		newMiscProvider(d, baseReady),
+		newSearchProvider(d, baseReady),
 	}
 }
 
