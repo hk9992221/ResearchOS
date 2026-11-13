@@ -1,10 +1,10 @@
 package pages
 
-// Literature is the SPEC-04 page of the shell: the Zotero connection state,
-// the item browser, and the read-only preview that precedes the import into
-// the open project. Every database and Zotero read runs in a managed task, so
-// the frame only renders cached state; the import progress is reported through
-// the shell's task strip.
+// Literature is the SPEC-04 page of the shell: the item browser and the
+// read-only preview that precedes the import into the open project. Every
+// database and Zotero read runs in a managed task, so the frame only renders
+// cached state; the import progress is reported through the shell's task
+// strip.
 
 import (
 	"context"
@@ -23,7 +23,6 @@ import (
 	"researchos/internal/ui/components"
 	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
-	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
 
@@ -57,10 +56,6 @@ type Literature struct {
 
 // litState is the cached service state the frame renders.
 type litState struct {
-	status      literature.ZoteroConnectionStatus
-	hasStatus   bool
-	metaMode    string
-	metaWhy     string
 	collections []literature.ZoteroCollection
 	items       []literature.ZoteroItem
 	total       int
@@ -108,7 +103,6 @@ func (l *Literature) Page(v *components.UI, r ports.Route) {
 			},
 		})
 		l.banners(v)
-		l.connection(v)
 		l.browser(v, a, project.ID)
 		l.linked(v)
 		l.dialog(v, a, project.ID)
@@ -190,53 +184,6 @@ func failuresText(result *literature.ImportResult) string {
 		return ""
 	}
 	return "\n" + i18n.T("pages.literature.result_failures") + "\n" + strings.Join(lines, "\n")
-}
-
-// connection shows what Zotero the module resolved: the data directory, its
-// source, the local API and which reader is answering.
-func (l *Literature) connection(v *components.UI) {
-	l.mu.Lock()
-	s := l.state
-	l.mu.Unlock()
-
-	v.Card(components.CardOptions{
-		Title:       i18n.T("pages.literature.card_zotero"),
-		Description: i18n.T("pages.literature.card_zotero_desc"),
-	}, func() {
-		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
-			dir := i18n.T("pages.literature.status_none")
-			source := ""
-			problems := []string(nil)
-			if s.hasStatus && s.status.DataDir != nil {
-				dir = s.status.DataDir.Path
-				source = string(s.status.DataDir.Source)
-				problems = s.status.DataDir.Problems
-			}
-			l.row(v, i18n.T("pages.literature.row_dir"), dir)
-			if source != "" {
-				l.row(v, i18n.T("pages.literature.row_source"), sourceLabel(source))
-			}
-			apiLabel := i18n.T("pages.literature.status_unavailable")
-			if s.hasStatus && s.status.LocalAPI.Available {
-				apiLabel = i18n.T("pages.literature.status_available")
-			}
-			l.row(v, i18n.T("pages.literature.row_local_api"), apiLabel)
-			mode := s.metaMode
-			if mode == "" {
-				mode = i18n.T("pages.literature.status_none")
-			}
-			l.row(v, i18n.T("pages.literature.row_metadata"), modeLabel(mode, s.metaWhy))
-
-			if len(problems) > 0 {
-				ui.Text(v.C, strings.Join(problems, "\n")).
-					FontSize(tokens.Typography.Secondary.Size).
-					TextColor(mygo.Color(v.T.Palette.StatusDanger))
-			} else if !s.hasStatus || s.status.DataDir == nil {
-				ui.Text(v.C, i18n.T("pages.literature.hint_configure")).
-					FontSize(tokens.Typography.Secondary.Size)
-			}
-		})
-	})
 }
 
 // browser is the Zotero picker: collection, search, paging and the selection
@@ -569,17 +516,6 @@ func visibleTableHeight(rows int) float32 {
 	return float32(visible)*44 + 40
 }
 
-// row renders one label/value line of the connection card.
-func (l *Literature) row(v *components.UI, label, value string) {
-	p := v.T.Palette
-	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-		ui.Text(v.C, label).Width(140).FontSize(tokens.Typography.Secondary.Size).
-			TextColor(mygo.Color(p.TextSecondary))
-		ui.Text(v.C, value).Grow(1).FontSize(tokens.Typography.Body.Size).
-			TextColor(mygo.Color(p.TextPrimary))
-	})
-}
-
 // load runs the module load once per project; reload re-runs it after a
 // detection change in the settings.
 func (l *Literature) load(a *app.App, projectID string) {
@@ -613,27 +549,9 @@ func (l *Literature) reload(a *app.App, projectID string) {
 	}
 
 	a.RunTask(i18n.T("pages.literature.task_load"), func(ctx context.Context, t *app.Task) error {
-		t.Stage(i18n.T("pages.literature.stage_status"))
-		status, err := api.ZoteroStatus(ctx)
-		l.mu.Lock()
-		l.problems = nil
-		if err != nil {
-			l.problems = append(l.problems, errtext.Text(err))
-		}
-		l.state.status, l.state.hasStatus = status, true
-		l.mu.Unlock()
-
-		t.Stage(i18n.T("pages.literature.stage_metadata"))
-		metaMode, metaWhy, err := api.MetadataSource(ctx)
-		l.record(err, string(metaMode), metaWhy)
-		if err != nil {
-			l.finish(false)
-			return nil
-		}
-
 		t.Stage(i18n.T("pages.literature.stage_items"))
 		collections, collErr := api.Collections(ctx, "")
-		l.record(collErr, "", "")
+		l.record(collErr)
 		l.mu.Lock()
 		if collErr == nil {
 			l.state.collections = collections
@@ -649,7 +567,7 @@ func (l *Literature) reload(a *app.App, projectID string) {
 			Limit:  literaturePageSize,
 			Query:  l.queryText(),
 		})
-		l.record(itemsErr, "", "")
+		l.record(itemsErr)
 		l.mu.Lock()
 		if itemsErr == nil {
 			l.state.items, l.state.total = page.Items, page.Total
@@ -658,7 +576,7 @@ func (l *Literature) reload(a *app.App, projectID string) {
 
 		t.Stage(i18n.T("pages.literature.stage_project"))
 		papers, papersErr := api.ProjectPapers(ctx, projectID)
-		l.record(papersErr, "", "")
+		l.record(papersErr)
 		l.mu.Lock()
 		if papersErr == nil {
 			l.state.papers = papers
@@ -697,7 +615,7 @@ func (l *Literature) loadItems(a *app.App) {
 			Limit:  literaturePageSize,
 			Query:  query,
 		})
-		l.record(err, "", "")
+		l.record(err)
 		l.mu.Lock()
 		if err == nil {
 			l.state.items, l.state.total = page.Items, page.Total
@@ -728,7 +646,7 @@ func (l *Literature) openPreview(a *app.App) {
 		t.Stage(i18n.T("pages.literature.stage_preview"))
 		sel := l.selection(ctx, api, keys)
 		preview, err := api.Preview(ctx, sel)
-		l.record(err, "", "")
+		l.record(err)
 		if err != nil {
 			l.finish(false)
 			return nil
@@ -740,7 +658,7 @@ func (l *Literature) openPreview(a *app.App) {
 			}
 			attachments, err := api.Attachments(ctx, entry.LibraryID, entry.ZoteroKey)
 			if err != nil {
-				l.record(err, "", "")
+				l.record(err)
 				continue
 			}
 			var pdfs []literature.ZoteroAttachment
@@ -810,7 +728,7 @@ func (l *Literature) startImport(a *app.App, projectID string) {
 		result, err := api.Import(ctx, sel, func(p literature.ImportProgress) {
 			t.Progress(p.Index, p.Total)
 		})
-		l.record(err, "", "")
+		l.record(err)
 		l.mu.Lock()
 		if err == nil || result.Imported+result.Linked+result.Skipped+result.Failed > 0 {
 			l.state.result = &result
@@ -821,7 +739,7 @@ func (l *Literature) startImport(a *app.App, projectID string) {
 		// failure leaves the previous rows on screen.
 		if err == nil {
 			papers, papersErr := api.ProjectPapers(ctx, projectID)
-			l.record(papersErr, "", "")
+			l.record(papersErr)
 			l.mu.Lock()
 			if papersErr == nil {
 				l.state.papers = papers
@@ -867,13 +785,9 @@ func (l *Literature) setCollection(key string) {
 }
 
 // record appends a service failure to the banner list.
-func (l *Literature) record(err error, mode, why string) {
+func (l *Literature) record(err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if mode != "" {
-		l.state.metaMode = string(mode)
-		l.state.metaWhy = why
-	}
 	if err != nil {
 		l.problems = append(l.problems, errtext.Text(err))
 	}
@@ -1006,29 +920,4 @@ func entryState(entry literature.ImportPreviewEntry) (components.Tone, string) {
 
 func isPDF(att literature.ZoteroAttachment) bool {
 	return att.ContentType == "application/pdf" || strings.HasSuffix(strings.ToLower(att.Filename), ".pdf")
-}
-
-func sourceLabel(source string) string {
-	switch source {
-	case string(literature.DetectionUser):
-		return i18n.T("pages.literature.source_user")
-	case string(literature.DetectionPrefs):
-		return i18n.T("pages.literature.source_prefs")
-	case string(literature.DetectionDefault):
-		return i18n.T("pages.literature.source_default")
-	default:
-		return source
-	}
-}
-
-func modeLabel(mode, reason string) string {
-	if mode == "" {
-		return i18n.T("pages.literature.status_none")
-	}
-	if reason == "" {
-		return mode
-	}
-	return i18n.Tf("pages.literature.mode_fallback", map[string]string{
-		"mode": mode, "reason": reason,
-	})
 }

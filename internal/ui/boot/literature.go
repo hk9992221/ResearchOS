@@ -77,11 +77,27 @@ func (m *literatureModule) ensure(ctx context.Context) error {
 	if m.source != nil && dir == m.dir {
 		return nil
 	}
+	// The local API reader is always built: when Zotero is running it can serve
+	// the library even though the database is locked.
+	api := m.conn.NewAPIReader()
 	var sqlite *zotero.SQLiteReader
 	if dir != "" {
+		if api != nil {
+			// A dedicated resolver keeps attachment paths resolvable when the
+			// SQLite handle is unavailable (live library, locked database).
+			api.WithResolver(zotero.Resolver{
+				DataDir:       dir,
+				LinkedBaseDir: m.conn.LinkedAttachmentBaseDir(),
+			})
+		}
 		reader, err := zotero.NewSQLiteReader(dir)
-		if err != nil && !errors.Is(err, literature.ErrZoteroDirInvalid) {
-			return err
+		// A locked (live) or invalid database is not fatal: the local API may
+		// still answer. Other failures are real errors.
+		if err != nil {
+			if !errors.Is(err, literature.ErrZoteroBusy) && !errors.Is(err, literature.ErrZoteroDirInvalid) {
+				return err
+			}
+			reader = nil
 		}
 		sqlite = reader
 	}
@@ -90,7 +106,7 @@ func (m *literatureModule) ensure(ctx context.Context) error {
 	if m.source != nil {
 		_ = m.sqlite.Close()
 	}
-	source := zotero.NewSource(m.conn, sqlite, nil)
+	source := zotero.NewSource(m.conn, sqlite, api)
 	options := library.Options{Clock: m.clock, Zotero: source}
 	if m.search != nil {
 		options.Indexer = m.search
@@ -119,26 +135,6 @@ func (m *literatureModule) Close() error {
 	m.lib = nil
 	m.dir = ""
 	return err
-}
-
-// ZoteroStatus implements pages.LiteratureAPI. It reads the connection
-// directly, so an unconfigured or invalid directory is reported instead of an
-// error.
-func (m *literatureModule) ZoteroStatus(ctx context.Context) (literature.ZoteroConnectionStatus, error) {
-	return m.conn.Status(ctx)
-}
-
-func (m *literatureModule) MetadataSource(ctx context.Context) (literature.MetadataSource, string, error) {
-	if err := m.ensure(ctx); err != nil {
-		return "", "", err
-	}
-	m.mu.Lock()
-	source := m.source
-	m.mu.Unlock()
-	if source == nil {
-		return "", "", literature.ErrZoteroNotConfigured
-	}
-	return source.Status(ctx)
 }
 
 // reader returns the live Zotero reader for browsing calls.

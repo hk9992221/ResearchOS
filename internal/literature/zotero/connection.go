@@ -380,6 +380,17 @@ func (c *Connection) usersBaseURL() string {
 	}
 }
 
+// NewAPIReader builds a reader for this connection's local HTTP API endpoint.
+// The reader answers from Zotero's local HTTP API; whether it is used at all is
+// still decided per call by Source, so a reader returned here never forces the
+// API path.
+func (c *Connection) NewAPIReader() *LocalAPIReader {
+	if c == nil {
+		return nil
+	}
+	return NewLocalAPIReader(c.usersBaseURL(), c.httpClient(localAPIReadTimeout))
+}
+
 // probeLocalAPI issues the single, read-only availability probe.
 func (c *Connection) probeLocalAPI(ctx context.Context) literature.LocalAPIStatus {
 	base := c.usersBaseURL()
