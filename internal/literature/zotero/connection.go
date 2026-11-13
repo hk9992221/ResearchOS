@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"researchos/internal/foundation/clock"
-	"researchos/internal/foundation/settings"
+	"researchos/internal/foundation/config"
 	"researchos/internal/literature"
 )
 
@@ -21,11 +21,13 @@ import (
 // "/api/users/<id>" is used as given.
 const DefaultLocalAPIBaseURL = "http://127.0.0.1:23119"
 
+// The manual Zotero data directory is not a workspace setting: it lives in the
+// application configuration (SPEC-00 §1, SPEC-01 BASE-09, SPEC-04 §4.7), so the
+// settings page and the detection below share exactly one value. §4.7's
+// zotero.data_dir_source is derived from that value (a non-empty manual path
+// means DetectionUser), and zotero.last_verified_at is reported by
+// ZoteroConnectionStatus.CheckedAt, so neither needs its own key.
 const (
-	settingDataDir        = "zotero.data_dir"
-	settingDataDirSource  = "zotero.data_dir_source"
-	settingLastVerifiedAt = "zotero.last_verified_at"
-
 	localAPIProbeTimeout = time.Second
 )
 
@@ -44,12 +46,12 @@ const (
 // that NewConnection(Options{}) works; the path overrides exist for
 // deterministic tests and for unusual installations.
 type Options struct {
-	// Settings is the workspace-level settings store used for
-	// zotero.data_dir and friends. Nil disables persistence: Detect/Status
-	// still work, SetDataDir returns an error, and no manual directory is
-	// read.
-	Settings *settings.Store
-	// Clock supplies CheckedAt and last_verified_at. Nil means clock.System.
+	// AppConfig is the SPEC-01 application configuration store that holds the
+	// manually specified Zotero directory (AppConfig.ZoteroDataDir). Nil
+	// disables persistence: Detect/Status still work by auto-detection,
+	// SetDataDir returns an error, and no manual directory is read.
+	AppConfig config.Store
+	// Clock supplies CheckedAt and the validation timestamp. Nil means clock.System.
 	Clock clock.Clock
 	// HTTPClient is the base client for local API probes. Its transport is
 	// cloned (never mutated) and its timeout is replaced by the probe's 1s
@@ -84,16 +86,16 @@ type Options struct {
 // Connection implements literature.ZoteroConnectionService. It is safe for
 // concurrent use; all state is immutable after construction.
 type Connection struct {
-	settings *settings.Store
-	clock    clock.Clock
-	hc       *http.Client
-	goos     string
-	home     string
-	appData  string
-	config   string
-	apiBase  string
-	version  string
-	linked   string
+	appConfig config.Store
+	clock     clock.Clock
+	hc        *http.Client
+	goos      string
+	home      string
+	appData   string
+	config    string
+	apiBase   string
+	version   string
+	linked    string
 }
 
 var _ literature.ZoteroConnectionService = (*Connection)(nil)
@@ -101,16 +103,16 @@ var _ literature.ZoteroConnectionService = (*Connection)(nil)
 // NewConnection resolves the platform defaults and returns the service.
 func NewConnection(opts Options) *Connection {
 	c := &Connection{
-		settings: opts.Settings,
-		clock:    opts.Clock,
-		hc:       opts.HTTPClient,
-		goos:     strings.ToLower(strings.TrimSpace(opts.GOOS)),
-		home:     strings.TrimSpace(opts.HomeDir),
-		appData:  strings.TrimSpace(opts.AppDataDir),
-		config:   strings.TrimSpace(opts.ConfigDir),
-		apiBase:  strings.TrimSpace(opts.LocalAPIBaseURL),
-		version:  strings.TrimSpace(opts.Version),
-		linked:   strings.TrimSpace(opts.LinkedBaseDir),
+		appConfig: opts.AppConfig,
+		clock:     opts.Clock,
+		hc:        opts.HTTPClient,
+		goos:      strings.ToLower(strings.TrimSpace(opts.GOOS)),
+		home:      strings.TrimSpace(opts.HomeDir),
+		appData:   strings.TrimSpace(opts.AppDataDir),
+		config:    strings.TrimSpace(opts.ConfigDir),
+		apiBase:   strings.TrimSpace(opts.LocalAPIBaseURL),
+		version:   strings.TrimSpace(opts.Version),
+		linked:    strings.TrimSpace(opts.LinkedBaseDir),
 	}
 	if c.clock == nil {
 		c.clock = clock.System{}
@@ -279,14 +281,11 @@ func (c *Connection) SetDataDir(ctx context.Context, dir string) (literature.Zot
 	if err := ctx.Err(); err != nil {
 		return literature.ZoteroDataDir{}, err
 	}
-	if c.settings == nil {
-		return literature.ZoteroDataDir{}, fmt.Errorf("zotero: 设置存储未初始化")
+	if c.appConfig == nil {
+		return literature.ZoteroDataDir{}, fmt.Errorf("zotero: 应用配置未初始化")
 	}
 	if strings.TrimSpace(dir) == "" {
-		if err := c.settings.Delete(ctx, nil, settingDataDir); err != nil {
-			return literature.ZoteroDataDir{}, err
-		}
-		if err := c.settings.Set(ctx, nil, settingDataDirSource, "auto"); err != nil {
+		if err := c.saveDataDir(ctx, ""); err != nil {
 			return literature.ZoteroDataDir{}, err
 		}
 		for _, cand := range c.autoCandidates() {
@@ -307,17 +306,8 @@ func (c *Connection) SetDataDir(ctx context.Context, dir string) (literature.Zot
 		}
 		return zd, err
 	}
-
-	now := c.clock.Now()
-	writes := []struct{ key, value string }{
-		{settingDataDir, zd.Path},
-		{settingDataDirSource, string(literature.DetectionUser)},
-		{settingLastVerifiedAt, clock.Format(now)},
-	}
-	for _, w := range writes {
-		if err := c.settings.Set(ctx, nil, w.key, w.value); err != nil {
-			return zd, err
-		}
+	if err := c.saveDataDir(ctx, zd.Path); err != nil {
+		return zd, err
 	}
 	return zd, nil
 }
@@ -478,16 +468,35 @@ func firstHeader(resp *http.Response, names ...string) string {
 	return ""
 }
 
+// userDataDir returns the manually configured Zotero directory, if any. The
+// value is read from the application configuration, which is also what the
+// settings page writes: one value, two entry points (§4.7).
 func (c *Connection) userDataDir(ctx context.Context) (string, bool, error) {
-	if c.settings == nil {
+	if c.appConfig == nil {
 		return "", false, nil
 	}
-	v, ok, err := c.settings.Get(ctx, settingDataDir)
+	cfg, err := c.appConfig.Load(ctx)
 	if err != nil {
 		return "", false, err
 	}
-	v = strings.TrimSpace(v)
-	return v, ok && v != "", nil
+	v := strings.TrimSpace(cfg.ZoteroDataDir)
+	return v, v != "", nil
+}
+
+// saveDataDir rewrites only the Zotero directory of the application
+// configuration, so a concurrent change to another field (the language, the
+// workspace root) is not overwritten with a stale value. An empty path clears
+// the manual override.
+func (c *Connection) saveDataDir(ctx context.Context, dir string) error {
+	cfg, err := c.appConfig.Load(ctx)
+	if err != nil {
+		return err
+	}
+	cfg.ZoteroDataDir = strings.TrimSpace(dir)
+	if err := c.appConfig.Save(ctx, cfg); err != nil {
+		return fmt.Errorf("zotero: 保存 Zotero 数据目录: %w", err)
+	}
+	return nil
 }
 
 type autoCandidate struct {
