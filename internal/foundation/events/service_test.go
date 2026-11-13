@@ -402,12 +402,29 @@ func TestAC24NewEventTypes(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("status.changed: %v", err)
 	}
-	noStatus := events.Object{"column": "todo"}
+	// A non-task entity must carry status (SPEC-00 §6).
+	if err := emit(t, svc, db, events.Event{
+		Type: schema.EventStatusChanged, EntityType: schema.EntityWeeklyReport, EntityID: entityID,
+		Old: &events.Object{"column": "todo"}, Summary: "status", Actor: schema.ActorUser,
+	}); !errors.Is(err, errs.ErrBadPayloadShape) {
+		t.Fatalf("report status.changed without status = %v", err)
+	}
+	// The task convention carries {column…}/{blocked}/{archived} instead
+	// (SPEC-00 §6; consumed by SPEC-08/SPEC-09).
 	if err := emit(t, svc, db, events.Event{
 		Type: schema.EventStatusChanged, EntityType: schema.EntityTask, EntityID: entityID,
-		Old: &noStatus, Summary: "status", Actor: schema.ActorUser,
+		Old:     &events.Object{"column": "todo", "column_name": "todo", "is_done": false},
+		New:     &events.Object{"column": "done", "column_name": "done", "is_done": true},
+		Summary: "status", Actor: schema.ActorUser,
+	}); err != nil {
+		t.Fatalf("task status.changed with column shape = %v", err)
+	}
+	if err := emit(t, svc, db, events.Event{
+		Type: schema.EventStatusChanged, EntityType: schema.EntityTask, EntityID: entityID,
+		Old: &events.Object{"note": "x"}, New: &events.Object{"note": "y"},
+		Summary: "status", Actor: schema.ActorUser,
 	}); !errors.Is(err, errs.ErrBadPayloadShape) {
-		t.Fatalf("status.changed without status = %v", err)
+		t.Fatalf("task status.changed without a task key = %v", err)
 	}
 	if _, err := events.ParseObject([]byte(`"draft"`)); !errors.Is(err, errs.ErrBadPayloadShape) {
 		t.Fatalf("status.changed raw string = %v, want ErrBadPayloadShape", err)
