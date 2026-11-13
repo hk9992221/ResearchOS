@@ -69,6 +69,10 @@ type Options struct {
 	Tasks      ports.TaskCompleter
 	Trash      ports.TrashService
 
+	// Busy probes the export job registry: it returns a blocker code (for
+	// example "export_running") or "" when the project is idle. Nil means only
+	// the workspace locker is probed by PrepareDelete (§5.4).
+	Busy func(ctx context.Context, projectID string) (code string, err error)
 	// CreateProjectData replaces Workspace.CreateProjectData. Testing seam: a
 	// registration pipeline failure must roll back cleanly (§8.1 PRJ-01).
 	CreateProjectData func(ctx context.Context, projectID string) error
@@ -91,6 +95,7 @@ type Service struct {
 	tasks  ports.TaskCompleter
 	trash  ports.TrashService
 
+	busy          func(ctx context.Context, projectID string) (string, error)
 	createData    func(ctx context.Context, projectID string) error
 	insertProject func(ctx context.Context, tx *sql.Tx, id, name, summary, goals string) error
 
@@ -111,6 +116,7 @@ func New(opts Options) *Service {
 		notes:         opts.Notes,
 		tasks:         opts.Tasks,
 		trash:         opts.Trash,
+		busy:          opts.Busy,
 		createData:    opts.CreateProjectData,
 		insertProject: opts.InsertProject,
 	}

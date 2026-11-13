@@ -1,8 +1,8 @@
-// Package workspace implements the SPEC-03 §5.10 workspace service for the
-// T3-07 scope: workspace Info, disk Footprint accounting and root Probe.
-// It composes the frozen foundation workspace (SPEC-01) and only reads:
-// Probe never creates anything that survives the call. Migration
-// (PlanMigration/Migrate/CancelMigration, T3-08) is out of scope here.
+// Package workspace implements the SPEC-03 §5.10 workspace service: Info,
+// Footprint, Probe and the whole-workspace migration (PlanMigration, Migrate,
+// CancelMigration; T3-08). It composes the frozen foundation workspace
+// (SPEC-01) and never merges two workspaces: migration copies into an empty
+// target, commits atomically and keeps the old root as the user's backup.
 package workspace
 
 import (
@@ -13,6 +13,7 @@ import (
 
 	"researchos/internal/foundation/schema"
 	foundationworkspace "researchos/internal/foundation/workspace"
+	"researchos/internal/ports"
 )
 
 // footprintWorkers caps the concurrent per-project measurements.
@@ -50,15 +51,72 @@ type ProjectFootprint struct {
 	Archived        bool
 }
 
-// Service answers workspace questions against an open foundation workspace.
-// It holds no mutable state and is safe for concurrent use.
+// Options configures a Service. Workspace is required; every other field is
+// optional.
+type Options struct {
+	// Workspace is the open SPEC-01 foundation workspace.
+	Workspace *foundationworkspace.Workspace
+	// Locker serializes the migration against project writes. Nil installs an
+	// in-process locker owned by this service. When the application wires the
+	// locker shared with the project service, migration holds the same
+	// workspace lock that project writes check, so those writes see ErrBusy.
+	Locker ports.Locker
+	// OnMoved is called after a migration committed and the workspace was
+	// reopened at the new root. Modules that cache paths use it to refresh.
+	OnMoved func(ctx context.Context, oldRoot, newRoot string) error
+
+	// diskFree overrides the free-space probe. Testing seam.
+	diskFree func(path string) (free, total int64, ok bool)
+	// hookAfterCopy runs after the copy and before verification. Testing seam:
+	// a test can tamper with a staged file to prove verification rejects it.
+	hookAfterCopy func(plan *MigratePlan) error
+	// hookBeforeCommit runs after verification and before the commit rename.
+	// Testing seam: an injected error proves the rollback path.
+	hookBeforeCommit func(plan *MigratePlan) error
+}
+
+// Service answers workspace questions against an open foundation workspace and
+// owns the single in-memory migration plan/job. It is safe for concurrent use.
 type Service struct {
-	ws *foundationworkspace.Workspace
+	ws      *foundationworkspace.Workspace
+	locker  ports.Locker
+	onMoved func(ctx context.Context, oldRoot, newRoot string) error
+
+	diskFree         func(path string) (free, total int64, ok bool)
+	hookAfterCopy    func(plan *MigratePlan) error
+	hookBeforeCommit func(plan *MigratePlan) error
+
+	mu     sync.Mutex
+	plans  map[string]*MigratePlan
+	jobs   map[string]*migrateJob
+	active *migrateJob
 }
 
 // New binds a workspace service to an open foundation workspace.
 func New(ws *foundationworkspace.Workspace) *Service {
-	return &Service{ws: ws}
+	return NewWithOptions(Options{Workspace: ws})
+}
+
+// NewWithOptions builds a Service from opts. A nil locker installs an
+// in-process fallback; a nil diskFree uses DiskFree.
+func NewWithOptions(opts Options) *Service {
+	s := &Service{
+		ws:               opts.Workspace,
+		locker:           opts.Locker,
+		onMoved:          opts.OnMoved,
+		diskFree:         opts.diskFree,
+		hookAfterCopy:    opts.hookAfterCopy,
+		hookBeforeCommit: opts.hookBeforeCommit,
+		plans:            make(map[string]*MigratePlan),
+		jobs:             make(map[string]*migrateJob),
+	}
+	if s.locker == nil {
+		s.locker = newMemoryLocker()
+	}
+	if s.diskFree == nil {
+		s.diskFree = DiskFree
+	}
+	return s
 }
 
 // Info reports the root, disk space, database/library/export sizes and the

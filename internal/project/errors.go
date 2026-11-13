@@ -23,6 +23,9 @@ var (
 	ErrInvalidInput = errors.New("project: invalid input")
 	// ErrBusy reports a workspace (migration) lock that another operation holds.
 	ErrBusy = errors.New("project: workspace busy")
+	// ErrDeleteNotConfirmed reports a permanent delete without a matching
+	// project name or confirmation token (§5.4).
+	ErrDeleteNotConfirmed = errors.New("project: delete not confirmed by user")
 	// ErrInvalidActor reports an actor outside {user, mcp} for a state change.
 	ErrInvalidActor = errors.New("project: actor must be user or mcp")
 	// ErrEventMissing reports a write whose Activity event could not be stored.
