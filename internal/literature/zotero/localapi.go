@@ -197,9 +197,10 @@ func (r *LocalAPIReader) ListAttachments(ctx context.Context, libraryID, parentK
 			}
 			rawPath := strings.TrimSpace(stringValue(data["path"]))
 			if rawPath == "" {
-				// The API leaves `path` empty for linked files: the local
-				// location lives in `links.linkedFile.href`.
-				rawPath = attachmentHref(data)
+				// Zotero 7 leaves `path` empty for storage copies and linked
+				// files alike: the local location lives in the object's root
+				// `links` (enclosure / linkedFile / importedFile), not in data.
+				rawPath = attachmentHref(obj.Links)
 			}
 			contentType := stringValue(data["contentType"])
 			if !isPDFAttachment(contentType, filename, rawPath) {
@@ -251,6 +252,7 @@ type apiObject struct {
 	Key     string         `json:"key"`
 	Version int            `json:"version"`
 	Data    map[string]any `json:"data"`
+	Links   map[string]any `json:"links"`
 	Meta    map[string]any `json:"meta"`
 }
 
@@ -462,14 +464,15 @@ func isPDFAttachment(contentType, filename, path string) bool {
 }
 
 // attachmentHref recovers the local location of an attachment whose `path`
-// field is empty: the API keeps linked files in `links.linkedFile.href` as a
-// file:// URI and synced storage copies in `links.importedFile.href`.
-func attachmentHref(data map[string]any) string {
-	links, _ := data["links"].(map[string]any)
+// field is empty. The links map is the API object's root `links` (a sibling
+// of `data`): Zotero 7 exposes the file as `enclosure.href` (a file:// URI
+// into storage/ or the linked location); older shapes use `linkedFile` /
+// `importedFile`.
+func attachmentHref(links map[string]any) string {
 	if links == nil {
 		return ""
 	}
-	for _, name := range []string{"linkedFile", "importedFile"} {
+	for _, name := range []string{"enclosure", "linkedFile", "importedFile"} {
 		link, _ := links[name].(map[string]any)
 		if link == nil {
 			continue

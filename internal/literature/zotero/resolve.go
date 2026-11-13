@@ -13,7 +13,7 @@ import (
 // touching it. It is shared by both readers so path rules live in one place.
 //
 // Rules (SPEC-04 §5.2, O-10):
-//   - imported_file: <DataDir>/storage/<attachment key>/<filename>
+//   - imported_file / imported_url: <DataDir>/storage/<attachment key>/<filename>
 //   - linked_file "attachments:<rel>": <LinkedBaseDir>/<rel>
 //   - absolute paths are used as-is
 //   - storage and linked-base paths must stay inside their root; ".." escapes
@@ -51,7 +51,7 @@ func (r Resolver) target(att literature.ZoteroAttachment) (string, error) {
 
 	switch {
 	case path == "":
-		if strings.EqualFold(att.LinkMode, "imported_file") && att.Key != "" && att.Filename != "" {
+		if (strings.EqualFold(att.LinkMode, "imported_file") || strings.EqualFold(att.LinkMode, "imported_url")) && att.Key != "" && att.Filename != "" {
 			return r.storageTarget(att.Key, att.Filename)
 		}
 		return "", fmt.Errorf("%w: 附件 %s 没有路径记录", literature.ErrAttachmentUnresolved, att.Key)

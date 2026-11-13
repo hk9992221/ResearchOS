@@ -3,6 +3,7 @@
   "pages.literature.badge_new": "Not imported",
   "pages.literature.banner_problem": "The literature module reported a problem",
   "pages.literature.btn_import": "Import",
+  "pages.literature.btn_import_direct": "Import directly",
   "pages.literature.btn_next": "Next",
   "pages.literature.btn_prev": "Previous",
   "pages.literature.btn_preview": "Preview import",
