@@ -217,6 +217,9 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc)
 
 	pageSet := shell.DefaultPages(ctx, a)
+	for kind, page := range pages.System(pagesService) {
+		pageSet[kind] = page
+	}
 	for kind, page := range pages.Research(pagesService) {
 		pageSet[kind] = page
 	}

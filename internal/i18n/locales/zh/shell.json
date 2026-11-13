@@ -1,6 +1,7 @@
 {
   "shell.nav.section_workspace": "工作区",
-  "shell.nav.section_project": "项目",
+  "shell.nav.projects_fold": "折叠项目导航",
+  "shell.nav.projects_expand": "展开项目导航",
   "shell.topbar.toggle_sidebar": "切换侧边栏",
   "shell.topbar.search_placeholder": "搜索（Ctrl+K）",
   "shell.topbar.search_label": "全局搜索",
