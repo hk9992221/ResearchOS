@@ -29,15 +29,26 @@ func (d *Deps) libraryService() *library.Service {
 	c := d.clock()
 	var conn *zotero.Connection
 	var sqlite *zotero.SQLiteReader
+	var api *zotero.LocalAPIReader
 	if d.Workspace != nil && d.Workspace.Global() != nil {
 		conn = zotero.NewConnection(zotero.Options{AppConfig: d.Workspace.Config(), Clock: c})
+		api = conn.NewAPIReader()
 		if status, err := conn.Status(context.Background()); err == nil && status.DataDir != nil {
+			// A dedicated resolver keeps attachment paths resolvable even when
+			// the SQLite handle is unavailable (live library, locked database).
+			if api != nil {
+				api.WithResolver(zotero.Resolver{
+					DataDir:       status.DataDir.Path,
+					LinkedBaseDir: conn.LinkedAttachmentBaseDir(),
+				})
+			}
+			// A locked database is not fatal: the local API may still answer.
 			if reader, err := zotero.NewSQLiteReader(status.DataDir.Path); err == nil {
 				sqlite = reader
 			}
 		}
 	}
-	source := zotero.NewSource(conn, sqlite, nil)
+	source := zotero.NewSource(conn, sqlite, api)
 	d.Infra.source = source
 	// The imported paper is indexed post-commit (SPEC-10 §5.3). Without the
 	// search module the hook stays nil and the index is simply not updated.

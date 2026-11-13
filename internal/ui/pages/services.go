@@ -103,15 +103,11 @@ type MCPStatus struct {
 	Error   string
 }
 
-// LiteratureAPI is the part of SPEC-04 the Literature page uses: the Zotero
-// connection, the item browser, and the preview-and-import pipeline. The
-// composition root binds it to the services, always as ActorUser: the page is
-// the user path, while MCP reaches the same methods with ActorMCP.
+// LiteratureAPI is the part of SPEC-04 the Literature page uses: the item
+// browser and the preview-and-import pipeline. The composition root binds it to
+// the services, always as ActorUser: the page is the user path, while MCP
+// reaches the same methods with ActorMCP.
 type LiteratureAPI interface {
-	ZoteroStatus(ctx context.Context) (literature.ZoteroConnectionStatus, error)
-	// MetadataSource reports which reader is in use (local API or SQLite) and
-	// why it fell back, as SPEC-04 §5.2 requires the UI to show.
-	MetadataSource(ctx context.Context) (literature.MetadataSource, string, error)
 	Collections(ctx context.Context, libraryID string) ([]literature.ZoteroCollection, error)
 	Items(ctx context.Context, libraryID, collectionKey string, opts literature.ListItemsOptions) (literature.ItemPage, error)
 	Attachments(ctx context.Context, libraryID, itemKey string) ([]literature.ZoteroAttachment, error)

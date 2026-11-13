@@ -54,6 +54,12 @@ func (s *Source) Reader(ctx context.Context) (literature.ZoteroReader, error) {
 		s.recordFallback(fmt.Errorf("%s", reason))
 		return s.sqlite, nil
 	}
+	if reason != "" {
+		// The API is the only way to read a live library; naming why it is
+		// unusable turns "均不可用" into an actionable hint (§5.1 diagnostics).
+		s.recordFallback(fmt.Errorf("%s", reason))
+		return nil, fmt.Errorf("%w：%s", literature.ErrZoteroUnavailable, reason)
+	}
 	return nil, literature.ErrZoteroUnavailable
 }
 
