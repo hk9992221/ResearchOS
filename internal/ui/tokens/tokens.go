@@ -80,6 +80,16 @@ func (c Color) Over(bg Color) Color {
 	return Color{R: mix(c.R, bg.R), G: mix(c.G, bg.G), B: mix(c.B, bg.B), A: 255}
 }
 
+// Mix blends c toward o by t, 0 keeping c and 1 returning o, in sRGB
+// space: it derives hover and tint shades no design token names.
+func (c Color) Mix(o Color, t float32) Color {
+	t = clamp01(t)
+	mix := func(a, b uint8) uint8 {
+		return uint8(math.Round(float64(a)*(1-float64(t)) + float64(b)*float64(t)))
+	}
+	return Color{R: mix(c.R, o.R), G: mix(c.G, o.G), B: mix(c.B, o.B), A: mix(c.A, o.A)}
+}
+
 // Luminance returns the WCAG 2.x relative luminance of the color's RGB.
 func (c Color) Luminance() float64 {
 	lin := func(v uint8) float64 {
@@ -346,6 +356,17 @@ func (m Motion) Scale(d time.Duration) time.Duration {
 	}
 	return d
 }
+
+// Overlay neutrals. The design system defines no scrim or shadow colors, so
+// these are derived from bg.canvas and pure black rather than invented hues:
+// they keep dialogs and popovers legible in both appearances.
+var (
+	// Scrim dims the window behind a modal dialog: bg.canvas at 40%.
+	Scrim = Color{R: 0x11, G: 0x13, B: 0x18, A: 102}
+	// Shadow is the light drop shadow under dialogs and popovers: black at
+	// 18%.
+	Shadow = Color{R: 0x00, G: 0x00, B: 0x00, A: 46}
+)
 
 // Theme is a fully resolved appearance: the palette, type scale, font stacks
 // and motion policy the UI paints with.

@@ -54,6 +54,10 @@ func Style(th tokens.Theme) *ui.Theme {
 	return out
 }
 
+// Color converts a token color to the toolkit's color type, for components
+// that paint a token directly on an element.
+func Color(c tokens.Color) ui.Color { return mgColor(c) }
+
 // mgColor converts a token color to the toolkit's color type.
 func mgColor(c tokens.Color) ui.Color {
 	return ui.RGBA(c.R, c.G, c.B, float32(c.A)/255)
