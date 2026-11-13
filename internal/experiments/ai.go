@@ -352,6 +352,7 @@ func (s *Service) runAnalysis(ctx context.Context, req *analysisRequest, opts An
 		s.rememberPending(snap)
 		return nil, &SnapshotPersistError{AIOutputID: resp.Output.ID, Cause: err}
 	}
+	s.notifySnapshot(ctx, &snap)
 	return &snap, nil
 }
 
@@ -398,6 +399,7 @@ func (s *Service) RetrySaveSnapshot(ctx context.Context, aiOutputID string) (*Sn
 	s.mu.Lock()
 	delete(s.pending, aiOutputID)
 	s.mu.Unlock()
+	s.notifySnapshot(ctx, &snap)
 	return &snap, nil
 }
 
