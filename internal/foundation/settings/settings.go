@@ -68,7 +68,8 @@ func (s *Store) Get(ctx context.Context, key string) (string, bool, error) {
 	return value, true, nil
 }
 
-// Set upserts the value and stamps updated_at.
+// Set upserts the value and stamps updated_at. A nil tx writes on the store's
+// own connection.
 func (s *Store) Set(ctx context.Context, tx *sql.Tx, key, value string) error {
 	if err := validateKey(key); err != nil {
 		return err
@@ -81,6 +82,12 @@ func (s *Store) Set(ctx context.Context, tx *sql.Tx, key, value string) error {
 		return fmt.Errorf("settings: set %s: %w", key, err)
 	}
 	return nil
+}
+
+// Put upserts the value outside an explicit transaction, for callers that
+// have no transaction of their own, such as the UI preference store.
+func (s *Store) Put(ctx context.Context, key, value string) error {
+	return s.Set(ctx, nil, key, value)
 }
 
 // Delete removes the key. Deleting a missing key is a no-op.
