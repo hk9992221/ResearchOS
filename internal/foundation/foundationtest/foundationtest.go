@@ -55,6 +55,10 @@ type Options struct {
 	// BackupRoot overrides the backup directory; by default
 	// <dir>/cache/backups.
 	BackupRoot string
+	// Migrations registers module migrations per database kind (SPEC-01
+	// §4.8). Tests pass the migration set of the module under test so that
+	// project.db carries its schema band.
+	Migrations map[storage.Kind][]storage.Migration
 }
 
 // Fixture is an initialized workspace plus its isolated config and cache
@@ -114,6 +118,7 @@ func New(dir string, opts Options) (*Fixture, error) {
 		Logger:       opts.Logger,
 		Config:       cfg,
 		Confirm:      conf,
+		Migrations:   opts.Migrations,
 	})
 	if err != nil {
 		return nil, err
