@@ -37,6 +37,9 @@ func (s *Service) Git() GitService { return &gitAPI{s: s} }
 // Ideas returns the idea-link facade.
 func (s *Service) Ideas() IdeaLinkService { return &ideaAPI{s: s} }
 
+// Analysis returns the AI analysis facade.
+func (s *Service) Analysis() AnalysisService { return &analysisAPI{s: s} }
+
 type experimentAPI struct{ s *Service }
 
 func (a *experimentAPI) Create(ctx context.Context, in CreateExperimentInput) (*Experiment, error) {
