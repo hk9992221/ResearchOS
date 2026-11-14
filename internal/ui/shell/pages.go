@@ -386,7 +386,7 @@ func projectTable(v *components.UI, ctx context.Context, a *app.App, state *ui.L
 		{Title: i18n.T("shell.table.col_name"), Sortable: true},
 		{Title: i18n.T("shell.table.col_status"), Width: 110, Sortable: true},
 		{Title: i18n.T("shell.table.col_created"), Width: 140, Sortable: true},
-		{Title: "", Width: 150, Align: ui.End},
+		{Title: "", Width: 272, Align: ui.End},
 	}
 	v.Table(components.TableOptions{
 		Columns: cols,
@@ -407,19 +407,22 @@ func projectTable(v *components.UI, ctx context.Context, a *app.App, state *ui.L
 				ui.Text(v.C, p.CreatedAt.Format("2006-01-02")).FontFeatures("tnum")
 			case 3:
 				ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
-					v.IconButton(icons.FolderOpen,
-						i18n.Tf("shell.projects.btn_folder_aria", map[string]string{"name": p.Name}),
-						components.IconButtonOptions{
-							Variant: components.VariantGhost,
-							Size:    components.SizeSmall,
-							OnClick: func() { openProjectFolder(a, p.ID) },
-						})
-					v.Button(i18n.T("shell.projects.btn_open"), components.ButtonOptions{
-						Variant: components.VariantGhost,
+					if v.Button(i18n.T("shell.projects.btn_folder"), components.ButtonOptions{
+						Variant: components.VariantSecondary,
 						Size:    components.SizeSmall,
+						Icon:    icons.FolderOpen,
+						Label:   i18n.Tf("shell.projects.btn_folder_aria", map[string]string{"name": p.Name}),
+					}).Clicked() {
+						openProjectFolder(a, p.ID)
+					}
+					if v.Button(i18n.T("shell.projects.btn_open"), components.ButtonOptions{
+						Variant: components.VariantSecondary,
+						Size:    components.SizeSmall,
+						Icon:    icons.ExternalLink,
 						Label:   i18n.Tf("shell.projects.btn_open_aria", map[string]string{"name": p.Name}),
-						OnClick: func() { openProject(a, ctx, p.ID) },
-					})
+					}).Clicked() {
+						openProject(a, ctx, p.ID)
+					}
 				})
 			}
 		},

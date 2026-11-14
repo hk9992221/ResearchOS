@@ -410,6 +410,7 @@ func (l *Literature) linked(v *components.UI) {
 				{Title: i18n.T("pages.literature.col_imported"), Width: 160},
 				{Title: i18n.T("pages.literature.col_copy"), Width: 120},
 				{Title: i18n.T("pages.literature.col_note"), Width: 120},
+				{Title: "", Width: 100, Align: ui.End},
 			},
 			Rows: len(papers),
 			Key:  func(i int) any { return papers[i].Paper.ID },
@@ -439,6 +440,14 @@ func (l *Literature) linked(v *components.UI) {
 						v.Badge(i18n.T("pages.literature.note_present"), components.Success)
 					} else {
 						v.Badge(i18n.T("pages.literature.note_absent"), components.Neutral)
+					}
+				case 5:
+					if v.Button(i18n.T("pages.literature.btn_open_paper"), components.ButtonOptions{
+						Variant: components.VariantSecondary,
+						Size:    components.SizeSmall,
+						Icon:    icons.ExternalLink,
+					}).Clicked() {
+						open(p.Paper.ID)
 					}
 				}
 			},
