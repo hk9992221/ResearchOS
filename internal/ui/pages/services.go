@@ -10,6 +10,7 @@ package pages
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -53,6 +54,10 @@ type Services struct {
 	// Literature binds the SPEC-04 Zotero and import services. Nil means the
 	// module is not assembled, and the page says so instead of faking data.
 	Literature LiteratureAPI
+	// Paper binds the in-app paper reader, its Paper Note and the research
+	// notes that link it. Nil means the module is not assembled, and the page
+	// says so instead of rendering an empty paper.
+	Paper PaperAPI
 	// Notes binds the SPEC-05 note service. Nil means the module is not
 	// assembled, and the page says so instead of rendering an empty list.
 	Notes NotesAPI
@@ -136,6 +141,59 @@ type LiteratureAPI interface {
 	Preview(ctx context.Context, sel literature.ImportSelection) (literature.ImportPreview, error)
 	Import(ctx context.Context, sel literature.ImportSelection, progress literature.ProgressFunc) (literature.ImportResult, error)
 	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
+}
+
+// PaperText is one PDF window the in-app reader shows: the total page count
+// and the extracted paragraphs of the pages that were read.
+type PaperText struct {
+	PageCount int
+	Pages     []PaperPageText
+}
+
+// PaperPageText is one page's extracted paragraphs, in reading order.
+type PaperPageText struct {
+	PageNo int
+	Blocks []string
+}
+
+// PaperRelatedNote is one note whose Markdown body links the paper.
+type PaperRelatedNote struct {
+	ID        string
+	Title     string
+	UpdatedAt time.Time
+}
+
+// Paper read failures the page names in its own words: a missing imported copy
+// and a page without a text layer (a scan) are states, not exceptions.
+var (
+	// ErrPaperCopyMissing reports that the project's PDF copy is gone.
+	ErrPaperCopyMissing = errors.New("pages: the paper PDF copy is missing")
+	// ErrPaperNoTextLayer reports pages without extractable text.
+	ErrPaperNoTextLayer = errors.New("pages: the paper PDF has no text layer")
+)
+
+// PaperAPI is the part of SPEC-04/05 the paper page uses: the in-app reader,
+// the external opener, the Paper Note fields and the research notes that link
+// the paper. The composition root binds it always as ActorUser.
+type PaperAPI interface {
+	Paper(ctx context.Context, paperID string) (literature.Paper, error)
+	// ReadPaperText extracts pages [startPage, startPage+maxPages) of the
+	// imported copy, so a large PDF is read a window at a time.
+	ReadPaperText(ctx context.Context, paperID string, startPage, maxPages int) (PaperText, error)
+	// OpenPaper launches the application the workspace setting selects
+	// (system default or Zotero).
+	OpenPaper(ctx context.Context, paperID string) error
+
+	PaperNote(ctx context.Context, projectID, paperID string) (*literature.PaperNote, error)
+	CreatePaperNote(ctx context.Context, projectID, paperID string) (literature.PaperNote, error)
+	UpdatePaperNote(ctx context.Context, noteID string, patch literature.PaperNotePatch, expectedUpdatedAt time.Time) (literature.PaperNote, error)
+	SavePaperNoteBody(ctx context.Context, noteID, bodyMD, baseHash string) (literature.PaperNoteSaveResult, error)
+
+	// RelatedNotes lists the project notes whose Markdown body links the
+	// paper with ros://paper/<id>.
+	RelatedNotes(ctx context.Context, projectID, paperID string) ([]PaperRelatedNote, error)
+	// CreateLinkedNote creates a research note whose body links the paper.
+	CreateLinkedNote(ctx context.Context, projectID, paperID, title string) (*notes.Note, error)
 }
 
 // NotesAPI is the part of SPEC-05 the Research Notes page uses: the note list,
@@ -272,7 +330,12 @@ func System(s Services) map[ports.RouteKind]shell.Page {
 // that is the SPEC-04 literature browser, the SPEC-05 note list and editor;
 // the remaining modules replace their shell placeholders as they are built.
 func Research(s Services) map[ports.RouteKind]shell.Page {
-	literature := &Literature{Services: &s}
+	// The literature list and the paper page share the generation the paper
+	// page bumps after it writes a Paper Note or links a research note, so the
+	// list's note badge is current when the user comes back.
+	litShared := &literatureShared{}
+	literature := &Literature{Services: &s, shared: litShared}
+	paperPage := &PaperPage{Services: &s, shared: litShared}
 	// The list and the editor share the generation the editor bumps after a
 	// write, so a returning list reloads instead of showing a stale row.
 	shared := &notesShared{}
@@ -294,6 +357,7 @@ func Research(s Services) map[ports.RouteKind]shell.Page {
 	ideaPage := &IdeaPage{Services: &s, shared: ideasShared}
 	return map[ports.RouteKind]shell.Page{
 		app.RouteLiterature: literature.Page,
+		ports.RoutePaper:    paperPage.Page,
 		app.RouteNotes:      notesList.Page,
 		ports.RouteNote:     noteEditor.Page,
 

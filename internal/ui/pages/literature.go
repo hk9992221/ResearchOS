@@ -36,14 +36,38 @@ const literaturePageSize = litVisibleRows
 // own box (design system row height 44px).
 const litVisibleRows = 10
 
+// literatureShared is the generation the paper page bumps after it writes a
+// Paper Note or links a research note: the project table then reloads its note
+// badge instead of showing the row it kept from before the write.
+type literatureShared struct {
+	mu  sync.Mutex
+	gen int
+}
+
+// bump marks the literature state as stale.
+func (s *literatureShared) bump() {
+	s.mu.Lock()
+	s.gen++
+	s.mu.Unlock()
+}
+
+// version reports the current generation.
+func (s *literatureShared) version() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.gen
+}
+
 // Literature renders the page.
 type Literature struct {
 	Services *Services
+	shared   *literatureShared
 
 	mu       sync.Mutex
 	loading  bool
 	loaded   bool
 	project  string
+	version  int
 	state    litState
 	problems []string
 
@@ -356,6 +380,12 @@ func (l *Literature) linked(v *components.UI) {
 	papers := append([]literature.ProjectPaper(nil), l.state.papers...)
 	l.mu.Unlock()
 
+	a := l.Services.App
+	open := func(paperID string) {
+		if a != nil {
+			a.Navigate(ports.Route{Kind: ports.RoutePaper, EntityID: paperID})
+		}
+	}
 	title := i18n.T("pages.literature.card_project")
 	if len(papers) == 0 {
 		v.Card(components.CardOptions{Title: title}, func() {
@@ -379,6 +409,7 @@ func (l *Literature) linked(v *components.UI) {
 				{Title: i18n.T("pages.literature.col_year"), Width: 80},
 				{Title: i18n.T("pages.literature.col_imported"), Width: 160},
 				{Title: i18n.T("pages.literature.col_copy"), Width: 120},
+				{Title: i18n.T("pages.literature.col_note"), Width: 120},
 			},
 			Rows: len(papers),
 			Key:  func(i int) any { return papers[i].Paper.ID },
@@ -386,16 +417,28 @@ func (l *Literature) linked(v *components.UI) {
 				p := papers[row]
 				switch col {
 				case 0:
-					ui.Text(v.C, p.Paper.Metadata.Title).SingleLine()
+					if ui.Text(v.C, p.Paper.Metadata.Title).SingleLine().FillWidth().RowClicked() {
+						open(p.Paper.ID)
+					}
 				case 1:
-					ui.Text(v.C, strconv.Itoa(p.Paper.Metadata.Year)).FontFeatures("tnum")
+					if ui.Text(v.C, strconv.Itoa(p.Paper.Metadata.Year)).FontFeatures("tnum").RowClicked() {
+						open(p.Paper.ID)
+					}
 				case 2:
-					ui.Text(v.C, p.LinkedAt.Format("2006-01-02")).FontFeatures("tnum")
+					if ui.Text(v.C, p.LinkedAt.Format("2006-01-02")).FontFeatures("tnum").RowClicked() {
+						open(p.Paper.ID)
+					}
 				case 3:
 					if p.Broken {
 						v.StatusIndicator(components.Danger, i18n.T("pages.literature.copy_missing"))
 					} else {
 						v.StatusIndicator(components.Success, i18n.T("pages.literature.copy_present"))
+					}
+				case 4:
+					if p.NoteID != "" {
+						v.Badge(i18n.T("pages.literature.note_present"), components.Success)
+					} else {
+						v.Badge(i18n.T("pages.literature.note_absent"), components.Neutral)
 					}
 				}
 			},
@@ -559,12 +602,14 @@ func visibleTableHeight(rows int) float32 {
 // detection change in the settings or a refresh.
 func (l *Literature) load(a *app.App, projectID string) {
 	l.mu.Lock()
-	if l.loading || (l.loaded && l.project == projectID) {
-		l.mu.Unlock()
-		return
+	need := !l.loading && (!l.loaded || l.project != projectID)
+	if !need && l.shared != nil && l.version != l.shared.version() {
+		need = true
 	}
 	l.mu.Unlock()
-	l.reload(a, projectID)
+	if need {
+		l.reload(a, projectID)
+	}
 }
 
 // reload reads the project papers, and the Zotero browser too while the import
@@ -599,6 +644,10 @@ func (l *Literature) reload(a *app.App, projectID string) {
 	if first && l.sel != nil {
 		l.sel.Clear()
 	}
+	gen := 0
+	if l.shared != nil {
+		gen = l.shared.version()
+	}
 
 	a.RunTask(i18n.T("pages.literature.task_load"), func(ctx context.Context, t *app.Task) error {
 		if withBrowser {
@@ -610,6 +659,11 @@ func (l *Literature) reload(a *app.App, projectID string) {
 		l.record(err)
 		if err == nil {
 			l.setPapers(papers)
+		}
+		if l.shared != nil {
+			l.mu.Lock()
+			l.version = gen
+			l.mu.Unlock()
 		}
 
 		l.finish(true)
