@@ -124,6 +124,14 @@ type WeeklyReportView struct {
 	exportHandled  string
 	md             *markdown.Options
 	expanded       map[string]bool
+
+	// skills back the regenerate dialog's picker and editor.
+	skills          weeklyreview.SkillSet
+	skillsLoading   bool
+	skillsLoaded    bool
+	regenSkillID    string
+	regenSkillLabel string
+	skillEditor     weeklySkillEditor
 }
 
 // Page renders one frame of the report detail.
@@ -406,7 +414,12 @@ func (d *WeeklyReportView) reportTab(v *components.UI, a *app.App, projectID str
 				d.regenOpen = true
 				d.mu.Lock()
 				d.regenErr = ""
+				d.regenSkillID, d.regenSkillLabel = "", ""
+				if gen := d.report.Meta.Generation; gen != nil {
+					d.regenSkillID, d.regenSkillLabel = gen.SkillID, gen.SkillName
+				}
 				d.mu.Unlock()
+				d.skillsLoad(a, projectID)
 			}
 			if v.Button(i18n.T("pages.weekly_review.btn_insert_ref"), components.ButtonOptions{
 				Variant: components.VariantGhost,
@@ -1497,9 +1510,55 @@ func (d *WeeklyReportView) revert(a *app.App, projectID string) {
 	})
 }
 
+// skillsLoad reads the writing skills for the regenerate dialog, once.
+func (d *WeeklyReportView) skillsLoad(a *app.App, projectID string) {
+	api := d.Services.Weekly
+	if api == nil || a == nil {
+		return
+	}
+	d.mu.Lock()
+	if d.skillsLoading {
+		d.mu.Unlock()
+		return
+	}
+	d.skillsLoading = true
+	d.mu.Unlock()
+	a.RunTask(i18n.T("pages.weekly_review.skill_task_load"), func(ctx context.Context, t *app.Task) error {
+		set, err := api.Skills(ctx, projectID)
+		d.mu.Lock()
+		d.skillsLoading = false
+		if err == nil {
+			d.skills = set
+			d.skillsLoaded = true
+		}
+		d.mu.Unlock()
+		a.Notify()
+		return nil
+	})
+}
+
+// skillSetSnapshot is the frame's copy of the loaded skills.
+func (d *WeeklyReportView) skillSetSnapshot() weeklyreview.SkillSet {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	set := d.skills
+	set.Skills = append([]weeklyreview.Skill(nil), d.skills.Skills...)
+	return set
+}
+
 // regenDialog explains the overwrite before GenerateDraft(Replace=true) runs.
 func (d *WeeklyReportView) regenDialog(v *components.UI, a *app.App, projectID string) {
 	if !d.regenOpen {
+		return
+	}
+	if d.skillEditor.open {
+		d.skillEditor.dialog(v, a, d.Services, projectID, func(updated weeklyreview.SkillSet) {
+			d.mu.Lock()
+			d.skills = updated
+			d.mu.Unlock()
+			d.regenSkillLabel, d.regenSkillID = "", ""
+			a.Notify()
+		})
 		return
 	}
 	d.mu.Lock()
@@ -1525,6 +1584,9 @@ func (d *WeeklyReportView) regenDialog(v *components.UI, a *app.App, projectID s
 		ui.Text(v.C, i18n.T("pages.weekly_review.regen_note")).
 			FontSize(tokens.Typography.Secondary.Size).
 			TextColor(mygo.Color(v.T.Palette.TextSecondary))
+		if d.Services.Weekly.AIEnabled(projectID) {
+			weeklySkillPicker(v, a, d.Services, projectID, d.skillSetSnapshot(), &d.regenSkillLabel, &d.regenSkillID, &d.skillEditor)
+		}
 		if errText != "" {
 			ui.Text(v.C, errText).
 				FontSize(tokens.Typography.Secondary.Size).
@@ -1547,6 +1609,7 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		return
 	}
 	reportID := report.ID
+	skillID := d.regenSkillID
 	old := report.ContentMD
 	base := report.ContentHash
 	buffer := ""
@@ -1577,10 +1640,10 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		}
 		t.Stage(i18n.T("pages.weekly_review.stage_generate"))
 		t.Progress(30, 100)
-		// Keep the skill the report was written with; a report generated
-		// before skills existed falls back to the workspace default.
-		skillID := ""
-		if report.Meta.Generation != nil {
+		// The dialog's picker wins; without a choice the report keeps the
+		// skill it was written with, and a report generated before skills
+		// existed falls back to the workspace default.
+		if skillID == "" && report.Meta.Generation != nil {
 			skillID = report.Meta.Generation.SkillID
 		}
 		outcome, err := api.GenerateDraft(ctx, projectID, weeklyreview.GenerateInput{

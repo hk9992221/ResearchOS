@@ -200,6 +200,62 @@ func weeklySkillCard(v *components.UI, a *app.App, svc *Services, projectID stri
 	})
 }
 
+// weeklySkillPicker is the generation dialog's writing-skill choice plus the
+// entry to edit it: the same skills the AI settings tab manages. label is the
+// select's text, id the resolved skill.
+func weeklySkillPicker(v *components.UI, a *app.App, svc *Services, projectID string, set weeklyreview.SkillSet, label, id *string, editor *weeklySkillEditor) {
+	if len(set.Skills) == 0 {
+		return
+	}
+	labels := make([]string, 0, len(set.Skills))
+	ids := make([]string, 0, len(set.Skills))
+	for _, skill := range set.Skills {
+		text := skill.Name
+		if skill.ID == set.Default || (set.Default == "" && skill.Builtin) {
+			text += " " + i18n.T("pages.weekly_review.skill_default_suffix")
+		}
+		labels = append(labels, text)
+		ids = append(ids, skill.ID)
+	}
+	if *label == "" || indexOf(labels, *label) < 0 {
+		if index := indexOf(ids, set.Default); index >= 0 {
+			*label, *id = labels[index], ids[index]
+		} else {
+			*label, *id = labels[0], ids[0]
+		}
+	} else {
+		*id = ids[indexOf(labels, *label)]
+	}
+	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.End).Wrap().Children(func() {
+		sel := v.Select(label, components.SelectOptions{
+			Label:   i18n.T("pages.weekly_review.field_skill"),
+			Options: labels,
+		})
+		if sel.Changed() {
+			if index := indexOf(labels, *label); index >= 0 {
+				*id = ids[index]
+			}
+		}
+		if v.Button(i18n.T("pages.weekly_review.skill_edit"), components.ButtonOptions{
+			Variant: components.VariantGhost,
+			Size:    components.SizeSmall,
+			Icon:    icons.Edit,
+		}).Clicked() {
+			for _, skill := range set.Skills {
+				if skill.ID != *id {
+					continue
+				}
+				if skill.Builtin {
+					editor.newSkill(skill)
+				} else {
+					editor.editSkill(skill)
+				}
+				break
+			}
+		}
+	})
+}
+
 // weeklySkillBuiltin returns the shipped skill, the base of a new one.
 func weeklySkillBuiltin(set weeklyreview.SkillSet) weeklyreview.Skill {
 	for _, skill := range set.Skills {
