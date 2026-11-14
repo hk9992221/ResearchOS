@@ -400,6 +400,14 @@ func overviewTwoColumn(v *components.UI) bool {
 // row when the window is wide, one column of full-width cards below 1100px. A
 // row with a single card keeps an empty second column, so a hidden widget does
 // not stretch the card beside it.
+//
+// Wide rows align their cards with Stretch, the layout's native equal-height
+// mechanism: the row takes the height of its taller card, and the cross-axis
+// stretch of the flex line gives the shorter card that same height. Each card
+// keeps laying its own children out from the top, so a short card holds its
+// title and body at the top and only gains empty space below; nothing is
+// clipped and no per-card height is guessed. Rows are independent, so each
+// pair is only as tall as its own taller card.
 func overviewGrid(v *components.UI, two bool, cards []func()) {
 	ui.Column(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
 		if !two {
@@ -410,7 +418,7 @@ func overviewGrid(v *components.UI, two bool, cards []func()) {
 		}
 		for i := 0; i < len(cards); i += 2 {
 			i := i
-			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Start).Children(func() {
+			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Stretch).Children(func() {
 				cards[i]()
 				if i+1 < len(cards) {
 					cards[i+1]()
