@@ -181,6 +181,40 @@ func (m *weeklyModule) Export(ctx context.Context, projectID string, in weeklyre
 	return svc.Export(ctx, in)
 }
 
+// The skill set is workspace-level; any open project resolves the same store.
+
+func (m *weeklyModule) Skills(ctx context.Context, projectID string) (weeklyreview.SkillSet, error) {
+	svc, err := m.service(ctx, projectID)
+	if err != nil {
+		return weeklyreview.SkillSet{}, err
+	}
+	return svc.Skills(ctx)
+}
+
+func (m *weeklyModule) SaveSkill(ctx context.Context, projectID string, in weeklyreview.SkillInput) (weeklyreview.SkillSet, error) {
+	svc, err := m.service(ctx, projectID)
+	if err != nil {
+		return weeklyreview.SkillSet{}, err
+	}
+	return svc.SaveSkill(ctx, in)
+}
+
+func (m *weeklyModule) DeleteSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error) {
+	svc, err := m.service(ctx, projectID)
+	if err != nil {
+		return weeklyreview.SkillSet{}, err
+	}
+	return svc.DeleteSkill(ctx, skillID)
+}
+
+func (m *weeklyModule) SetDefaultSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error) {
+	svc, err := m.service(ctx, projectID)
+	if err != nil {
+		return weeklyreview.SkillSet{}, err
+	}
+	return svc.SetDefaultSkill(ctx, skillID)
+}
+
 // AIEnabled reports whether a chat provider is assigned, so the generation
 // dialog names the deterministic skeleton and points at Settings instead of
 // letting the model stage fail.

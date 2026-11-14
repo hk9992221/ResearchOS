@@ -28,6 +28,7 @@ const (
 	defaultMaxEvents  = 2000
 	maxSectionItems   = 80
 	maxSummaryRunes   = 300
+	maxBriefRunes     = 400
 	maxRefs           = 500
 	maxViolations     = 200
 	defaultPageSize   = 20
@@ -80,6 +81,13 @@ type Service interface {
 	DeleteReport(ctx context.Context, id string, actor Actor) error
 	RestoreReport(ctx context.Context, id string, actor Actor) error
 	Export(ctx context.Context, in ExportInput) (*ExportResult, error)
+
+	// Skills are the workspace-level writing instruction sets behind report
+	// generation (see skills.go).
+	Skills(ctx context.Context) (SkillSet, error)
+	SaveSkill(ctx context.Context, in SkillInput) (SkillSet, error)
+	DeleteSkill(ctx context.Context, id string) (SkillSet, error)
+	SetDefaultSkill(ctx context.Context, id string) (SkillSet, error)
 }
 
 type service struct {

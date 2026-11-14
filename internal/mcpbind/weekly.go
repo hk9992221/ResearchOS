@@ -125,6 +125,7 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 				"project_id": sStr("项目 ID"),
 				"report_id":  sStr("周报 ID"),
 				"replace":    sBool("是否覆盖已有内容，默认 false"),
+				"skill_id":   sStr("写作 Skill ID，省略使用工作区默认"),
 			}, "project_id", "report_id"), annJob(false),
 			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
 				projectID, reportID, err := projectAndID(a, "report_id")
@@ -132,6 +133,7 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 					return mcp.ToolOutcome{}, err
 				}
 				replace := a.BoolDefault("replace", false)
+				skillID, _ := a.String("skill_id")
 				svc, err := d.weeklyService(ctx, projectID)
 				if err != nil {
 					return mcp.ToolOutcome{}, err
@@ -153,7 +155,7 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 							}, projectID)
 					}
 				}
-				params, _ := json.Marshal(map[string]any{"report_id": reportID, "replace": replace})
+				params, _ := json.Marshal(map[string]any{"report_id": reportID, "replace": replace, "skill_id": skillID})
 				job, err := d.Jobs.Submit(ctx, p, mcp.JobRequest{
 					Tool:      "report_generate",
 					ProjectID: projectID,
@@ -166,6 +168,7 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 							ReportID: reportID,
 							Replace:  replace,
 							Actor:    weeklyreview.ActorMCP,
+							SkillID:  skillID,
 							Progress: func(done, total int, section weeklyreview.SectionKey) {
 								if section == "" || total <= 0 {
 									return

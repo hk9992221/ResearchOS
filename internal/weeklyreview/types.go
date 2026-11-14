@@ -114,6 +114,9 @@ type GenerationMeta struct {
 	DigestHash      string    `json:"digest_hash,omitempty"`
 	Attempts        int       `json:"attempts"`
 	Error           string    `json:"error,omitempty"`
+	// SkillID and SkillName record which writing skill shaped the body.
+	SkillID   string `json:"skill_id,omitempty"`
+	SkillName string `json:"skill_name,omitempty"`
 	// Notes explains a partial result, such as sections that fell back to
 	// the deterministic skeleton.
 	Notes string `json:"notes,omitempty"`
@@ -199,6 +202,10 @@ type DigestItem struct {
 	EventIDs          []string
 	UnconfirmedSource bool
 	Broken            bool
+	// Brief is what the entity itself says (an idea's statement and
+	// evidence balance, an experiment's purpose, a task's description).
+	// The model needs it to write about the work rather than its title.
+	Brief string
 }
 
 // DigestSection is one rendered digest section.
@@ -261,6 +268,9 @@ type EntityBrief struct {
 	NoteKind             string
 	AIContentUnconfirmed bool
 	Broken               bool
+	// Abstract is the entity's own text: an idea's statement, an
+	// experiment's purpose, a paper's abstract, a task's description.
+	Abstract string
 }
 
 // TemplateSection is one default-7 section definition.
@@ -309,6 +319,8 @@ type GenerateInput struct {
 	ReportID string
 	Replace  bool
 	Actor    Actor
+	// SkillID selects the writing skill. Empty uses the workspace default.
+	SkillID string
 	// Progress reports each section as it is generated. Nil is fine.
 	Progress SectionProgress
 }
@@ -322,6 +334,8 @@ type GeneratePeriodInput struct {
 	IncludeAI bool
 	Replace   bool
 	Actor     Actor
+	// SkillID selects the writing skill. Empty uses the workspace default.
+	SkillID string
 	// Progress reports each section as it is generated. Nil is fine.
 	Progress SectionProgress
 }
