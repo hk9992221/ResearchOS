@@ -34,7 +34,7 @@ const (
 	maxPageSize       = 100
 	defaultReportTmpl = "default-7"
 	reportTemplateVer = 1
-	promptVersion     = "weekly_report/v1"
+	promptVersion     = "weekly_report/v2"
 	taskKind          = "weekly_report"
 
 	settingWeekStart     = "weekly.week_start_day"

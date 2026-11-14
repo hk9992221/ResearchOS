@@ -79,12 +79,29 @@ const (
 	kanbanBlockedView
 )
 
-// Board geometry from SPEC-08 §6.2: columns keep a fixed width and the board
-// scrolls horizontally.
+// Board geometry from SPEC-08 §6.2: columns shrink to fit the window, and
+// only fall back to horizontal scrolling below kanbanColumnMinWidth.
 const (
-	kanbanColumnWidth float32 = 300
-	kanbanColumnRows          = 10
+	kanbanColumnWidth    float32 = 300
+	kanbanColumnMinWidth float32 = 200
+	kanbanColumnRows             = 10
 )
+
+// kanbanBoardColumnWidth divides the board's width over its columns, keeping
+// the preferred 300 and never going under 200.
+func kanbanBoardColumnWidth(available float32, columns int) float32 {
+	if columns <= 0 || available <= 0 {
+		return kanbanColumnWidth
+	}
+	width := (available - tokens.SectionGap*float32(columns-1)) / float32(columns)
+	if width > kanbanColumnWidth {
+		return kanbanColumnWidth
+	}
+	if width < kanbanColumnMinWidth {
+		return kanbanColumnMinWidth
+	}
+	return width
+}
 
 // kanbanTaskLimit is how many rows the list and archive views hold: one page
 // of the service's 200-row cap.
@@ -533,24 +550,35 @@ func (k *Kanban) boardView(v *components.UI, a *app.App, projectID string) {
 	// An empty board needs no banner above the columns: each column states
 	// that it holds no card and offers its own add action, and the page
 	// header already carries the create button.
-	_, height := v.C.Size()
+	width, height := v.C.Size()
+	// v.C.Size() is the page area before the container's own margin.
+	width -= 2 * tokens.PagePadding
+	colWidth := kanbanBoardColumnWidth(width, len(board.Columns))
 	boardHeight := height - 260
 	if boardHeight < 320 {
 		boardHeight = 320
 	}
-	ui.ScrollHorizontal(v.C).FillWidth().Height(boardHeight).Gap(tokens.SectionGap).AlignItems(ui.Start).Children(func() {
-		for _, col := range board.Columns {
-			k.column(v, a, projectID, col, archived)
-		}
-	})
+	// Columns shrink to fit; when five of them still need more room than the
+	// window has, the bar stays visible so the off-screen columns are
+	// discoverable without hovering.
+	ui.ScrollHorizontal(v.C).FillWidth().Height(boardHeight).
+		Gap(tokens.SectionGap).
+		AlignItems(ui.Start).
+		ScrollbarAxes(true, false).
+		KeepScrollbars(true).
+		Children(func() {
+			for _, col := range board.Columns {
+				k.column(v, a, projectID, col, colWidth, archived)
+			}
+		})
 }
 
 // column renders one board column: header, cards, quick add.
-func (k *Kanban) column(v *components.UI, a *app.App, projectID string, col kanban.BoardColumn, archived bool) {
+func (k *Kanban) column(v *components.UI, a *app.App, projectID string, col kanban.BoardColumn, colWidth float32, archived bool) {
 	p := v.T.Palette
 	c := ui.Column(v.C).
 		Key("kanban-col:" + col.Column.Name).
-		Width(kanbanColumnWidth).
+		Width(colWidth).
 		Gap(tokens.Space2).
 		Padding(tokens.Space3).
 		Background(mygo.Color(p.BgSubtle)).

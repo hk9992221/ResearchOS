@@ -290,9 +290,15 @@ func (s *service) storeDraft(ctx context.Context, h interface {
 		meta.Generation = gen
 		meta.Coverage = coverageFrom(digest)
 		meta.Refs = digestRefs(digest)
-		if violations != nil {
-			meta.Checks = buildCheckState(violations, now)
+		// A draft always carries the checks of the body that was just
+		// written, including the deterministic fallbacks. Without this the
+		// UI reads a nil/stale check state and claims "all acknowledged"
+		// while Confirm re-validates and rejects the same body.
+		checks := violations
+		if checks == nil {
+			checks = mergeAcks(Validate(content, defaultTemplate, digest), report.Meta.Checks)
 		}
+		meta.Checks = buildCheckState(checks, now)
 		report.Meta = meta
 		if err := updateReport(ctx, tx, report); err != nil {
 			return err
@@ -355,19 +361,34 @@ func buildPromptMessages(info projectInfo, digest *ActivityDigest) []protocol.Ch
 	}
 }
 
-const promptSystem = `你是科研周报助手。只输出 Markdown 正文，不要解释、不要 JSON 包装。
+const promptSystem = `你是科研周报撰写助手。只输出 Markdown 正文，不要解释、不要 JSON 包装。
+
+读者是导师和合作者：他们要的是这一周的进展综述，能在三分钟内读完，不是活动日志。
+
+结构与写法（恰好七个二级标题，顺序固定）：
+## 1. 本周工作内容 —— 先用一至两句总述本周主线：推进了什么、推进到哪一步、卡在哪里；其下按主题分条。
+## 2. 文献调研进展
+## 3. 理论研究进展
+## 4. 实验工作与结果
+## 5. Idea 进展
+## 6. 遇到的问题 —— 受阻项、未解决的矛盾、需要决策的点。
+## 7. 下周计划 —— 每条写明要做什么、依据哪个候选任务。
+
+写作细则：
+1. 合并同类事件：同一实体或同一主题的多条记录写成一条「做了什么 → 现在什么状态」，不要按时间逐条复述。
+2. 结论优先：写状态变化与结果（例如「运行完成，产物已归档」），不写操作流水。
+3. 每节 2–6 条为宜；无记录的节只写「本周期无记录」，不写套话。
+4. 每条事实性 bullet 末尾附 [[ref:type:id]] 引用，可附多个；每条不超过 120 字。
+
 硬性约束：
 1. 只能使用输入中的活动汇总、候选计划与项目元信息；不得补充外部知识或推测未提供的实验结果。
-2. 输出必须恰好包含七个二级标题，顺序与模板一致：## 1. 本周工作内容 … ## 7. 下周计划。
-3. 计划项（state=planned）只能出现在第 7 节，且只能来自 planned 候选；不得写成已完成。
-4. 第 7 节不得写入已完成任务，不得虚构任务。
-5. 引用未确认 AI 结论（unconfirmed_source=true）时必须标注「（待确认）」；无来源的成果性表述同样标注。
-6. 不得编造数值；数值只能来自汇总中出现过的数字，不确定的度量用文字描述并标「（待确认）」。
-7. 实验「失败/成功」不在输入范围内：只陈述记录的运行状态与 AI 分析原文，不得下结论。
-8. 不得因实验未达预期而写 Idea 已否定；Idea 状态只能引用 status.changed 的新值。
-9. 阻塞原因只能引用 blocked.reason 原文；当前该字段未落地，一律写「原因未记录」。
-10. 无记录时写「本周期无记录」，不得填充泛化套话。每节不超过 12 条 bullet，单条不超过 120 字。
-每条事实性 bullet 末尾附 [[ref:type:id]] 引用（可多个）。`
+2. 计划项（state=planned）只能出现在第 7 节，只能来自 planned 候选，不得写成已完成。
+3. 第 7 节不得写入已完成任务，不得虚构任务。
+4. 引用未确认 AI 结论（unconfirmed_source=true）时必须标注「（待确认）」；无来源的成果性表述同样标注。
+5. 不得编造数值；数值只能来自汇总中出现过的数字，不确定的度量用文字描述并标「（待确认）」。
+6. 实验「失败/成功」不在输入范围内：只陈述记录的运行状态与 AI 分析原文，不得下结论。
+7. 不得因实验未达预期而写 Idea 已否定；Idea 状态只能引用 status.changed 的新值。
+8. 阻塞原因只能引用 blocked.reason 原文；该字段为空时一律写「原因未记录」。`
 
 // promptDigest is the compact digest projection sent to the model.
 func promptDigest(d *ActivityDigest) any {

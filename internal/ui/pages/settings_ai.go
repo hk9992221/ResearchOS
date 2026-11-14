@@ -407,14 +407,13 @@ func (s *Settings) aiProviderCard(v *components.UI, a *app.App, view aiView) {
 		rows := view.providers
 		table := v.Table(components.TableOptions{
 			Columns: []components.Column{
-				{Title: i18n.T("pages.settings.ai.col_name"), MinWidth: 140},
-				{Title: i18n.T("pages.settings.ai.col_protocol"), Width: 190},
+				{Title: i18n.T("pages.settings.ai.col_name"), MinWidth: 170},
 				{Title: i18n.T("pages.settings.ai.col_base_url"), MinWidth: 150},
-				{Title: i18n.T("pages.settings.ai.col_enabled"), Width: 74},
-				{Title: i18n.T("pages.settings.ai.col_key"), Width: 84},
-				{Title: i18n.T("pages.settings.ai.col_cache"), Width: 132},
-				{Title: i18n.T("pages.settings.ai.col_test"), MinWidth: 170},
-				{Title: i18n.T("pages.settings.ai.col_actions"), Width: 290},
+				{Title: i18n.T("pages.settings.ai.col_enabled"), Width: 76},
+				{Title: i18n.T("pages.settings.ai.col_key"), Width: 80},
+				{Title: i18n.T("pages.settings.ai.col_cache"), Width: 118},
+				{Title: i18n.T("pages.settings.ai.col_test"), MinWidth: 160},
+				{Title: i18n.T("pages.settings.ai.col_actions"), Width: 236},
 			},
 			Rows: len(rows),
 			Key:  func(i int) any { return rows[i].ID },
@@ -422,24 +421,32 @@ func (s *Settings) aiProviderCard(v *components.UI, a *app.App, view aiView) {
 				p := rows[row]
 				switch col {
 				case 0:
-					ui.Text(v.C, aiProviderName(p)).SingleLine()
+					// The protocol belongs to the provider, not beside it: a
+					// second line keeps the row readable without a column.
+					cell := ui.Column(v.C).Gap(tokens.Space1)
+					cell.Children(func() {
+						ui.Text(v.C, aiProviderName(p)).SingleLine()
+						ui.Text(v.C, protocolLabel(p.Protocol)).
+							FontSize(tokens.Typography.Caption.Size).
+							TextColor(mygo.Color(v.T.Palette.TextMuted)).
+							SingleLine().
+							Tooltip(protocolLabel(p.Protocol))
+					})
 				case 1:
-					ui.Text(v.C, protocolLabel(p.Protocol)).SingleLine()
+					ui.Text(v.C, p.BaseURL).SingleLine().Tooltip(p.BaseURL)
 				case 2:
-					ui.Text(v.C, p.BaseURL).SingleLine()
-				case 3:
 					tone, text := components.Neutral, i18n.T("pages.settings.ai.disabled")
 					if p.Enabled {
 						tone, text = components.Success, i18n.T("pages.settings.ai.enabled")
 					}
 					v.Badge(text, tone)
-				case 4:
+				case 3:
 					text := i18n.T("pages.settings.ai.key_missing")
 					if p.HasKey {
 						text = i18n.T("pages.settings.ai.key_saved")
 					}
 					ui.Text(v.C, text)
-				case 5:
+				case 4:
 					if p.ModelsFetchedAt == nil {
 						ui.Text(v.C, "—").TextColor(mygo.Color(v.T.Palette.TextMuted))
 					} else {
@@ -450,9 +457,9 @@ func (s *Settings) aiProviderCard(v *components.UI, a *app.App, view aiView) {
 						v.StatusIndicator(components.Warning, i18n.T("pages.settings.ai.cache_failed")).
 							Tooltip(aiStoredErrorText(p.ModelsError))
 					}
-				case 6:
+				case 5:
 					s.aiProviderTestCell(v, p)
-				case 7:
+				case 6:
 					s.aiProviderActions(v, a, p, view.actionBusy)
 				}
 			},
@@ -497,25 +504,24 @@ func (s *Settings) aiProviderTestCell(v *components.UI, p provider.ProviderView)
 func (s *Settings) aiProviderActions(v *components.UI, a *app.App, p provider.ProviderView, actionBusy string) {
 	busy := s.aiBusy()
 	ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
+		// The primary row action is a bordered button; the rest are icon
+		// buttons so the row fits the card without clipping.
 		v.Button(i18n.T("pages.settings.ai.btn_test"), components.ButtonOptions{
-			Variant: components.VariantGhost, Size: components.SizeSmall,
+			Variant: components.VariantSecondary, Size: components.SizeSmall,
 			Disabled: busy, Loading: actionBusy == "test:"+p.ID,
 			OnClick: func() { s.aiTestProvider(a, p.ID) },
 		})
-		v.Button(i18n.T("pages.settings.ai.btn_sync"), components.ButtonOptions{
-			Variant: components.VariantGhost, Size: components.SizeSmall,
-			Disabled: busy, Loading: actionBusy == "sync:"+p.ID,
+		v.IconButton(icons.Refresh, i18n.T("pages.settings.ai.btn_sync"), components.IconButtonOptions{
+			Size: components.SizeSmall, Disabled: busy, Loading: actionBusy == "sync:"+p.ID,
 			OnClick: func() { s.aiSyncModels(a, p.ID) },
 		})
-		v.Button(i18n.T("pages.settings.ai.btn_edit"), components.ButtonOptions{
-			Variant: components.VariantGhost, Size: components.SizeSmall,
-			Disabled: busy,
-			OnClick:  func() { s.aiOpenProviderForm(&p) },
+		v.IconButton(icons.Edit, i18n.T("pages.settings.ai.btn_edit"), components.IconButtonOptions{
+			Size: components.SizeSmall, Disabled: busy,
+			OnClick: func() { s.aiOpenProviderForm(&p) },
 		})
-		v.Button(i18n.T("pages.settings.ai.btn_delete"), components.ButtonOptions{
-			Variant: components.VariantGhost, Size: components.SizeSmall,
-			Disabled: busy,
-			OnClick:  func() { s.aiAskDeleteProvider(p) },
+		v.IconButton(icons.Trash, i18n.T("pages.settings.ai.btn_delete"), components.IconButtonOptions{
+			Size: components.SizeSmall, Disabled: busy,
+			OnClick: func() { s.aiAskDeleteProvider(p) },
 		})
 	})
 }

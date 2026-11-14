@@ -284,12 +284,12 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 			}),
 
 		tool(mod, mcp.CategoryJob, "report_export", "导出周报",
-			"把周报导出为 Markdown 文件。返回 job_id。",
+			"把周报导出为 Markdown 或 HTML 文件。返回 job_id。",
 			sObj(map[string]any{
 				"project_id": sStr("项目 ID"),
 				"report_id":  sStr("周报 ID"),
 				"dest_dir":   sStr("目标目录（绝对路径，可省略）"),
-				"format":     sEnum("导出格式（仅 md）", "md"),
+				"format":     sEnum("导出格式", "md", "html"),
 			}, "project_id", "report_id", "format"), annJob(false),
 			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
 				projectID, reportID, err := projectAndID(a, "report_id")
@@ -300,8 +300,8 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if format != "md" {
-					return mcp.ToolOutcome{}, invalidf("周报导出仅支持 format=md")
+				if format != "md" && format != "html" {
+					return mcp.ToolOutcome{}, invalidf("周报导出仅支持 format=md 或 format=html")
 				}
 				destDir, _ := a.String("dest_dir")
 				svc, err := d.weeklyService(ctx, projectID)
@@ -316,7 +316,7 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 					Params:    params,
 					TraceID:   mcp.TraceIDFrom(ctx),
 					Run: func(jctx context.Context, progress mcp.ProgressFunc) (any, error) {
-						progress(30, "渲染 Markdown")
+						progress(30, "渲染周报")
 						res, err := svc.Export(jctx, weeklyreview.ExportInput{
 							ReportID: reportID,
 							Format:   format,

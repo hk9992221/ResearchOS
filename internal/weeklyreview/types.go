@@ -340,7 +340,7 @@ type RevertInput struct {
 	Actor    Actor
 }
 
-// ExportInput renders one report as Markdown.
+// ExportInput renders one report as Markdown or HTML.
 type ExportInput struct {
 	ReportID    string
 	Format      string
