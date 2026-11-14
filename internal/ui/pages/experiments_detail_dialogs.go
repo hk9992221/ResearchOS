@@ -31,6 +31,7 @@ func (d *ExperimentDetail) dialogs(v *components.UI, a *app.App, projectID strin
 	d.editDialog(v, a, projectID, exp, readOnly)
 	d.directoryDialog(v, a, projectID, exp, readOnly)
 	d.rulesDialog(v, a, projectID, exp, readOnly)
+	d.confirmSnapshotDialog(v, a, projectID)
 }
 
 // createRunDialog collects the run parameters and an optional directory.

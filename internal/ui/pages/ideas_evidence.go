@@ -96,6 +96,7 @@ func (e *IdeaPage) evidenceTab(v *components.UI, a *app.App, projectID string, d
 	})
 
 	e.batchFailures(v)
+	e.evidenceConfirmDialog(v, a, projectID)
 	if len(drafts) > 0 {
 		v.Card(components.CardOptions{Title: i18n.T("pages.ideas.drafts_card")}, func() {
 			ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
@@ -176,7 +177,9 @@ func (e *IdeaPage) aiEntry(v *components.UI, a *app.App, readOnly bool) {
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
 			Icon:    icons.Settings,
-			OnClick: func() { a.Navigate(ports.Route{Kind: ports.RouteSettings}) },
+			OnClick: func() {
+				a.Navigate(ports.Route{Kind: ports.RouteSettings, Params: map[string]string{"tab": "ai"}})
+			},
 		})
 	}
 }
@@ -285,7 +288,7 @@ func (e *IdeaPage) evidenceCard(v *components.UI, a *app.App, projectID string, 
 					Variant: components.VariantPrimary,
 					Size:    components.SizeSmall,
 				}).Clicked() {
-					e.confirm(a, projectID, []string{item.ID})
+					e.openEvidenceConfirm(item.ID)
 				}
 				if v.Button(i18n.T("pages.ideas.evidence_discard"), components.ButtonOptions{
 					Variant: components.VariantGhost,
@@ -422,6 +425,53 @@ func (e *IdeaPage) saveEvidence(a *app.App, projectID string, item ideas.Evidenc
 		e.shared.bump()
 		a.Notify()
 		return nil
+	})
+}
+
+// openEvidenceConfirm gates accepting one AI draft behind an explicit
+// confirmation; the dialog is the only path that calls confirm.
+func (e *IdeaPage) openEvidenceConfirm(id string) {
+	if id == "" {
+		return
+	}
+	e.mu.Lock()
+	busy := e.evidenceBusy
+	e.mu.Unlock()
+	if busy {
+		return
+	}
+	e.evidenceConfirmID = id
+	e.evidenceConfirmOpen = true
+}
+
+// evidenceConfirmDialog states that accepting a draft turns it into a research
+// conclusion. Cancel leaves the draft untouched.
+func (e *IdeaPage) evidenceConfirmDialog(v *components.UI, a *app.App, projectID string) {
+	if !e.evidenceConfirmOpen {
+		return
+	}
+	v.Dialog(&e.evidenceConfirmOpen, components.DialogOptions{
+		Title:       i18n.T("pages.ideas.evidence_confirm_title"),
+		Description: i18n.T("pages.ideas.evidence_confirm_desc"),
+		Width:       tokens.Space12 * 8,
+		Actions: func() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+				e.evidenceConfirmOpen = false
+				e.evidenceConfirmID = ""
+			}
+			if v.Button(i18n.T("pages.ideas.evidence_accept"), components.ButtonOptions{
+				Variant: components.VariantPrimary,
+			}).Clicked() {
+				id := e.evidenceConfirmID
+				e.evidenceConfirmOpen = false
+				e.evidenceConfirmID = ""
+				e.confirm(a, projectID, []string{id})
+			}
+		},
+	}, func() {
+		ui.Text(v.C, i18n.T("pages.ideas.evidence_confirm_hint")).
+			FontSize(tokens.Typography.Caption.Size).
+			TextColor(mygo.Color(v.T.Palette.TextSecondary))
 	})
 }
 

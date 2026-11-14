@@ -27,7 +27,6 @@ import (
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
-	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -1243,7 +1242,7 @@ func ideaErrText(err error) string {
 			return text
 		}
 	}
-	return errtext.Text(err)
+	return aiErrorText(err)
 }
 
 // ideaErrCode is the machine code shown next to an AI failure (§6.6).

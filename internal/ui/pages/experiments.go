@@ -28,7 +28,6 @@ import (
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
-	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/shell"
@@ -832,7 +831,7 @@ func expErrText(err error) string {
 	case errors.Is(err, experiments.ErrNotFound):
 		return i18n.T("pages.experiments.err_not_found")
 	}
-	return errtext.Text(err)
+	return aiErrorText(err)
 }
 
 // expReadOnlyTooltip names why a write control is disabled.

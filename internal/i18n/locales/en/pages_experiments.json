@@ -384,5 +384,8 @@
   "pages.experiments.value_never": "never",
   "pages.experiments.value_no": "No",
   "pages.experiments.value_none": "—",
-  "pages.experiments.value_yes": "Yes"
+  "pages.experiments.value_yes": "Yes",
+  "pages.experiments.confirm_title": "Confirm the AI output?",
+  "pages.experiments.confirm_desc": "Once confirmed, this content becomes a research conclusion and is marked confirmed.",
+  "pages.experiments.confirm_hint": "Confirmation applies to this output only; older versions remain in snapshot history."
 }

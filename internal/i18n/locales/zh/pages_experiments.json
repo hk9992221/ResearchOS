@@ -384,5 +384,8 @@
   "pages.experiments.value_never": "从未",
   "pages.experiments.value_no": "否",
   "pages.experiments.value_none": "—",
-  "pages.experiments.value_yes": "是"
+  "pages.experiments.value_yes": "是",
+  "pages.experiments.confirm_title": "确认 AI 输出？",
+  "pages.experiments.confirm_desc": "确认后，该内容将作为科研结论记录，并标记为已确认。",
+  "pages.experiments.confirm_hint": "确认只影响这份输出；旧版本仍保留在快照历史中。"
 }

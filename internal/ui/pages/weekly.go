@@ -25,7 +25,6 @@ import (
 	"researchos/internal/ports"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
-	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -715,7 +714,9 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 						Variant: components.VariantGhost,
 						Size:    components.SizeSmall,
 						Icon:    icons.Settings,
-						OnClick: func() { a.Navigate(ports.Route{Kind: ports.RouteSettings}) },
+						OnClick: func() {
+							a.Navigate(ports.Route{Kind: ports.RouteSettings, Params: map[string]string{"tab": "ai"}})
+						},
 					})
 				}
 				if n.needOverwrite {
@@ -1213,7 +1214,7 @@ func weeklyError(err error) string {
 	case weeklyreview.ErrInternal:
 		return i18n.T("pages.weekly_review.err_internal")
 	}
-	return errtext.Text(err)
+	return aiErrorText(err)
 }
 
 // weeklyEntityRoute maps a digest/reference entity type to its route kind.

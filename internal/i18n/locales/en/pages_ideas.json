@@ -265,5 +265,8 @@
   "pages.ideas.updated_at": "Updated {time}",
   "pages.ideas.view_groups": "By status",
   "pages.ideas.view_label": "View",
-  "pages.ideas.view_list": "List"
+  "pages.ideas.view_list": "List",
+  "pages.ideas.evidence_confirm_title": "Confirm this evidence?",
+  "pages.ideas.evidence_confirm_desc": "Once confirmed, this content becomes a research conclusion and counts toward support or oppose.",
+  "pages.ideas.evidence_confirm_hint": "This evidence is an AI draft; it stops appearing as a draft once confirmed."
 }

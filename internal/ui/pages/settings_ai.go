@@ -27,7 +27,6 @@ import (
 	"researchos/internal/i18n"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/components"
-	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
@@ -471,7 +470,7 @@ func (s *Settings) aiProviderTestCell(v *components.UI, p provider.ProviderView)
 			}))
 			return
 		}
-		v.StatusIndicator(components.Danger, aiErrorKindLabel(p.LastTest.ErrorKind))
+		v.StatusIndicator(components.Danger, aiErrorKindText(p.LastTest.ErrorKind))
 		if msg := strings.TrimSpace(p.LastTest.Message); msg != "" {
 			ui.Text(v.C, aierr.Truncate(aierr.Redact(msg))).
 				FontSize(tokens.Typography.Caption.Size).
@@ -1698,7 +1697,7 @@ func aiTestText(res provider.TestResult) string {
 			"n":  strconv.Itoa(res.ModelCount),
 		})
 	}
-	text := aiErrorKindLabel(res.ErrorKind)
+	text := aiErrorKindText(res.ErrorKind)
 	if msg := strings.TrimSpace(res.Message); msg != "" {
 		text += "：" + aierr.Truncate(aierr.Redact(msg))
 	}
@@ -1709,23 +1708,12 @@ func aiTestText(res provider.TestResult) string {
 // cache failure, and the "kind: message" form of a key read.
 func aiStoredErrorText(s string) string {
 	if kind, rest, ok := strings.Cut(s, "|"); ok {
-		return aiErrorKindLabel(kind) + "：" + aierr.Truncate(aierr.Redact(rest))
+		return aiErrorKindText(kind) + "：" + aierr.Truncate(aierr.Redact(rest))
 	}
 	if rest, ok := strings.CutPrefix(s, "secret_unavailable: "); ok {
-		return aiErrorKindLabel(string(aierr.ErrKindSecretUnavailable)) + "：" + aierr.Truncate(aierr.Redact(rest))
+		return aiErrorKindText(string(aierr.ErrKindSecretUnavailable)) + "：" + aierr.Truncate(aierr.Redact(rest))
 	}
 	return aierr.Truncate(aierr.Redact(s))
-}
-
-// aiErrorKindLabel localizes the gateway's ErrorKind. Unknown kinds fall back
-// to a generic label rather than leaking an English identifier.
-func aiErrorKindLabel(kind string) string {
-	key := "pages.settings.ai.kind." + kind
-	label := i18n.T(key)
-	if label == key {
-		return i18n.T("pages.settings.ai.kind.unknown")
-	}
-	return label
 }
 
 // aiErrText maps the typed provider/model/role errors to readable text. No
@@ -1784,15 +1772,7 @@ func aiErrText(err error) string {
 	case errors.Is(err, role.ErrUnknownRole):
 		return i18n.T("pages.settings.ai.error.role_unknown")
 	}
-	var ae *aierr.AIError
-	if errors.As(err, &ae) {
-		text := aiErrorKindLabel(string(ae.Kind))
-		if ae.Message != "" {
-			text += "：" + aierr.Redact(ae.Message)
-		}
-		return text
-	}
-	return aierr.Redact(errtext.Text(err))
+	return aiErrorText(err)
 }
 
 func roleNames(conflicts []provider.RoleConflict) string {

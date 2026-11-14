@@ -97,15 +97,18 @@ type IdeaPage struct {
 	evidenceFailures []ideas.EvidenceFailure
 	evidenceBusy     bool
 	evidenceSide     int
-	addOpen          bool
-	addDirection     ideas.Direction
-	addContent       string
-	addKind          int
-	addQuery         string
-	addSource        ideas.SourceRef
-	addErr           string
-	addBusy          bool
-	addCandidates    ideaCandidates
+	// evidenceConfirm is the short gate in front of accepting one AI draft.
+	evidenceConfirmOpen bool
+	evidenceConfirmID   string
+	addOpen             bool
+	addDirection        ideas.Direction
+	addContent          string
+	addKind             int
+	addQuery            string
+	addSource           ideas.SourceRef
+	addErr              string
+	addBusy             bool
+	addCandidates       ideaCandidates
 
 	// AI draft review: the source selection, the generated drafts and the
 	// provenance of the run that produced them.
@@ -314,6 +317,8 @@ func (e *IdeaPage) reload(a *app.App, projectID, ideaID string) {
 		e.evidence = nil
 		e.loaded = false
 		e.version = 0
+		e.evidenceConfirmOpen = false
+		e.evidenceConfirmID = ""
 	}
 	gen := e.shared.version()
 	e.mu.Unlock()

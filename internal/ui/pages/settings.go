@@ -25,6 +25,9 @@ type Settings struct {
 	Services *Services
 
 	tab int
+	// tabSeq is the route generation whose tab parameter was already applied,
+	// so a later user tab click is not overridden by the same entry.
+	tabSeq uint64
 
 	mu      sync.Mutex
 	loading bool
@@ -63,6 +66,7 @@ const (
 
 // Page renders the settings groups.
 func (s *Settings) Page(v *components.UI, r ports.Route) {
+	s.applyRouteTab(r)
 	s.load()
 	if s.tab == settingsTabAI {
 		s.aiLoad()
@@ -109,6 +113,39 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 			s.storageTab(v, info)
 		}
 	}})
+}
+
+// applyRouteTab honors Settings deep links once per route entry. A module's
+// 「前往设置配置 AI」 navigates with Params{"tab":"ai"}; the user's subsequent
+// tab clicks remain untouched because RouteSeq does not change.
+func (s *Settings) applyRouteTab(r ports.Route) {
+	a := s.Services.App
+	if a == nil {
+		return
+	}
+	if seq := a.RouteSeq(); seq != s.tabSeq {
+		s.tabSeq = seq
+		if tab, ok := settingsTabFromParam(r.Params["tab"]); ok {
+			s.tab = tab
+		}
+	}
+}
+
+// settingsTabFromParam maps the public tab names of a Settings route.
+func settingsTabFromParam(param string) (int, bool) {
+	switch param {
+	case "workspace":
+		return settingsTabWorkspace, true
+	case "external":
+		return settingsTabExternal, true
+	case "ai":
+		return settingsTabAI, true
+	case "mcp":
+		return settingsTabMCP, true
+	case "storage":
+		return settingsTabStorage, true
+	}
+	return 0, false
 }
 
 func (s *Settings) load() {

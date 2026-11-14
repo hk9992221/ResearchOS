@@ -335,7 +335,9 @@ func (d *ExperimentDetail) generationFooter(v *components.UI, a *app.App, projec
 				Variant: components.VariantGhost,
 				Size:    components.SizeSmall,
 				Icon:    icons.Settings,
-				OnClick: func() { a.Navigate(ports.Route{Kind: ports.RouteSettings}) },
+				OnClick: func() {
+					a.Navigate(ports.Route{Kind: ports.RouteSettings, Params: map[string]string{"tab": "ai"}})
+				},
 			})
 		}
 		if v.Button(i18n.T("pages.experiments.btn_context_preview"), components.ButtonOptions{
@@ -363,7 +365,7 @@ func (d *ExperimentDetail) generationFooter(v *components.UI, a *app.App, projec
 				Loading:  confirming,
 				Disabled: confirming,
 			}).Clicked() {
-				d.confirmSnapshot(a, projectID, snap.ID)
+				d.openConfirmSnapshot(snap.ID)
 			}
 		} else if confirmed {
 			v.Badge(i18n.T("pages.experiments.ai_confirmed"), components.Success)
@@ -505,6 +507,53 @@ func (d *ExperimentDetail) targetRef(run *experiments.RunDetail) experiments.Tar
 		return experiments.TargetRef{Type: experiments.TargetExperiment, ID: exp.Experiment.ID}
 	}
 	return experiments.TargetRef{Type: experiments.TargetExperiment}
+}
+
+// openConfirmSnapshot gates confirming an AI output behind an explicit dialog;
+// the dialog is the only path that calls confirmSnapshot.
+func (d *ExperimentDetail) openConfirmSnapshot(snapshotID string) {
+	if snapshotID == "" {
+		return
+	}
+	d.mu.Lock()
+	busy := d.confirmingSnap != ""
+	d.mu.Unlock()
+	if busy {
+		return
+	}
+	d.confirmSnapID = snapshotID
+	d.confirmSnapOpen = true
+}
+
+// confirmSnapshotDialog states that confirming turns the output into a
+// research conclusion. Cancel leaves the draft untouched.
+func (d *ExperimentDetail) confirmSnapshotDialog(v *components.UI, a *app.App, projectID string) {
+	if !d.confirmSnapOpen {
+		return
+	}
+	v.Dialog(&d.confirmSnapOpen, components.DialogOptions{
+		Title:       i18n.T("pages.experiments.confirm_title"),
+		Description: i18n.T("pages.experiments.confirm_desc"),
+		Width:       tokens.Space12 * 8,
+		Actions: func() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+				d.confirmSnapOpen = false
+				d.confirmSnapID = ""
+			}
+			if v.Button(i18n.T("pages.experiments.btn_confirm"), components.ButtonOptions{
+				Variant: components.VariantPrimary,
+			}).Clicked() {
+				id := d.confirmSnapID
+				d.confirmSnapOpen = false
+				d.confirmSnapID = ""
+				d.confirmSnapshot(a, projectID, id)
+			}
+		},
+	}, func() {
+		ui.Text(v.C, i18n.T("pages.experiments.confirm_hint")).
+			FontSize(tokens.Typography.Caption.Size).
+			TextColor(mygo.Color(v.T.Palette.TextSecondary))
+	})
 }
 
 // confirmSnapshot confirms the live output as the user (SPEC-02 only lets a

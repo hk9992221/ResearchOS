@@ -30,21 +30,33 @@ func (m *aiModule) CreateProvider(ctx context.Context, in provider.CreateProvide
 	if !m.available() {
 		return provider.ProviderView{}, errAIUnavailable
 	}
-	return m.stack.Providers.Create(ctx, in)
+	view, err := m.stack.Providers.Create(ctx, in)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return view, err
 }
 
 func (m *aiModule) UpdateProvider(ctx context.Context, id string, in provider.UpdateProviderInput) (provider.ProviderView, error) {
 	if !m.available() {
 		return provider.ProviderView{}, errAIUnavailable
 	}
-	return m.stack.Providers.Update(ctx, id, in)
+	view, err := m.stack.Providers.Update(ctx, id, in)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return view, err
 }
 
 func (m *aiModule) DeleteProvider(ctx context.Context, id string) error {
 	if !m.available() {
 		return errAIUnavailable
 	}
-	return m.stack.Providers.Delete(ctx, id)
+	err := m.stack.Providers.Delete(ctx, id)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return err
 }
 
 func (m *aiModule) TestProvider(ctx context.Context, id string) (provider.TestResult, error) {
@@ -65,21 +77,33 @@ func (m *aiModule) SyncModels(ctx context.Context, providerID string) (model.Mod
 	if !m.available() {
 		return model.ModelSyncResult{}, errAIUnavailable
 	}
-	return m.stack.Models.Sync(ctx, providerID)
+	result, err := m.stack.Models.Sync(ctx, providerID)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return result, err
 }
 
 func (m *aiModule) AddManualModel(ctx context.Context, providerID, modelID, displayName string) error {
 	if !m.available() {
 		return errAIUnavailable
 	}
-	return m.stack.Models.AddManual(ctx, providerID, modelID, displayName)
+	err := m.stack.Models.AddManual(ctx, providerID, modelID, displayName)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return err
 }
 
 func (m *aiModule) RemoveManualModel(ctx context.Context, providerID, modelID string) error {
 	if !m.available() {
 		return errAIUnavailable
 	}
-	return m.stack.Models.RemoveManual(ctx, providerID, modelID)
+	err := m.stack.Models.RemoveManual(ctx, providerID, modelID)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return err
 }
 
 func (m *aiModule) ListRoles(ctx context.Context) ([]role.RoleView, error) {
@@ -93,12 +117,20 @@ func (m *aiModule) AssignRole(ctx context.Context, r role.Role, providerID, mode
 	if !m.available() {
 		return role.AssignResult{}, errAIUnavailable
 	}
-	return m.stack.Roles.Assign(ctx, r, providerID, modelID)
+	result, err := m.stack.Roles.Assign(ctx, r, providerID, modelID)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return result, err
 }
 
 func (m *aiModule) ClearRole(ctx context.Context, r role.Role) error {
 	if !m.available() {
 		return errAIUnavailable
 	}
-	return m.stack.Roles.Clear(ctx, r)
+	err := m.stack.Roles.Clear(ctx, r)
+	if err == nil {
+		m.RefreshReady()
+	}
+	return err
 }

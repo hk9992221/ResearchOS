@@ -47,6 +47,18 @@ type chatProbe struct {
 
 func newChatProbe(roles role.Service) *chatProbe { return &chatProbe{roles: roles} }
 
+// invalidate drops the cached answer without touching the database or the
+// network. The next readyNow re-resolves the assignment.
+func (p *chatProbe) invalidate() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.known = false
+	p.at = time.Time{}
+	p.mu.Unlock()
+}
+
 // readyNow reports whether chat_main resolves to an enabled provider and an
 // available model. A nil probe is not ready.
 func (p *chatProbe) readyNow() bool {
@@ -103,6 +115,17 @@ func (m *aiModule) available() bool {
 // (§SPEC-06 6.6, §SPEC-09) instead of failing per call.
 func (m *aiModule) chatReady() bool {
 	return m.available() && m.ready.readyNow()
+}
+
+// RefreshReady invalidates the cached chat readiness answer without a network
+// call. Settings calls it after a change that can alter role resolution, so
+// module AI entries light up or disable on the next frame rather than after
+// the 30s probe TTL.
+func (m *aiModule) RefreshReady() {
+	if m == nil || m.ready == nil {
+		return
+	}
+	m.ready.invalidate()
 }
 
 // stackOrNil returns the stack for the page adapters, which construct their

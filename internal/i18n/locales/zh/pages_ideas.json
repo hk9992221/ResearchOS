@@ -265,5 +265,8 @@
   "pages.ideas.updated_at": "更新于 {time}",
   "pages.ideas.view_groups": "按状态分组",
   "pages.ideas.view_label": "视图",
-  "pages.ideas.view_list": "列表"
+  "pages.ideas.view_list": "列表",
+  "pages.ideas.evidence_confirm_title": "确认这条证据？",
+  "pages.ideas.evidence_confirm_desc": "确认后，该内容将作为科研结论记录，并计入支持或反对。",
+  "pages.ideas.evidence_confirm_hint": "这条证据来自 AI 草稿；确认后不再显示为草稿。"
 }

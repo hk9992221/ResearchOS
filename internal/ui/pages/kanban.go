@@ -225,6 +225,9 @@ type Kanban struct {
 	// routeTask is the task the current ports.RouteTask deep link opened,
 	// so Escape does not reopen it on the next frame.
 	routeTask string
+	// viewSeq is the route generation whose view=blocked hint was applied, so
+	// pressing the Board tab afterwards is not overridden on later frames.
+	viewSeq uint64
 }
 
 // prepare initializes the frame-local state a zero page does not have.
@@ -245,6 +248,12 @@ func (k *Kanban) Page(v *components.UI, r ports.Route) {
 	// A plain visit to the board resets the deep link, so the task route
 	// opens its task once instead of reopening it after Escape.
 	k.routeTask = ""
+	if r.Params["view"] == "blocked" && k.Services.App != nil {
+		if seq := k.Services.App.RouteSeq(); seq != k.viewSeq {
+			k.viewSeq = seq
+			k.view = kanbanBlockedView
+		}
+	}
 	k.render(v, r)
 }
 

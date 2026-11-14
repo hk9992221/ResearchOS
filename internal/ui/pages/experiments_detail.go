@@ -97,13 +97,15 @@ type ExperimentDetail struct {
 	diffTo     string
 	contextPre bool
 
-	editing        bool
-	editText       string
-	editFor        string
-	metricTable    *ui.ListState
-	compareTable   *ui.ListState
-	historyTable   *ui.ListState
-	confirmingSnap string
+	editing         bool
+	editText        string
+	editFor         string
+	metricTable     *ui.ListState
+	compareTable    *ui.ListState
+	historyTable    *ui.ListState
+	confirmingSnap  string
+	confirmSnapOpen bool
+	confirmSnapID   string
 
 	createRunOpen bool
 	runParams     []expParamRow
@@ -368,6 +370,8 @@ func (d *ExperimentDetail) load(a *app.App, projectID string, r ports.Route) {
 			d.comparison = nil
 			d.diff = nil
 			d.diffView = nil
+			d.confirmSnapOpen = false
+			d.confirmSnapID = ""
 		}
 	}
 	d.mu.Unlock()
