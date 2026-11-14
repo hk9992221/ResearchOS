@@ -348,14 +348,23 @@ func (d *taskDetail) body(v *components.UI, a *app.App, k *Kanban, projectID str
 		i18n.T("pages.kanban.detail_tab_links"),
 	).Label(i18n.T("pages.kanban.detail_tabs_label"))
 
-	switch d.tab {
-	case kanbanTabChecklist:
-		d.checklistTab(v, a, k, projectID)
-	case kanbanTabLinks:
-		d.linksTab(v, a, k, projectID)
-	default:
-		d.detailTab(v, a, k, projectID, archivedTask, saving, archiving, deleting)
-	}
+	// The pane keeps its title and tabs in place; only the form under them
+	// scrolls, so the last control of a long tab (标签, the subtask field)
+	// stays reachable in a short window. The pane gives its height to the
+	// column, so the scroll view takes what the header and tabs leave,
+	// scrollbar and all.
+	ui.Scroll(v.C).Grow(1).Children(func() {
+		ui.Column(v.C).FillWidth().Gap(tokens.RelatedGap).Children(func() {
+			switch d.tab {
+			case kanbanTabChecklist:
+				d.checklistTab(v, a, k, projectID)
+			case kanbanTabLinks:
+				d.linksTab(v, a, k, projectID)
+			default:
+				d.detailTab(v, a, k, projectID, archivedTask, saving, archiving, deleting)
+			}
+		})
+	})
 }
 
 // detailTab is the form of the task itself.
