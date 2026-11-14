@@ -47,6 +47,8 @@ type Settings struct {
 	// assignments, with its own lock because the action tasks write it while
 	// the page renders.
 	ai settingsAI
+	// mcp is the SPEC-11 server tab: lifecycle, settings, clients and tools.
+	mcp settingsMCP
 }
 
 // The Settings tabs in display order. The AI tab sits before maintenance so
@@ -55,6 +57,7 @@ const (
 	settingsTabWorkspace = iota
 	settingsTabExternal
 	settingsTabAI
+	settingsTabMCP
 	settingsTabStorage
 )
 
@@ -65,6 +68,11 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 		s.aiLoad()
 	} else {
 		s.aiClearTransient()
+	}
+	if s.tab == settingsTabMCP {
+		s.mcpLoad(s.Services.App)
+	} else {
+		s.mcpClearTransient()
 	}
 	s.mu.Lock()
 	info, scan, cfg, loadErr, loaded, loading := s.info, s.scan, s.cfg, s.loadErr, s.loaded, s.loading
@@ -85,6 +93,7 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 			i18n.T("pages.settings.tab_workspace"),
 			i18n.T("pages.settings.tab_external"),
 			i18n.T("pages.settings.tab_ai"),
+			i18n.T("pages.settings.tab_mcp"),
 			i18n.T("pages.settings.tab_storage"),
 		)
 		switch s.tab {
@@ -94,6 +103,8 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 			s.externalTab(v, cfg)
 		case settingsTabAI:
 			s.aiTab(v, s.Services.App)
+		case settingsTabMCP:
+			s.mcpTab(v, s.Services.App)
 		default:
 			s.storageTab(v, info)
 		}

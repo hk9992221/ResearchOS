@@ -26,6 +26,7 @@ import (
 	"researchos/internal/foundation/reconcile"
 	foundationworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/literature"
+	"researchos/internal/mcp"
 	"researchos/internal/notes"
 	"researchos/internal/ui/app"
 	"researchos/internal/ui/shell"
@@ -53,6 +54,10 @@ type Services struct {
 	// only place a user can see whether the stdio bridge has something to talk
 	// to; a nil function means the composition root never started one.
 	MCPStatus func() MCPStatus
+	// MCP binds the SPEC-11 server lifecycle, settings and client registry.
+	// Nil means no workspace is open; the MCP tab says so instead of faking a
+	// configuration.
+	MCP MCPAPI
 	// AI binds the SPEC-02 provider/model/role stack. Nil means the stack was
 	// not built, and the AI settings tab says so instead of faking a
 	// configuration; Available reports the same fact behind a non-nil value.
@@ -131,13 +136,69 @@ type ExternalAPI interface {
 	Relocate(ctx context.Context, req externalrefs.RelocateRequest) (externalrefs.RelocateResult, error)
 }
 
-// MCPStatus is the state of the in-process MCP server (SPEC-11 §5.8). Socket is
-// the local endpoint the stdio bridge connects to; Error explains why the
-// server is not running when it is not.
+// MCPStatus is the state of the in-process MCP server (SPEC-11 §5.8). Socket
+// is the local endpoint the stdio bridge connects to; Error explains why the
+// server is not running when it is not. The remaining fields are the settings
+// snapshot the MCP tab and the diagnostics card show.
 type MCPStatus struct {
-	Running bool
-	Socket  string
-	Error   string
+	Running       bool
+	Socket        string
+	Error         string
+	Enabled       bool
+	AccessMode    string
+	HTTPEnabled   bool
+	HTTPAddr      string
+	Endpoint      string
+	Version       string
+	Protocols     []string
+	Modules       []string
+	ToolCount     int
+	WorkspaceRoot string
+}
+
+// MCPSettingsPatch is a partial update of the mcp.* settings. A nil field is
+// left unchanged; the MCP tab sends one card's fields at a time.
+type MCPSettingsPatch struct {
+	Enabled       *bool
+	HTTPEnabled   *bool
+	HTTPAddr      *string
+	AccessMode    *string
+	RetentionDays *int
+}
+
+// ErrMCPUnavailable reports that the MCP runtime was not assembled for this
+// workspace. The MCP page shows its unavailable state instead of faking data.
+var ErrMCPUnavailable = errors.New("pages: MCP service unavailable")
+
+// ErrMCPClosed reports a call from a page whose workspace has closed; the
+// manager bound to that workspace refuses instead of touching the next one.
+var ErrMCPClosed = errors.New("pages: workspace closed")
+
+// MCPToolInfo is one registered tool for the read-only catalog.
+type MCPToolInfo struct {
+	Name        string
+	Module      string
+	Category    string
+	Title       string
+	Description string
+	ReadOnly    bool
+	Destructive bool
+}
+
+// MCPAPI is the MCP lifecycle, settings and client registry the Settings page
+// uses. It is bound to one workspace; a stale page after a workspace switch
+// gets an explicit error rather than the next workspace's server.
+type MCPAPI interface {
+	GetMCPSettings(ctx context.Context) (mcp.SettingsValues, error)
+	SaveMCPSettings(ctx context.Context, patch MCPSettingsPatch) (mcp.SettingsValues, error)
+	Status() MCPStatus
+	Tools() []MCPToolInfo
+	Clients(ctx context.Context) ([]mcp.Client, error)
+	CreateClient(ctx context.Context, name string) (mcp.Client, string, error)
+	RotateClient(ctx context.Context, id string) (string, error)
+	RevokeClient(ctx context.Context, id string) error
+	SetClientEnabled(ctx context.Context, id string, enabled bool) error
+	BridgeCommand() (string, error)
 }
 
 // AIAPI is the part of SPEC-02 the AI settings tab uses. ProviderView and the

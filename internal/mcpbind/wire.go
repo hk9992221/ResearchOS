@@ -194,6 +194,13 @@ func Wire(opts WireOptions) (*App, error) {
 // bridge, and (when mcp.http.enabled) the loopback HTTP listener. It blocks
 // until ctx ends.
 func (a *App) Start(ctx context.Context) error {
+	return a.StartWithReady(ctx, nil)
+}
+
+// StartWithReady is Start with a callback run once every listener is bound and
+// serving, before Start blocks. The UI uses it to report a running server
+// truthfully instead of guessing after a delay. ready may be nil.
+func (a *App) StartWithReady(ctx context.Context, ready func()) error {
 	values, err := mcp.LoadSettings(ctx, a.Deps.Settings)
 	if err != nil {
 		return err
@@ -242,6 +249,9 @@ func (a *App) Start(ctx context.Context) error {
 		go func() {
 			errCh <- httpServer.Serve(listener)
 		}()
+	}
+	if ready != nil {
+		ready()
 	}
 
 	select {

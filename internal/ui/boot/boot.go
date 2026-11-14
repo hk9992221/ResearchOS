@@ -56,7 +56,7 @@ type Runtime struct {
 	app      *app.App
 	shell    *shell.Shell
 	services pages.Services
-	mcp      *mcpService
+	mcp      *mcpManager
 	// search and literature are the SPEC-10 and SPEC-04 services of the open
 	// workspace; both hold database handles and are released on a switch.
 	search     *search.Service
@@ -275,6 +275,7 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	overviewSvc := overview.New(overview.Options{Workspace: ws})
 	pagesService := r.pageServices(ws, svc, a, migrations, lit, lit, newNotesModule(ws), ai, settingsStore)
 	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc, ai, overviewSvc)
+	pagesService.MCP = host
 
 	pageSet := shell.DefaultPages(ctx, a, overviewSvc)
 	for kind, page := range pages.System(pagesService) {
@@ -343,7 +344,9 @@ func (r *Runtime) stopMCP() {
 	host := r.mcp
 	r.mcp = nil
 	r.mu.Unlock()
-	host.stop()
+	if host != nil {
+		host.close()
+	}
 }
 
 // mcpStatus implements the diagnostics view of the server; nil host means no
@@ -352,7 +355,10 @@ func (r *Runtime) mcpStatus() pages.MCPStatus {
 	r.mu.Lock()
 	host := r.mcp
 	r.mu.Unlock()
-	return host.status()
+	if host == nil {
+		return pages.MCPStatus{}
+	}
+	return host.Status()
 }
 
 // Inspect implements pages.SetupAPI.
