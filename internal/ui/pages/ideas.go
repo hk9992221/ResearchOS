@@ -1191,7 +1191,9 @@ func ideaLinks(idea ideas.IdeaSummary) int {
 	return idea.LinkedPapers + idea.LinkedNotes + idea.LinkedExps
 }
 
-// ideasRows caps a table at ideasListRows rows so the page stays usable.
+// ideasRows is the table's height: the header row over one 44px row per
+// record, capped at ideasListRows. Without the header's room the first row
+// would be clipped behind it.
 func ideasRows(rows int) float32 {
 	if rows < 1 {
 		rows = 1
@@ -1199,7 +1201,7 @@ func ideasRows(rows int) float32 {
 	if rows > ideasListRows {
 		rows = ideasListRows
 	}
-	return float32(rows) * tokens.Space11
+	return float32(rows)*tokens.Space11 + tokens.Space10
 }
 
 // ideaTitle renders a title, treating an empty one as untitled.
