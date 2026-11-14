@@ -138,6 +138,8 @@
   "pages.kanban.link_target_deleted": "Target deleted",
   "pages.kanban.link_type": "Type",
   "pages.kanban.links_empty": "No relations yet.",
+  "pages.kanban.list_empty_reason": "No tasks, or none match the current filter.",
+  "pages.kanban.list_empty_title": "No tasks",
   "pages.kanban.menu_archive": "Archive",
   "pages.kanban.menu_move_down": "Move down",
   "pages.kanban.menu_move_to": "Move to…",

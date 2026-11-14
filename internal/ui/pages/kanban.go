@@ -1299,11 +1299,22 @@ func (k *Kanban) deleteColumn(a *app.App, projectID string) {
 	})
 }
 
-// listView renders the sortable table of the open project.
+// listView renders the sortable table of the open project. An empty
+// projection shows the empty state: mygo's list reconciles the shared
+// ListState's previous rows against the new table, and a zero-row Table would
+// still ask the Key closure for row 0 of an empty slice (SPEC-08 §6.6).
 func (k *Kanban) listView(v *components.UI, a *app.App, projectID string) {
 	k.mu.Lock()
 	rows := append([]kanban.TaskSummary(nil), k.list...)
 	k.mu.Unlock()
+	if len(rows) == 0 {
+		v.EmptyState(components.EmptyStateOptions{
+			Icon:   icons.Kanban,
+			Title:  i18n.T("pages.kanban.list_empty_title"),
+			Reason: i18n.T("pages.kanban.list_empty_reason"),
+		})
+		return
+	}
 	k.taskTable(v, a, projectID, rows, k.table, false)
 }
 
