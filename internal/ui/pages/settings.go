@@ -135,9 +135,9 @@ func (s *Settings) workspaceTab(v *components.UI, info *workspace.Info, scan fou
 			s.row(v, i18n.T("pages.settings.row_location"), root)
 			if info != nil {
 				s.row(v, i18n.T("pages.settings.row_projects"), strconvPair(info.ProjectCount, info.ArchivedCount))
-				s.row(v, i18n.T("pages.settings.row_database"), humanBytes(info.DBBytes))
-				s.row(v, i18n.T("pages.settings.row_library"), humanBytes(info.LibraryBytes))
-				s.row(v, i18n.T("pages.settings.row_free_space"), humanBytes(info.FreeBytes))
+				s.row(v, i18n.T("pages.settings.row_database"), components.HumanBytes(info.DBBytes))
+				s.row(v, i18n.T("pages.settings.row_library"), components.HumanBytes(info.LibraryBytes))
+				s.row(v, i18n.T("pages.settings.row_free_space"), components.HumanBytes(info.FreeBytes))
 			}
 			s.row(v, i18n.T("pages.settings.row_marker"), markerLabel(scan.Marker))
 			if len(scan.SchemaIssues) > 0 {
@@ -206,7 +206,7 @@ func (s *Settings) storageTab(v *components.UI, info *workspace.Info) {
 	v.Card(components.CardOptions{Title: i18n.T("pages.settings.tab_storage")}, func() {
 		ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 			if info != nil {
-				s.row(v, i18n.T("pages.settings.row_workspace_size"), humanBytes(info.DBBytes+info.LibraryBytes+info.ExportsBytes))
+				s.row(v, i18n.T("pages.settings.row_workspace_size"), components.HumanBytes(info.DBBytes+info.LibraryBytes+info.ExportsBytes))
 			}
 			ui.Row(v.C).Gap(tokens.ComponentGap).Children(func() {
 				v.Button(i18n.T("pages.settings.btn_recycle_bin"), components.ButtonOptions{

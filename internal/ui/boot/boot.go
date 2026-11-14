@@ -253,6 +253,7 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	}
 	a := app.New(app.Options{
 		Projects:       projects,
+		Confirm:        r.confirm,
 		WorkspaceName:  workspaceName(ws.Root()),
 		PersistSidebar: provider.SetSidebarCollapsed,
 	})

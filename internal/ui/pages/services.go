@@ -11,8 +11,6 @@ package pages
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -24,7 +22,6 @@ import (
 	"researchos/internal/foundation/externalrefs"
 	"researchos/internal/foundation/reconcile"
 	foundationworkspace "researchos/internal/foundation/workspace"
-	"researchos/internal/i18n"
 	"researchos/internal/literature"
 	"researchos/internal/notes"
 	"researchos/internal/ui/app"
@@ -381,21 +378,4 @@ func brokenTone(broken bool) string {
 		return "danger"
 	}
 	return "success"
-}
-
-// humanBytes formats a byte count for display.
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return i18n.Tf("pages.common.size_bytes", map[string]string{"n": strconv.FormatInt(n, 10)})
-	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit && exp < 4; m /= unit {
-		div *= unit
-		exp++
-	}
-	return i18n.Tf("pages.common.size_units", map[string]string{
-		"value": fmt.Sprintf("%.1f", float64(n)/float64(div)),
-		"unit":  string("KMGTP"[exp]),
-	})
 }

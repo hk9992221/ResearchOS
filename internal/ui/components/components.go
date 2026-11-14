@@ -19,6 +19,8 @@ package components
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 
 	"github.com/egoist/mygo/ui"
 
@@ -27,6 +29,25 @@ import (
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
+
+// HumanBytes formats a byte count for display, in the current language. Every
+// page that shows a size — diagnostics, migration, the delete wizard — uses
+// this one formatter, so "KB" never appears as a hard-coded string in a page.
+func HumanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return i18n.Tf("pages.common.size_bytes", map[string]string{"n": strconv.FormatInt(n, 10)})
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit && exp < 4; m /= unit {
+		div *= unit
+		exp++
+	}
+	return i18n.Tf("pages.common.size_units", map[string]string{
+		"value": fmt.Sprintf("%.1f", float64(n)/float64(div)),
+		"unit":  string("KMGTP"[exp]),
+	})
+}
 
 // UI is one frame's context and resolved tokens. Build it at the top of the
 // view, after mygo.Apply installed the toolkit theme.

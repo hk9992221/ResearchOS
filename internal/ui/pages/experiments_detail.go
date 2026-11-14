@@ -880,8 +880,8 @@ func (d *ExperimentDetail) overview(v *components.UI, a *app.App, projectID stri
 			ui.Text(v.C, i18n.Tf("pages.experiments.rules_summary", map[string]string{
 				"include": itoa(len(rules.Include)),
 				"exclude": itoa(len(rules.Exclude)),
-				"file":    humanBytes(rules.MaxFileBytes),
-				"total":   humanBytes(rules.MaxTotalBytes),
+				"file":    components.HumanBytes(rules.MaxFileBytes),
+				"total":   components.HumanBytes(rules.MaxTotalBytes),
 				"files":   itoa(rules.MaxFiles),
 				"images":  expBoolLabel(rules.IncludeImagesInAI),
 			})).FontSize(tokens.Typography.Secondary.Size).TextColor(mygo.Color(v.T.Palette.TextSecondary))

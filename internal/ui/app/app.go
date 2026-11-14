@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"researchos/internal/foundation/clock"
+	"researchos/internal/foundation/confirm"
 	"researchos/internal/ports"
 	"researchos/internal/project"
 	"researchos/internal/ui/components"
@@ -81,6 +82,10 @@ type Options struct {
 	// Projects is the project service. It may be nil in a window without a
 	// workspace; project navigation then stays empty.
 	Projects *project.Service
+	// Confirm issues the one-time tokens that authorize destructive
+	// operations (SPEC-01 §5.8). The delete wizard needs it: without it the
+	// wizard shows its plan but cannot confirm.
+	Confirm confirm.Service
 	// WorkspaceName is the display name of the current workspace, computed by
 	// the composition root. The UI never derives it from a path itself.
 	WorkspaceName string
@@ -98,6 +103,7 @@ type Options struct {
 // reading state may run at once.
 type App struct {
 	projects      *project.Service
+	confirm       confirm.Service
 	workspaceName string
 	clock         clock.Clock
 	persist       func(ctx context.Context, collapsed bool) error
@@ -127,6 +133,7 @@ func New(o Options) *App {
 	}
 	return &App{
 		projects:      o.Projects,
+		confirm:       o.Confirm,
 		workspaceName: o.WorkspaceName,
 		clock:         clk,
 		persist:       o.PersistSidebar,
@@ -238,6 +245,102 @@ func (a *App) CreateProject(ctx context.Context, in project.CreateInput) (*proje
 	return created, err
 }
 
+// UpdateProject edits name/summary/goals/focus_md (PRJ-02, §5.3). The stored
+// row is the source of truth: the open session and the cached list mirror it,
+// so the shell shows the new values without a reload. A no-op update returns
+// the project unchanged and writes no event.
+func (a *App) UpdateProject(ctx context.Context, in project.UpdateInput) (*project.Project, error) {
+	if a.projects == nil {
+		return nil, ErrNoProjectService
+	}
+	in.Actor = ports.ActorUser
+	updated, err := a.projects.Update(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	a.mirrorProject(updated)
+	_ = a.RefreshProjects(ctx)
+	return updated, nil
+}
+
+// SetArchived archives or restores a project (PRJ-03, §5.3). Archiving keeps
+// every byte and makes the project read-only; the open session drops to
+// read-only as well. A running export or migration holds the locks and the
+// call fails with ErrBusy.
+func (a *App) SetArchived(ctx context.Context, id string, archived bool) error {
+	if a.projects == nil {
+		return ErrNoProjectService
+	}
+	var err error
+	if archived {
+		err = a.projects.Archive(ctx, id, ports.ActorUser)
+	} else {
+		err = a.projects.Unarchive(ctx, id, ports.ActorUser)
+	}
+	if err != nil {
+		return err
+	}
+	current, err := a.projects.Get(ctx, id)
+	if err == nil {
+		a.mirrorProject(current)
+	}
+	_ = a.RefreshProjects(ctx)
+	return nil
+}
+
+// PrepareProjectDelete returns the read-only impact plan the delete wizard
+// shows before anything is confirmed (§5.4). It changes nothing and issues no
+// token.
+func (a *App) PrepareProjectDelete(ctx context.Context, id string) (*project.DeletePlan, error) {
+	if a.projects == nil {
+		return nil, ErrNoProjectService
+	}
+	return a.projects.PrepareDelete(ctx, id)
+}
+
+// DeleteProject runs the confirmed permanent delete (§5.4). The token must
+// come from an in-app confirmation and ConfirmName must equal the project
+// name, or the service answers ErrDeleteNotConfirmed. A deleted project that
+// was open leaves no session behind: the app returns to the Projects list.
+func (a *App) DeleteProject(ctx context.Context, req project.PermanentDeleteRequest) (*project.DeleteResult, error) {
+	if a.projects == nil {
+		return nil, ErrNoProjectService
+	}
+	res, err := a.projects.PermanentDelete(ctx, req)
+	if p := a.Project(); p != nil && p.ID == req.ProjectID {
+		a.mu.Lock()
+		a.proj = nil
+		a.route = ports.Route{Kind: RouteProjects}
+		a.mu.Unlock()
+		a.changed()
+	}
+	_ = a.RefreshProjects(ctx)
+	return res, err
+}
+
+// Confirmation returns the token service the destructive dialogs issue
+// through. It is nil in a window without a workspace.
+func (a *App) Confirmation() confirm.Service {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.confirm
+}
+
+// mirrorProject replaces the cached open project with the stored row, so an
+// edit or a status change shows in the shell without reopening the project.
+func (a *App) mirrorProject(p *project.Project) {
+	if p == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.proj != nil && a.proj.ID == p.ID {
+		cp := *p
+		a.proj = &cp
+	}
+	a.mu.Unlock()
+	a.changed()
+}
+
 // CloseProject closes the session and returns to the Projects list.
 func (a *App) CloseProject(ctx context.Context) error {
 	if a.projects != nil && a.Project() != nil {
@@ -263,15 +366,16 @@ func (a *App) Projects(ctx context.Context, q project.ListQuery) ([]project.Proj
 }
 
 // RefreshProjects loads the project list into the cache the shell renders, so
-// a frame never waits on the database. Loaded reports whether a load ran;
-// Err is its outcome.
+// a frame never waits on the database. Both groups load: an archived project
+// stays in the list, where it can be restored or deleted (§5.3). Loaded reports
+// whether a load ran; Err is its outcome.
 func (a *App) RefreshProjects(ctx context.Context) error {
 	var (
 		list []project.Project
 		err  error
 	)
 	if a.projects != nil {
-		list, err = a.projects.List(ctx, project.ListQuery{})
+		list, err = a.projects.List(ctx, project.ListQuery{IncludeArchived: true})
 	}
 	a.mu.Lock()
 	a.list = list

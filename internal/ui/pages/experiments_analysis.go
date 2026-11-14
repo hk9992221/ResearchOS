@@ -1192,7 +1192,7 @@ func (d *ExperimentDetail) contextDialog(v *components.UI, a *app.App, projectID
 		}
 		ui.Text(v.C, i18n.Tf("pages.experiments.context_totals", map[string]string{
 			"files": itoa(len(bundle.Entries)),
-			"bytes": humanBytes(bundle.Bytes),
+			"bytes": components.HumanBytes(bundle.Bytes),
 		})).FontSize(tokens.Typography.Secondary.Size)
 		if bundle.Truncated {
 			v.Banner(components.BannerOptions{
@@ -1205,7 +1205,7 @@ func (d *ExperimentDetail) contextDialog(v *components.UI, a *app.App, projectID
 			ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 				ui.Text(v.C, entry.Path).Font(tokens.SystemFonts.Mono).
 					FontSize(tokens.Typography.Caption.Size).Grow(1).SingleLine()
-				ui.Text(v.C, humanBytes(entry.Bytes)).FontSize(tokens.Typography.Caption.Size).
+				ui.Text(v.C, components.HumanBytes(entry.Bytes)).FontSize(tokens.Typography.Caption.Size).
 					TextColor(mygo.Color(v.T.Palette.TextMuted)).FontFeatures("tnum")
 				if entry.Sampled {
 					v.Badge(i18n.T("pages.experiments.context_sampled"), components.Neutral)

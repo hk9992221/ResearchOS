@@ -103,8 +103,8 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 				s.row(v, i18n.T("pages.diagnostics.row_integrity"), integrityText(report.Global))
 				s.row(v, i18n.T("pages.diagnostics.row_foreign_keys"), fkText(report.Global))
 				s.row(v, i18n.T("pages.diagnostics.row_size"), i18n.Tf("pages.diagnostics.size_wal", map[string]string{
-					"main": humanBytes(report.Global.SizeBytes),
-					"wal":  humanBytes(report.Global.WALBytes),
+					"main": components.HumanBytes(report.Global.SizeBytes),
+					"wal":  components.HumanBytes(report.Global.WALBytes),
 				}))
 			})
 		})
@@ -322,8 +322,8 @@ func diagText(rep diag.Report) string {
 		"integrity": integrityText(rep.Global),
 		"keys":      fkText(rep.Global),
 		"size": i18n.Tf("pages.diagnostics.size_wal", map[string]string{
-			"main": humanBytes(rep.Global.SizeBytes),
-			"wal":  humanBytes(rep.Global.WALBytes),
+			"main": components.HumanBytes(rep.Global.SizeBytes),
+			"wal":  components.HumanBytes(rep.Global.WALBytes),
 		}),
 	}))
 	b.WriteString(i18n.Tf("pages.diagnostics.clip_config", map[string]string{
