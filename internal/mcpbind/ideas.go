@@ -18,8 +18,8 @@ func (d *Deps) ideaService(ctx context.Context, projectID string) (ideas.Service
 		Logger:  d.Logger,
 		Sources: ideas.NewSourceResolver(d.Workspace),
 	}
-	if d.AI != nil {
-		opts.AI = ideas.NewSpec02ChatClient(d.AI, projectID)
+	if gen, _, ok := d.ai(ctx, projectID); ok {
+		opts.AI = ideas.NewSpec02ChatClient(gen, projectID)
 	}
 	return ideas.New(d.Workspace, projectID, opts), nil
 }
@@ -470,7 +470,7 @@ func newIdeasProvider(d Deps, ready func(context.Context) error) mcp.ToolProvide
 					id, _ := ref["id"].(string)
 					sources = append(sources, ideas.SourceRef{Type: ideas.SourceType(typ), ID: id})
 				}
-				if d.AI == nil {
+				if !d.aiAvailable() {
 					return mcp.ToolOutcome{}, mcp.Errorf(mcp.CodeAIUnavailable, "AI 服务未配置，无法提取证据草稿")
 				}
 				svc, err := d.ideaService(ctx, projectID)

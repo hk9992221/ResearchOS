@@ -17,8 +17,10 @@ func (d *Deps) weeklyService(ctx context.Context, projectID string) (weeklyrevie
 		return nil, err
 	}
 	opts := weeklyreview.DepsFromWorkspace(d.Workspace, h)
-	opts.AI = d.AI
-	opts.Outputs = d.Outputs
+	if gen, outs, ok := d.ai(ctx, projectID); ok {
+		opts.AI = gen
+		opts.Outputs = outs
+	}
 	opts.Settings = d.Settings
 	opts.Logger = d.Logger
 	return weeklyreview.New(d.Workspace, projectID, opts), nil

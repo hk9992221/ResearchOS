@@ -18,6 +18,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/adapters"
+	"researchos/internal/ai/wire"
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/config"
 	"researchos/internal/foundation/confirm"
@@ -59,6 +60,10 @@ type Runtime struct {
 	// workspace; both hold database handles and are released on a switch.
 	search     *search.Service
 	literature *literatureModule
+	// ai is the SPEC-02 stack of the open workspace. It borrows global.db, so
+	// dropping the reference on a switch releases it with the workspace; a
+	// failed build leaves it nil and every module degrades (see ai.go).
+	ai *aiModule
 
 	// setupApp drives the wizard's tasks before a workspace exists.
 	setupApp *app.App
@@ -103,7 +108,7 @@ func NewWithConfig(ctx context.Context, store config.Store) (*Runtime, error) {
 
 	r.setupApp = app.New(app.Options{WorkspaceName: i18n.T("app.name")})
 	r.setupApp.Changed(mygo.InvalidateAll())
-	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil, nil)
+	r.setupServices = r.pageServices(nil, nil, r.setupApp, nil, nil, nil, nil, nil)
 	r.services = r.setupServices
 	r.wizard = &pages.Wizard{Services: &r.setupServices}
 
@@ -208,6 +213,20 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 
 	trashAdapter := adapters.NewTrash(ws, r.confirm, clock.System{})
 	projects := project.New(project.Options{Workspace: ws, Settings: settingsStore, Trash: trashAdapter})
+	// The SPEC-02 stack is optional: without it every module keeps its manual
+	// path and reports AI as disabled, so a failed build must not keep the
+	// workspace from opening.
+	var ai *aiModule
+	if stack, aiErr := wire.New(wire.Options{
+		Global:            ws.Global().DB(),
+		Clock:             ws.Clock(),
+		WorkspaceSettings: settingsStore,
+		Logger:            appLogger{},
+	}); aiErr != nil {
+		appLogger{}.Warn("boot: AI 服务栈不可用", "err", aiErr)
+	} else {
+		ai = newAIModule(ws, stack)
+	}
 	a := app.New(app.Options{
 		Projects:       projects,
 		WorkspaceName:  workspaceName(ws.Root()),
@@ -224,8 +243,8 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 		appLogger{}.Warn("boot: 检索模块不可用", "err", searchErr)
 	}
 	lit := newLiteratureModule(ws, searchSvc)
-	pagesService := r.pageServices(ws, svc, a, migrations, lit, newNotesModule(ws))
-	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc)
+	pagesService := r.pageServices(ws, svc, a, migrations, lit, newNotesModule(ws), ai, settingsStore)
+	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc, ai)
 
 	pageSet := shell.DefaultPages(ctx, a)
 	for kind, page := range pages.System(pagesService) {
@@ -244,12 +263,15 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 	r.mcp = host
 	r.search = searchSvc
 	r.literature = lit
+	r.ai = ai
 	r.setupErr = ""
 	r.mu.Unlock()
 	mygo.InvalidateAll()()
 	if prev != nil {
 		// The module services hold handles of the previous workspace's
-		// databases, so they close before the workspace does.
+		// databases, so they close before the workspace does. The AI stack
+		// borrows global.db and owns no handle of its own: dropping the
+		// reference above releases it with the workspace.
 		_ = prevLit.Close()
 		if prevSearch != nil {
 			_ = prevSearch.Close()
@@ -272,6 +294,7 @@ func (r *Runtime) Close() error {
 	r.mcp = nil
 	r.literature = nil
 	r.search = nil
+	r.ai = nil
 	r.mu.Unlock()
 	_ = lit.Close()
 	if searchSvc != nil {
@@ -360,7 +383,7 @@ func (r *Runtime) setSetupErr(text string) {
 // only the setup service is available. migrations is the registered module band
 // so the self check compares against the real target version, and the MCP
 // status reaches the diagnostics page through the runtime.
-func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI, noteAPI pages.NotesAPI) pages.Services {
+func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Service, a *app.App, migrations map[storage.Kind][]storage.Migration, lit pages.LiteratureAPI, noteAPI pages.NotesAPI, ai *aiModule, settingsStore *settings.Store) pages.Services {
 	s := pages.Services{
 		App:          a,
 		Setup:        r,
@@ -379,6 +402,16 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	s.Scan = ws.Scan
 	s.Literature = lit
 	s.Notes = noteAPI
+	s.Kanban = newKanbanModule(ws)
+	// The stack is nil when the AI build failed: every module then runs its
+	// documented manual path instead of failing construction. ready answers the
+	// local "is a chat provider assigned" check, so a workspace without one
+	// shows the disabled entry instead of an enabled one that fails.
+	stack := ai.stackOrNil()
+	ready := ai.chatReady
+	s.Experiments = newExperimentsModule(ws, stack, ready)
+	s.Weekly = newWeeklyModule(ws, stack, settingsStore, ready)
+	s.Ideas = newIdeasModule(ws, stack, ready)
 	s.Trash = &systemTrash{ws: ws, confirm: r.confirm}
 	s.Reconcile = &noteReconcile{ws: ws}
 	s.Diagnostics = &selfCheck{ws: ws, migrations: migrations}

@@ -44,9 +44,14 @@ type Deps struct {
 	Confirm  confirm.Service
 	Settings *settings.Store
 
-	// AI is the SPEC-02 generation stack used by AI-backed tools.
-	AI      output.GenerationService
-	Outputs output.AIOutputService
+	// AIFor resolves the SPEC-02 generation and output services bound to one
+	// project's database. It is injected by the composition root, which owns
+	// the workspace stack; nil disables every AI-backed tool (see ai()).
+	AIFor func(ctx context.Context, projectID string) (output.GenerationService, output.AIOutputService, error)
+	// AIReady reports whether a chat provider is assigned right now, so the
+	// status and the tool gates match what a call would do. Nil defers to
+	// AIFor being wired at all.
+	AIReady func() bool
 
 	// Confirmations and Jobs are the runtime ports from internal/mcp.
 	Confirmations mcp.ConfirmationBroker
@@ -128,6 +133,36 @@ func (d *Deps) Gate() mcp.ProjectGate {
 func (d *Deps) projectExists(ctx context.Context, projectID string) error {
 	_, err := d.handle(ctx, projectID)
 	return err
+}
+
+// aiAvailable reports whether AI is usable now: the composition root supplied
+// the stack and a chat provider is assigned. The AI-backed tools use it to fail
+// before submitting a job.
+func (d *Deps) aiAvailable() bool {
+	if d == nil || d.AIFor == nil {
+		return false
+	}
+	return d.AIReady == nil || d.AIReady()
+}
+
+// ai resolves the SPEC-02 services of one project. A nil factory, or a failure
+// to build the project's services, leaves the caller on the module's manual
+// path instead of failing the tool with an internal error.
+func (d *Deps) ai(ctx context.Context, projectID string) (output.GenerationService, output.AIOutputService, bool) {
+	if !d.aiAvailable() {
+		return nil, nil, false
+	}
+	gen, outs, err := d.AIFor(ctx, projectID)
+	if err != nil {
+		if d.Logger != nil {
+			d.Logger.Warn("mcpbind: AI 服务不可用", "project", projectID, "err", err)
+		}
+		return nil, nil, false
+	}
+	if gen == nil || outs == nil {
+		return nil, nil, false
+	}
+	return gen, outs, true
 }
 
 // ---------------------------------------------------------------------------

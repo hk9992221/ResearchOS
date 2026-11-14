@@ -162,7 +162,7 @@ func statusOf(ctx context.Context, d Deps) (mcp.Status, error) {
 		AccessMode:      mcp.AccessReadWrite,
 		Transports:      []string{mcp.TransportStdio, mcp.TransportHTTP},
 		Modules:         []string{},
-		AIAvailable:     d.AI != nil,
+		AIAvailable:     d.aiAvailable(),
 		ZoteroAvailable: false,
 	}, nil
 }
