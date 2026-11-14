@@ -27,18 +27,33 @@ import (
 )
 
 const (
-	// paperReaderHeight is the height of the embedded reader: enough to read
-	// a page without leaving the paper page. The web view's own PDF viewer
-	// scrolls and zooms inside it.
-	paperReaderHeight float32 = 640
+	// paperNotesPanelWidth is the width of the notes panel beside the reader.
+	// It keeps the structured fields readable in one column.
+	paperNotesPanelWidth float32 = 420
 	// paperNoteFieldHeight is the height of one structured note field, and
 	// paperNoteBodyHeight the height of the Markdown body.
 	paperNoteFieldHeight float32 = 96
 	paperNoteBodyHeight  float32 = 288
-	// paperFieldMinWidth keeps the structured fields from squeezing below a
-	// readable column when the window is narrow.
-	paperFieldMinWidth float32 = 320
 )
+
+// paperCardChrome is the room a card's header and padding take above its body:
+// the panel matches the reader card so both end at the same edge.
+func paperCardChrome() float32 {
+	return tokens.PanelPadding*2 +
+		tokens.Typography.CardTitle.Size*1.25 + tokens.RelatedGap + 2
+}
+
+// paperReaderChrome is the vertical room everything but the reader's web view
+// takes: the shell toolbar and its divider, the page margins, the title and
+// citation rows, the gap before the reader card, and the card itself. MyGo text
+// lines run about 1.25 times their font size, so the sum follows the tokens
+// instead of fixed pixels.
+func paperReaderChrome() float32 {
+	return components.ToolbarHeight + 1 +
+		tokens.PagePadding*2 +
+		tokens.Typography.PageTitle.Size*1.25 + tokens.Space2 + tokens.Typography.Secondary.Size*1.25 +
+		tokens.PageBlockGap + paperCardChrome()
+}
 
 // What the embedded reader's state is for the current paper.
 const (
@@ -100,6 +115,13 @@ type PaperPage struct {
 
 	creating  bool
 	createErr string
+
+	// The notes dock: notesOpen shows the panel beside the reader, noteOpen
+	// and relatedOpen expand its two sections. Only the frame writes them,
+	// so the zero value starts on the full-screen reader.
+	notesOpen   bool
+	noteOpen    bool
+	relatedOpen bool
 }
 
 // Page renders one frame of the paper page.
@@ -144,6 +166,16 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 					a.Navigate(ports.Route{Kind: app.RouteLiterature})
 				}
 				if ok {
+					label, icon := i18n.T("pages.paper.btn_show_notes"), icons.ChevronRight
+					if p.notesOpen {
+						label, icon = i18n.T("pages.paper.btn_hide_notes"), icons.ChevronDown
+					}
+					if v.Button(label, components.ButtonOptions{
+						Variant: components.VariantGhost,
+						Icon:    icon,
+					}).Clicked() {
+						p.notesOpen = !p.notesOpen
+					}
 					ui.MenuButton(v.C, i18n.T("pages.paper.btn_open_pdf"), func(m *ui.Menu) {
 						if m.Item(i18n.T("pages.paper.btn_open_pdf")).Chosen() {
 							p.openPDF(a, paperID)
@@ -170,10 +202,47 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 			})
 			return
 		}
-		p.readerCard(v, a, paperID)
-		p.noteCard(v, a, project.ID, paperID)
-		p.relatedCard(v, a, project.ID, paperID)
+		p.readerArea(v, a, project.ID, paperID)
 	}})
+}
+
+// readerArea fills the viewport: the reader alone, or the reader with the notes
+// panel beside it while the dock is open. Both keep the reader's height, so
+// the row never leaves the viewport.
+func (p *PaperPage) readerArea(v *components.UI, a *app.App, projectID, paperID string) {
+	if !p.notesOpen {
+		p.readerCard(v, a, paperID)
+		return
+	}
+	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Start).Children(func() {
+		ui.Column(v.C).Grow(1).Children(func() {
+			p.readerCard(v, a, paperID)
+		})
+		p.notesPanel(v, a, projectID, paperID)
+	})
+}
+
+// notesPanel is the notes dock: the Paper Note form and the notes that link
+// the paper, each behind a Collapsible that starts folded. The two sections
+// name themselves, so the panel needs no title. It scrolls on its own, so an
+// expanded form never pushes the reader.
+func (p *PaperPage) notesPanel(v *components.UI, a *app.App, projectID, paperID string) {
+	height := paperReaderHeight(v)
+	ui.Column(v.C).Width(paperNotesPanelWidth).Height(height + paperCardChrome()).Children(func() {
+		card := v.Card(components.CardOptions{}, func() {
+			ui.Scroll(v.C).Fill().Children(func() {
+				ui.Column(v.C).FillWidth().Gap(tokens.RelatedGap).Children(func() {
+					ui.Collapsible(v.C, i18n.T("pages.paper.card_note"), &p.noteOpen, func() {
+						p.noteForm(v, a, projectID, paperID)
+					})
+					ui.Collapsible(v.C, i18n.T("pages.paper.card_related"), &p.relatedOpen, func() {
+						p.relatedList(v, a, projectID, paperID)
+					})
+				})
+			})
+		})
+		card.FillHeight()
+	})
 }
 
 // unavailable is the honest state of a workspace whose paper services were
@@ -274,6 +343,7 @@ func (p *PaperPage) readerCard(v *components.UI, a *app.App, paperID string) {
 	p.mu.Lock()
 	kind, detail, wv := p.readerKind, p.readerErr, p.reader
 	p.mu.Unlock()
+	height := paperReaderHeight(v)
 
 	v.Card(components.CardOptions{Title: i18n.T("pages.paper.card_reader")}, func() {
 		switch kind {
@@ -290,15 +360,28 @@ func (p *PaperPage) readerCard(v *components.UI, a *app.App, paperID string) {
 				p.readerFallback(v, a, paperID, detail)
 				return
 			}
-			ui.WebView(v.C, wv).FillWidth().Height(paperReaderHeight).Radius(tokens.RadiusMD)
+			ui.WebView(v.C, wv).FillWidth().Height(height).Radius(tokens.RadiusMD)
 		default:
 			// Resolving the copy and building the web view runs in a task;
 			// the skeleton keeps the card's room until it lands.
-			ui.Column(v.C).FillWidth().Height(paperReaderHeight).Justify(ui.Center).Children(func() {
+			ui.Column(v.C).FillWidth().Height(height).Justify(ui.Center).Children(func() {
 				v.Skeleton(components.SkeletonOptions{Lines: 8})
 			})
 		}
 	})
+}
+
+// paperReaderHeight is the reader's room: the window minus the chrome around
+// it, with a floor so a short window keeps a readable page. The page sits
+// inside the shell's scroll container, where Fill measures an unbounded
+// parent, so it reads the window like editorHeight (notes.go) and kanban's
+// board do.
+func paperReaderHeight(v *components.UI) float32 {
+	_, h := v.C.Size()
+	if h < 640 {
+		return 360
+	}
+	return h - paperReaderChrome()
 }
 
 // readerFallback is the honest state of an environment that cannot embed the
@@ -338,50 +421,48 @@ func (p *PaperPage) readerFallback(v *components.UI, a *app.App, paperID, detail
 		})
 }
 
-// noteCard is the Paper Note form: the six structured fields and the Markdown
-// body, saved through the service's optimistic-concurrency tokens.
-func (p *PaperPage) noteCard(v *components.UI, a *app.App, projectID, paperID string) {
+// noteForm is the Paper Note form: the six structured fields stacked in the
+// panel's single column and the Markdown body, saved through the service's
+// optimistic-concurrency tokens.
+func (p *PaperPage) noteForm(v *components.UI, a *app.App, projectID, paperID string) {
 	p.mu.Lock()
 	note, saving, conflict := p.note, p.saving, p.conflict
 	p.mu.Unlock()
 	readOnly := note != nil && note.DeletedAt != nil
 	dirty := p.draftsDirty()
 
-	v.Card(components.CardOptions{
-		Title: i18n.T("pages.paper.card_note"),
-		Actions: func() {
-			if text, tone := p.saveState(dirty); text != "" && !readOnly {
-				v.StatusIndicator(tone, text)
-			}
-			if v.Button(i18n.T("pages.paper.btn_save_note"), components.ButtonOptions{
-				Variant:  components.VariantPrimary,
-				Loading:  saving,
-				Disabled: readOnly || saving || conflict || (note != nil && !dirty),
-			}).Clicked() {
-				p.save(a, projectID, paperID)
-			}
-		},
-	}, func() {
-		ui.Row(v.C).FillWidth().Wrap().Gap(tokens.SectionGap).AlignItems(ui.Start).Children(func() {
-			p.field(v, &p.drafts.Summary, "pages.paper.field_summary", readOnly)
-			p.field(v, &p.drafts.Problem, "pages.paper.field_problem", readOnly)
-			p.field(v, &p.drafts.Method, "pages.paper.field_method", readOnly)
-			p.field(v, &p.drafts.Contribution, "pages.paper.field_contribution", readOnly)
-			p.field(v, &p.drafts.Limitations, "pages.paper.field_limitations", readOnly)
-			p.field(v, &p.drafts.Understanding, "pages.paper.field_understanding", readOnly)
-		})
+	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
+		if text, tone := p.saveState(dirty); text != "" && !readOnly {
+			v.StatusIndicator(tone, text)
+		}
+		ui.Spacer(v.C)
+		if v.Button(i18n.T("pages.paper.btn_save_note"), components.ButtonOptions{
+			Variant:  components.VariantPrimary,
+			Size:     components.SizeSmall,
+			Loading:  saving,
+			Disabled: readOnly || saving || conflict || (note != nil && !dirty),
+		}).Clicked() {
+			p.save(a, projectID, paperID)
+		}
+	})
+	ui.Column(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
+		p.field(v, &p.drafts.Summary, "pages.paper.field_summary", readOnly)
+		p.field(v, &p.drafts.Problem, "pages.paper.field_problem", readOnly)
+		p.field(v, &p.drafts.Method, "pages.paper.field_method", readOnly)
+		p.field(v, &p.drafts.Contribution, "pages.paper.field_contribution", readOnly)
+		p.field(v, &p.drafts.Limitations, "pages.paper.field_limitations", readOnly)
+		p.field(v, &p.drafts.Understanding, "pages.paper.field_understanding", readOnly)
 		v.Textarea(&p.body, components.FieldOptions{
 			Label:    i18n.T("pages.paper.field_body"),
 			Disabled: readOnly,
-		}).Height(paperNoteBodyHeight)
+		}).FillWidth().Height(paperNoteBodyHeight)
 	})
 }
 
-// field is one structured note field in its own wrapping column.
+// field is one structured note field, stacked in the panel's single column.
 func (p *PaperPage) field(v *components.UI, value *string, label string, disabled bool) {
-	ui.Column(v.C).Grow(1).MinWidth(paperFieldMinWidth).Children(func() {
-		v.Textarea(value, components.FieldOptions{Label: i18n.T(label), Disabled: disabled}).Height(paperNoteFieldHeight)
-	})
+	v.Textarea(value, components.FieldOptions{Label: i18n.T(label), Disabled: disabled}).
+		FillWidth().Height(paperNoteFieldHeight)
 }
 
 // saveState is the one line that says whether the note is on disk.
@@ -404,60 +485,58 @@ func (p *PaperPage) saveState(dirty bool) (string, components.Tone) {
 	return "", components.Neutral
 }
 
-// relatedCard lists the project notes that link the paper and offers the button
-// that creates one already linked.
-func (p *PaperPage) relatedCard(v *components.UI, a *app.App, projectID, paperID string) {
+// relatedList lists the project notes that link the paper and offers the
+// button that creates one already linked. The panel is narrow, so each note is
+// one row: its title above the update time.
+func (p *PaperPage) relatedList(v *components.UI, a *app.App, projectID, paperID string) {
 	p.mu.Lock()
 	related := append([]PaperRelatedNote(nil), p.related...)
 	creating := p.creating
 	p.mu.Unlock()
 
-	v.Card(components.CardOptions{
-		Title:       i18n.T("pages.paper.card_related"),
-		Description: i18n.Tf("pages.paper.card_related_desc", map[string]string{"count": strconv.Itoa(len(related))}),
-		Actions: func() {
-			if v.Button(i18n.T("pages.paper.btn_new_note"), components.ButtonOptions{
-				Variant:  components.VariantSecondary,
-				Icon:     icons.Plus,
-				Loading:  creating,
-				Disabled: creating,
-			}).Clicked() {
-				p.createLinkedNote(a, projectID, paperID)
-			}
-		},
-	}, func() {
-		if len(related) == 0 {
-			v.EmptyState(components.EmptyStateOptions{
-				Icon:   icons.Note,
-				Title:  i18n.T("pages.paper.related_empty_title"),
-				Reason: i18n.T("pages.paper.related_empty_reason"),
-			})
-			return
+	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
+		ui.Text(v.C, i18n.Tf("pages.paper.card_related_desc", map[string]string{"count": strconv.Itoa(len(related))})).
+			FontSize(tokens.Typography.Secondary.Size).
+			TextColor(mygo.Color(v.T.Palette.TextSecondary)).
+			Grow(1)
+		if v.Button(i18n.T("pages.paper.btn_new_note"), components.ButtonOptions{
+			Variant:  components.VariantSecondary,
+			Size:     components.SizeSmall,
+			Icon:     icons.Plus,
+			Loading:  creating,
+			Disabled: creating,
+		}).Clicked() {
+			p.createLinkedNote(a, projectID, paperID)
 		}
-		state := components.NewTableState()
-		table := v.Table(components.TableOptions{
-			Columns: []components.Column{
-				{Title: i18n.T("pages.paper.col_note")},
-				{Title: i18n.T("pages.paper.col_updated"), Width: 140},
-			},
-			Rows:  len(related),
-			State: state,
-			Key:   func(i int) any { return related[i].ID },
-			Cell: func(row, col int) {
-				note := related[row]
-				switch col {
-				case 0:
-					if ui.Text(v.C, relatedNoteTitle(note)).SingleLine().FillWidth().RowClicked() {
-						a.Navigate(ports.Route{Kind: ports.RouteNote, EntityID: note.ID})
-					}
-				case 1:
-					if ui.Text(v.C, relativeTime(note.UpdatedAt)).FontFeatures("tnum").RowClicked() {
-						a.Navigate(ports.Route{Kind: ports.RouteNote, EntityID: note.ID})
-					}
-				}
-			},
+	})
+	if len(related) == 0 {
+		v.EmptyState(components.EmptyStateOptions{
+			Icon:   icons.Note,
+			Title:  i18n.T("pages.paper.related_empty_title"),
+			Reason: i18n.T("pages.paper.related_empty_reason"),
 		})
-		table.Height(visibleTableHeight(len(related)))
+		return
+	}
+	ui.Column(v.C).FillWidth().Gap(tokens.Space2).Children(func() {
+		for i := range related {
+			note := related[i]
+			row := ui.Column(v.C).FillWidth().Padding(tokens.Space2).Radius(tokens.RadiusMD)
+			if row.Hovered() {
+				row.Background(mygo.Color(v.T.Palette.BgHover))
+			}
+			row.Children(func() {
+				if ui.Text(v.C, relatedNoteTitle(note)).SingleLine().FillWidth().RowClicked() {
+					a.Navigate(ports.Route{Kind: ports.RouteNote, EntityID: note.ID})
+				}
+				if ui.Text(v.C, relativeTime(note.UpdatedAt)).
+					FontSize(tokens.Typography.Caption.Size).
+					TextColor(mygo.Color(v.T.Palette.TextMuted)).
+					FontFeatures("tnum").
+					RowClicked() {
+					a.Navigate(ports.Route{Kind: ports.RouteNote, EntityID: note.ID})
+				}
+			})
+		}
 	})
 }
 
