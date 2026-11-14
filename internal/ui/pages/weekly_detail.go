@@ -814,6 +814,42 @@ func (d *WeeklyReportView) digestTab(v *components.UI, a *app.App, report *weekl
 		d.metric(v, i18n.T("pages.weekly_review.metric_blocked"), strconv.Itoa(len(digest.Blocked)))
 		d.metric(v, i18n.T("pages.weekly_review.metric_planned"), strconv.Itoa(len(digest.Planned)))
 	})
+	// Filing actions (created / imported / deleted) are not progress. They
+	// are listed here, apart from the day-by-day progress rows, so nothing
+	// silently disappears.
+	if n := len(digest.Housekeeping); n > 0 {
+		open := d.expanded["housekeeping"]
+		ui.Collapsible(v.C, i18n.Tf("pages.weekly_review.digest_housekeeping_title", map[string]string{
+			"n": strconv.Itoa(n),
+		}), &open, func() {
+			ui.Text(v.C, i18n.T("pages.weekly_review.digest_housekeeping_hint")).
+				FontSize(tokens.Typography.Caption.Size).
+				TextColor(mygo.Color(v.T.Palette.TextMuted))
+			entries := digest.Housekeeping
+			table := v.Table(components.TableOptions{
+				Columns: []components.Column{
+					{Title: i18n.T("pages.weekly_review.col_time"), Width: 120},
+					{Title: i18n.T("pages.weekly_review.col_entity"), MinWidth: 140},
+					{Title: i18n.T("pages.weekly_review.col_summary")},
+				},
+				Rows: len(entries),
+				Key:  func(i int) any { return "housekeeping:" + strconv.Itoa(i) },
+				Cell: func(row, col int) {
+					item := entries[row]
+					switch col {
+					case 0:
+						ui.Text(v.C, item.FirstAt.Format("01-02 15:04")).FontFeatures("tnum")
+					case 1:
+						ui.Text(v.C, weeklyEntityLabel(item.Ref.Type)+" "+shortWeeklyID(item.Ref.ID)).SingleLine()
+					case 2:
+						ui.Text(v.C, item.Summary).MaxLines(2)
+					}
+				},
+			})
+			table.Height(visibleWeeklyRows(len(entries)))
+		})
+		d.expanded["housekeeping"] = open
+	}
 	if digest.Truncated || len(digest.Warnings) > 0 {
 		message := strings.Join(digest.Warnings, "；")
 		if digest.Truncated {
@@ -1005,7 +1041,7 @@ func weeklyDigestEmpty(digest *weeklyreview.ActivityDigest) bool {
 			return false
 		}
 	}
-	return true
+	return len(digest.Housekeeping) == 0
 }
 
 func weeklyActorText(actor string) string {
@@ -1543,6 +1579,7 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		t.Progress(30, 100)
 		outcome, err := api.GenerateDraft(ctx, projectID, weeklyreview.GenerateInput{
 			ReportID: reportID, Replace: true, Actor: weeklyreview.ActorUser,
+			Progress: weeklySectionProgress(t),
 		})
 		degraded := outcome != nil && outcome.Report != nil && weeklyDegraded(err)
 		switch {
@@ -1931,6 +1968,12 @@ func weeklyProvenanceRows(report *weeklyreview.WeeklyReport) [][2]string {
 			[2]string{i18n.T("pages.weekly_review.prov_template"), gen.TemplateID + " v" + strconv.Itoa(gen.TemplateVersion)},
 			[2]string{i18n.T("pages.weekly_review.prov_attempts"), strconv.Itoa(gen.Attempts)},
 		)
+		if n := len(gen.AIOutputIDs); n > 0 {
+			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_ai_calls"), strconv.Itoa(n)})
+		}
+		if gen.Notes != "" {
+			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_notes"), gen.Notes})
+		}
 		if gen.Error != "" {
 			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_error"), gen.Error})
 		}

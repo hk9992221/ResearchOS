@@ -272,12 +272,14 @@ func (s *service) Confirm(ctx context.Context, in ConfirmInput) (*WeeklyReport, 
 		if current.ContentHash != report.ContentHash {
 			return serviceError(ErrContentConflict, "报告内容在校验后发生变化，请重新确认")
 		}
-		if current.Meta.Generation != nil && current.Meta.Generation.AIOutputID != "" {
+		if ids := sectionOutputIDs(current.Meta.Generation); len(ids) > 0 {
 			if s.outputs == nil {
 				return serviceError(ErrInternal, "AI 输出服务未配置，无法在同一事务内确认")
 			}
-			if _, err := s.outputs.ConfirmTx(ctx, tx, current.Meta.Generation.AIOutputID, "user"); err != nil {
-				return fmt.Errorf("weeklyreview: confirm ai output: %w", err)
+			for _, id := range ids {
+				if _, err := s.outputs.ConfirmTx(ctx, tx, id, "user"); err != nil {
+					return fmt.Errorf("weeklyreview: confirm ai output: %w", err)
+				}
 			}
 		}
 		current.Status = StatusConfirmed
@@ -361,6 +363,22 @@ func (s *service) RevertToDraft(ctx context.Context, in RevertInput) (*WeeklyRep
 		return nil, err
 	}
 	return s.getReport(ctx, in.ReportID)
+}
+
+// sectionOutputIDs lists the AI outputs behind a report body: the per-section
+// calls recorded by the section-wise generator, with the legacy single field
+// as fallback for reports written before it.
+func sectionOutputIDs(gen *GenerationMeta) []string {
+	if gen == nil {
+		return nil
+	}
+	if len(gen.AIOutputIDs) > 0 {
+		return gen.AIOutputIDs
+	}
+	if gen.AIOutputID != "" {
+		return []string{gen.AIOutputID}
+	}
+	return nil
 }
 
 func mergeAcks(violations []Violation, state *CheckState) []Violation {
