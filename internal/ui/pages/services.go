@@ -16,6 +16,9 @@ import (
 
 	mg "github.com/egoist/mygo"
 
+	"researchos/internal/ai/model"
+	"researchos/internal/ai/provider"
+	"researchos/internal/ai/role"
 	"researchos/internal/foundation/config"
 	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/diag"
@@ -50,6 +53,10 @@ type Services struct {
 	// only place a user can see whether the stdio bridge has something to talk
 	// to; a nil function means the composition root never started one.
 	MCPStatus func() MCPStatus
+	// AI binds the SPEC-02 provider/model/role stack. Nil means the stack was
+	// not built, and the AI settings tab says so instead of faking a
+	// configuration; Available reports the same fact behind a non-nil value.
+	AI AIAPI
 	// Literature binds the SPEC-04 Zotero and import services. Nil means the
 	// module is not assembled, and the page says so instead of faking data.
 	Literature LiteratureAPI
@@ -131,6 +138,34 @@ type MCPStatus struct {
 	Running bool
 	Socket  string
 	Error   string
+}
+
+// AIAPI is the part of SPEC-02 the AI settings tab uses. ProviderView and the
+// model/role views never carry key material or api_key_ref; the page never
+// asks for either.
+//
+// Available reports whether the stack was built; ChatReady is the same local
+// chat_main probe the modules use. Methods return the backend's typed errors
+// unchanged so the page can map protocol conflicts and in-use refusals to
+// readable messages.
+type AIAPI interface {
+	Available() bool
+	ChatReady() bool
+
+	ListProviders(ctx context.Context) ([]provider.ProviderView, error)
+	CreateProvider(ctx context.Context, in provider.CreateProviderInput) (provider.ProviderView, error)
+	UpdateProvider(ctx context.Context, id string, in provider.UpdateProviderInput) (provider.ProviderView, error)
+	DeleteProvider(ctx context.Context, id string) error
+	TestProvider(ctx context.Context, id string) (provider.TestResult, error)
+
+	ListModels(ctx context.Context, q model.ModelQuery) ([]model.ModelInfo, error)
+	SyncModels(ctx context.Context, providerID string) (model.ModelSyncResult, error)
+	AddManualModel(ctx context.Context, providerID, modelID, displayName string) error
+	RemoveManualModel(ctx context.Context, providerID, modelID string) error
+
+	ListRoles(ctx context.Context) ([]role.RoleView, error)
+	AssignRole(ctx context.Context, r role.Role, providerID, modelID string) (role.AssignResult, error)
+	ClearRole(ctx context.Context, r role.Role) error
 }
 
 // LiteratureAPI is the part of SPEC-04 the Literature page uses: the item

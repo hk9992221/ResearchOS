@@ -22,6 +22,9 @@ type FieldOptions struct {
 	// the placeholder and the neighbouring controls carry the meaning. The
 	// label still names the control for assistive technology.
 	Compact bool
+	// Password masks the input, for write-only key material. The value is
+	// still reported to the caller; it is never shown back to the user.
+	Password bool
 }
 
 // Input builds a single-line text input. The label names it for assistive
@@ -35,6 +38,9 @@ func (u *UI) Input(value *string, o FieldOptions) ui.Element {
 			MinHeight(tokens.Space8).
 			Disabled(o.Disabled).
 			ReadOnly(o.ReadOnly)
+		if o.Password {
+			e.Password()
+		}
 		if o.AutoFocus {
 			e.AutoFocus()
 		}

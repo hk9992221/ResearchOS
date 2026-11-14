@@ -442,6 +442,12 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 	// documented manual path instead of failing construction. ready answers the
 	// local "is a chat provider assigned" check, so a workspace without one
 	// shows the disabled entry instead of an enabled one that fails.
+	// The AI settings tab reads providers, models and roles through this same
+	// workspace-scoped module. A nil stack leaves AI nil and the tab reports
+	// the unavailable state instead of faking a configuration.
+	if ai != nil {
+		s.AI = ai
+	}
 	stack := ai.stackOrNil()
 	ready := ai.chatReady
 	s.Experiments = newExperimentsModule(ws, stack, ready)

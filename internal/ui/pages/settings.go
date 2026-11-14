@@ -42,11 +42,30 @@ type Settings struct {
 	// does, and the next frame turns it back into a tag.
 	langTag   string
 	langLabel string
+
+	// ai is the SPEC-02 configuration tab: providers, model cache and role
+	// assignments, with its own lock because the action tasks write it while
+	// the page renders.
+	ai settingsAI
 }
+
+// The Settings tabs in display order. The AI tab sits before maintenance so
+// the configuration the modules depend on is easy to find.
+const (
+	settingsTabWorkspace = iota
+	settingsTabExternal
+	settingsTabAI
+	settingsTabStorage
+)
 
 // Page renders the settings groups.
 func (s *Settings) Page(v *components.UI, r ports.Route) {
 	s.load()
+	if s.tab == settingsTabAI {
+		s.aiLoad()
+	} else {
+		s.aiClearTransient()
+	}
 	s.mu.Lock()
 	info, scan, cfg, loadErr, loaded, loading := s.info, s.scan, s.cfg, s.loadErr, s.loaded, s.loading
 	s.mu.Unlock()
@@ -62,12 +81,19 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 		if !loaded && loading {
 			v.Skeleton(components.SkeletonOptions{Lines: 5})
 		}
-		v.Tabs(&s.tab, i18n.T("pages.settings.tab_workspace"), i18n.T("pages.settings.tab_external"), i18n.T("pages.settings.tab_storage"))
+		v.Tabs(&s.tab,
+			i18n.T("pages.settings.tab_workspace"),
+			i18n.T("pages.settings.tab_external"),
+			i18n.T("pages.settings.tab_ai"),
+			i18n.T("pages.settings.tab_storage"),
+		)
 		switch s.tab {
-		case 0:
+		case settingsTabWorkspace:
 			s.workspaceTab(v, info, scan, cfg)
-		case 1:
+		case settingsTabExternal:
 			s.externalTab(v, cfg)
+		case settingsTabAI:
+			s.aiTab(v, s.Services.App)
 		default:
 			s.storageTab(v, info)
 		}
