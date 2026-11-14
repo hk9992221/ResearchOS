@@ -138,6 +138,8 @@
   "pages.kanban.link_target_deleted": "目标已删除",
   "pages.kanban.link_type": "类型",
   "pages.kanban.links_empty": "暂无关联。",
+  "pages.kanban.list_empty_reason": "当前没有任务，或不满足筛选条件。",
+  "pages.kanban.list_empty_title": "暂无任务",
   "pages.kanban.menu_archive": "归档",
   "pages.kanban.menu_move_down": "下移",
   "pages.kanban.menu_move_to": "移动到…",
