@@ -101,6 +101,46 @@ func (s *Service) Open(ctx context.Context, paperID string, target literature.PD
 	return nil
 }
 
+// OpenWith lets the user open the imported copy in an application they pick.
+// Windows shows the system "Open with" dialog (shell32!OpenAs_RunDLL), which
+// lists every installed application. macOS and Linux have no equivalent
+// chooser a process may open, so they hand the copy to the system default
+// application and the user picks another one from the desktop (the Finder's
+// "Open With", the desktop's own menu); the setting literature.pdf_open_mode
+// does not apply here, because this action is explicitly about another app.
+func (s *Service) OpenWith(ctx context.Context, paperID string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("library: 选择打开方式: %w", err)
+	}
+	location, err := s.Locate(ctx, paperID, literature.PDFImportedCopy)
+	if err != nil {
+		return err
+	}
+	if err := openWith(ctx, location.Path); err != nil {
+		return fmt.Errorf("library: 选择打开方式 %s: %w", location.Path, err)
+	}
+	return nil
+}
+
+// openWith runs the platform's chooser for one path. It uses a controlled
+// command per OS (no cgo), like systemOpener: Windows opens the system "Open
+// with" dialog; the other platforms fall back to the default application.
+func openWith(ctx context.Context, target string) error {
+	if strings.TrimSpace(target) == "" {
+		return errors.New("library: 打开目标为空")
+	}
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "rundll32.exe", "shell32.dll,OpenAs_RunDLL", target)
+	} else {
+		return systemOpener()(ctx, target)
+	}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("library: 调用系统打开方式选择框: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) locateZoteroSource(ctx context.Context, row papers.Paper) (literature.PDFLocation, error) {
 	if s.zotero == nil {
 		return literature.PDFLocation{}, fmt.Errorf("library: 定位 Zotero 原件 %s: %w", row.ID, literature.ErrZoteroNotConfigured)

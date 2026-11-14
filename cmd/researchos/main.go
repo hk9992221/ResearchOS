@@ -57,6 +57,10 @@ func main() {
 			log.Printf("researchos: dock icon: %v", err)
 		}
 
+		// The pages embed the paper PDF reader in this window, so they need
+		// the handle before the first frame renders.
+		runtime.AttachWindow(window)
+
 		// SPEC-05 §5.7: the note editor's 600 ms debounce must not lose the
 		// last edits when the window closes, so its flush runs synchronously
 		// before the window goes away.

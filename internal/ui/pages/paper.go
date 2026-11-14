@@ -1,9 +1,9 @@
 package pages
 
-// Paper is the in-app paper page of one project paper: the extracted PDF text,
-// the Paper Note and the research notes that link the paper. Every database,
-// file and PDF read runs in a managed task, so the frame only renders cached
-// state; switching papers reloads everything the page shows.
+// Paper is the in-app paper page of one project paper: the embedded PDF
+// reader, the Paper Note and the research notes that link the paper. Every
+// database, file and web view read runs in a managed task, so the frame only
+// renders cached state; switching papers reloads everything the page shows.
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	mg "github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"researchos/internal/i18n"
@@ -26,10 +27,10 @@ import (
 )
 
 const (
-	// paperPagesPerView is how many PDF pages one read and one screen show: a
-	// large paper is parsed a window at a time instead of whole, so opening the
-	// page never waits for the entire document.
-	paperPagesPerView = 2
+	// paperReaderHeight is the height of the embedded reader: enough to read
+	// a page without leaving the paper page. The web view's own PDF viewer
+	// scrolls and zooms inside it.
+	paperReaderHeight float32 = 640
 	// paperNoteFieldHeight is the height of one structured note field, and
 	// paperNoteBodyHeight the height of the Markdown body.
 	paperNoteFieldHeight float32 = 96
@@ -39,20 +40,22 @@ const (
 	paperFieldMinWidth float32 = 320
 )
 
-// What one PDF window read turned into.
+// What the embedded reader's state is for the current paper.
 const (
-	paperTextOK = iota
-	paperTextMissing
-	paperTextScan
-	paperTextFailed
+	// readerLoading resolves the copy and builds or navigates the web view.
+	readerLoading = iota
+	// readerReady has the web view showing the paper's copy.
+	readerReady
+	// readerMissing found no imported copy in the workspace.
+	readerMissing
+	// readerFailed could not embed the reader or load the copy.
+	readerFailed
 )
 
-// paperWindowPage is one page of the window the frame renders.
-type paperWindowPage struct {
-	no     int
-	blocks []string
-	seen   bool
-}
+// errNoWindow reports a frame built before the composition root attached the
+// window: headless tests and the wizard's first frame. The reader card then
+// shows its fallback instead of embedding a web view.
+var errNoWindow = errors.New("pages: no window is attached")
 
 // PaperPage renders one paper.
 type PaperPage struct {
@@ -70,17 +73,18 @@ type PaperPage struct {
 	related  []PaperRelatedNote
 	problems []string
 
-	// The in-app reader's cached windows. pdfSeen marks a page whose read
-	// finished, including a blank one; pdfFailFrom names the window whose read
-	// failed, so it is not retried every frame.
-	pdfLoading  bool
-	pdfCount    int
-	pdfFrom     int
-	pdfPages    map[int][]string
-	pdfSeen     map[int]bool
-	pdfFailFrom int
-	pdfFailKind int
-	pdfFailMsg  string
+	// The embedded PDF reader. reader is one web view per page instance,
+	// created lazily in a task, reused across papers through Page.LoadURL and
+	// kept when the page is left: the framework hides a web view the frame
+	// does not build and destroys it with the window. readerFor names the
+	// paper the state describes, and readerSeq discards a task's result when
+	// the user switched papers while it ran.
+	reader     *mg.WebView
+	readerFor  string
+	readerSeq  int
+	readerBusy bool
+	readerKind int
+	readerErr  string
 
 	// The note form's server-side state. drafts hold what the user typed and
 	// are written by the frame only; saving, saveErr, conflict and diskHash
@@ -118,12 +122,13 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 		a.Navigate(ports.Route{Kind: app.RouteLiterature})
 		return
 	}
-	p.initWindow()
 	p.load(a, project.ID, paperID)
 	p.syncDrafts()
-	p.ensureText(a, paperID)
 
 	paper, loaded, ok := p.paperSnapshot()
+	if loaded && ok {
+		p.ensureReader(a, paperID)
+	}
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       paperHeading(paper, ok),
@@ -138,11 +143,15 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 					}
 					a.Navigate(ports.Route{Kind: app.RouteLiterature})
 				}
-				if ok && v.Button(i18n.T("pages.paper.btn_open_pdf"), components.ButtonOptions{
-					Variant: components.VariantSecondary,
-					Icon:    icons.ExternalLink,
-				}).Clicked() {
-					p.openPDF(a, paperID)
+				if ok {
+					ui.MenuButton(v.C, i18n.T("pages.paper.btn_open_pdf"), func(m *ui.Menu) {
+						if m.Item(i18n.T("pages.paper.btn_open_pdf")).Chosen() {
+							p.openPDF(a, paperID)
+						}
+						if m.Item(i18n.T("pages.paper.btn_open_with")).Chosen() {
+							p.openWith(a, paperID)
+						}
+					})
 				}
 			},
 		})
@@ -161,22 +170,10 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 			})
 			return
 		}
-		p.textCard(v, a, paperID)
+		p.readerCard(v, a, paperID)
 		p.noteCard(v, a, project.ID, paperID)
 		p.relatedCard(v, a, project.ID, paperID)
 	}})
-}
-
-// initWindow allocates the reader's cache once; the first window starts at the
-// first page, and no window has failed yet.
-func (p *PaperPage) initWindow() {
-	if p.pdfPages != nil {
-		return
-	}
-	p.pdfPages = map[int][]string{}
-	p.pdfSeen = map[int]bool{}
-	p.pdfFrom = 1
-	p.pdfFailFrom = -1
 }
 
 // unavailable is the honest state of a workspace whose paper services were
@@ -269,120 +266,76 @@ func (p *PaperPage) banners(v *components.UI, a *app.App, projectID, paperID str
 	}
 }
 
-// textCard is the in-app reader: the current window of pages, its pager and the
-// honest states of a copy that is gone or a page without a text layer.
-func (p *PaperPage) textCard(v *components.UI, a *app.App, paperID string) {
+// readerCard is the embedded PDF reader: the native web view fills the card,
+// and its PDF viewer supplies the scrolling, zooming and paging, so the page
+// never extracts or re-renders text. The card names the honest states of a
+// missing copy and of a platform that cannot embed the reader.
+func (p *PaperPage) readerCard(v *components.UI, a *app.App, paperID string) {
 	p.mu.Lock()
-	from, count := p.pdfFrom, p.pdfCount
-	loading := p.pdfLoading
-	failFrom, failKind, failMsg := p.pdfFailFrom, p.pdfFailKind, p.pdfFailMsg
-	last := from + paperPagesPerView - 1
-	if count > 0 && last > count {
-		last = count
-	}
-	window := make([]paperWindowPage, 0, paperPagesPerView)
-	for n := from; n <= last; n++ {
-		blocks, seen := p.pdfPages[n], p.pdfSeen[n]
-		window = append(window, paperWindowPage{no: n, blocks: blocks, seen: seen})
-	}
+	kind, detail, wv := p.readerKind, p.readerErr, p.reader
 	p.mu.Unlock()
 
-	failed := failFrom == from
-	v.Card(components.CardOptions{
-		Title: i18n.T("pages.paper.card_text"),
-		Actions: func() {
-			if v.Button(i18n.T("pages.paper.btn_prev"), components.ButtonOptions{
-				Variant:  components.VariantGhost,
-				Icon:     icons.ChevronLeft,
-				Disabled: loading || from <= 1,
-			}).Clicked() {
-				p.moveText(a, paperID, -1)
-			}
-			if count > 0 {
-				v.StatusIndicator(components.Neutral, i18n.Tf("pages.paper.page_range", map[string]string{
-					"from":  strconv.Itoa(from),
-					"to":    strconv.Itoa(last),
-					"total": strconv.Itoa(count),
-				}))
-			}
-			if v.Button(i18n.T("pages.paper.btn_next"), components.ButtonOptions{
-				Variant:  components.VariantGhost,
-				Icon:     icons.ChevronRight,
-				Disabled: loading || count == 0 || last >= count,
-			}).Clicked() {
-				p.moveText(a, paperID, 1)
-			}
-		},
-	}, func() {
-		switch {
-		case failed && failKind == paperTextMissing:
+	v.Card(components.CardOptions{Title: i18n.T("pages.paper.card_reader")}, func() {
+		switch kind {
+		case readerMissing:
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.FileText,
 				Title:  i18n.T("pages.paper.text_missing_title"),
 				Reason: i18n.T("pages.paper.text_missing_reason"),
 			})
-			return
-		case failed && failKind == paperTextScan:
-			v.EmptyState(components.EmptyStateOptions{
-				Icon:   icons.FileText,
-				Title:  i18n.T("pages.paper.text_scan_title"),
-				Reason: i18n.T("pages.paper.text_scan_reason"),
+		case readerFailed:
+			p.readerFallback(v, a, paperID, detail)
+		case readerReady:
+			if wv == nil {
+				p.readerFallback(v, a, paperID, detail)
+				return
+			}
+			ui.WebView(v.C, wv).FillWidth().Height(paperReaderHeight).Radius(tokens.RadiusMD)
+		default:
+			// Resolving the copy and building the web view runs in a task;
+			// the skeleton keeps the card's room until it lands.
+			ui.Column(v.C).FillWidth().Height(paperReaderHeight).Justify(ui.Center).Children(func() {
+				v.Skeleton(components.SkeletonOptions{Lines: 8})
 			})
-			return
-		case failed && failKind == paperTextFailed:
-			v.Banner(components.BannerOptions{
-				Tone:    components.Danger,
-				Title:   i18n.T("pages.paper.text_failed_title"),
-				Message: failMsg,
-			})
-			return
-		}
-		if count == 0 && loading {
-			v.Skeleton(components.SkeletonOptions{Lines: 8})
-			return
-		}
-		if count == 0 {
-			v.EmptyState(components.EmptyStateOptions{
-				Icon:   icons.FileText,
-				Title:  i18n.T("pages.paper.text_empty_title"),
-				Reason: i18n.T("pages.paper.text_empty_reason"),
-			})
-			return
-		}
-		for _, page := range window {
-			p.renderPage(v, page)
 		}
 	})
 }
 
-// renderPage prints one page's paragraphs under its page number. A page whose
-// read is still running shows its skeleton in place, so the window keeps its
-// height instead of jumping.
-func (p *PaperPage) renderPage(v *components.UI, page paperWindowPage) {
-	ui.Column(v.C).FillWidth().Gap(tokens.Space2).Children(func() {
-		ui.Text(v.C, i18n.Tf("pages.paper.page_index", map[string]string{"n": strconv.Itoa(page.no)})).
-			FontSize(tokens.Typography.Caption.Size).
-			TextColor(mygo.Color(v.T.Palette.TextMuted))
-		if !page.seen {
-			v.Skeleton(components.SkeletonOptions{Lines: 5})
-			return
-		}
-		shown := false
-		for _, block := range page.blocks {
-			if strings.TrimSpace(block) == "" {
-				continue
-			}
-			shown = true
-			ui.Text(v.C, block).
-				FontSize(tokens.Typography.Body.Size).
-				MaxWidth(components.ReadingWidth)
-		}
-		if !shown {
-			ui.Text(v.C, i18n.T("pages.paper.page_blank")).
+// readerFallback is the honest state of an environment that cannot embed the
+// reader: the page explains it and offers the external applications instead.
+func (p *PaperPage) readerFallback(v *components.UI, a *app.App, paperID, detail string) {
+	ui.Column(v.C).FillWidth().
+		Padding(tokens.PageBlockGap).
+		Gap(tokens.RelatedGap).
+		AlignItems(ui.Center).
+		Children(func() {
+			v.Icon(icons.FileText, tokens.Space6).TextColor(mygo.Color(v.T.Palette.TextMuted))
+			ui.Text(v.C, i18n.T("pages.paper.reader_failed_title")).
+				FontSize(tokens.Typography.CardTitle.Size).
+				FontWeight(int(tokens.WeightSemibold)).
+				TextColor(mygo.Color(v.T.Palette.TextPrimary))
+			ui.Text(v.C, i18n.T("pages.paper.reader_failed_reason")).
 				FontSize(tokens.Typography.Secondary.Size).
-				TextColor(mygo.Color(v.T.Palette.TextMuted))
-		}
-	})
+				TextColor(mygo.Color(v.T.Palette.TextSecondary)).
+				MaxWidth(tokens.Space12 * 8)
+			if detail != "" {
+				ui.Text(v.C, detail).
+					FontSize(tokens.Typography.Caption.Size).
+					TextColor(mygo.Color(v.T.Palette.TextMuted)).
+					MaxWidth(tokens.Space12 * 8)
+			}
+			ui.Row(v.C).Gap(tokens.ComponentGap).Children(func() {
+				v.Button(i18n.T("pages.paper.btn_open_pdf"), components.ButtonOptions{
+					Variant: components.VariantPrimary,
+					Icon:    icons.ExternalLink,
+					OnClick: func() { p.openPDF(a, paperID) },
+				})
+				v.Button(i18n.T("pages.paper.btn_open_with"), components.ButtonOptions{
+					Variant: components.VariantSecondary,
+					OnClick: func() { p.openWith(a, paperID) },
+				})
+			})
+		})
 }
 
 // noteCard is the Paper Note form: the six structured fields and the Markdown
@@ -523,8 +476,8 @@ func (p *PaperPage) load(a *app.App, projectID, paperID string) {
 }
 
 // reload reads the paper, its Paper Note and the notes that link it. Switching
-// papers drops every cached window, because the pages belong to the previous
-// file.
+// papers retires the reader's state, because it belongs to the previous file;
+// the web view itself is kept for reuse.
 func (p *PaperPage) reload(a *app.App, projectID, paperID string) {
 	api := p.Services.Paper
 	p.mu.Lock()
@@ -547,11 +500,13 @@ func (p *PaperPage) reload(a *app.App, projectID, paperID string) {
 		p.problems = nil
 		p.saveErr, p.conflict, p.diskHash = "", false, ""
 		p.createErr = ""
-		p.pdfCount, p.pdfFrom = 0, 1
-		p.pdfPages = map[int][]string{}
-		p.pdfSeen = map[int]bool{}
-		p.pdfLoading = false
-		p.pdfFailFrom, p.pdfFailKind, p.pdfFailMsg = -1, paperTextOK, ""
+		// The reader state describes the paper that is leaving; a task still
+		// resolving it lands as stale, and the next frame asks for the new
+		// paper.
+		p.readerFor = ""
+		p.readerSeq++
+		p.readerKind = readerLoading
+		p.readerErr = ""
 		p.draftDrop = true
 	}
 	p.mu.Unlock()
@@ -852,126 +807,102 @@ func (p *PaperPage) openPDF(a *app.App, paperID string) {
 	})
 }
 
-// ensureText reads the current window when its pages are not cached. It runs no
-// I/O on the frame: a cached window returns at once.
-func (p *PaperPage) ensureText(a *app.App, paperID string) {
-	p.mu.Lock()
-	if p.pdfLoading || !p.paperOK {
-		p.mu.Unlock()
-		return
-	}
-	from := p.pdfFrom
-	if p.pdfFailFrom == from && p.pdfFailKind != paperTextOK {
-		p.mu.Unlock()
-		return
-	}
-	last := from + paperPagesPerView - 1
-	if p.pdfCount > 0 && last > p.pdfCount {
-		last = p.pdfCount
-	}
-	complete := true
-	for n := from; n <= last; n++ {
-		if !p.pdfSeen[n] {
-			complete = false
-			break
+// openWith launches the PDF in an application the user picks, through the
+// platform's chooser.
+func (p *PaperPage) openWith(a *app.App, paperID string) {
+	api := p.Services.Paper
+	a.RunTask(i18n.T("pages.paper.task_open_with"), func(ctx context.Context, t *app.Task) error {
+		if err := api.OpenPaperWith(ctx, paperID); err != nil {
+			a.Toast(app.LevelDanger, i18n.T("pages.paper.toast_open_with_fail"), errtext.Text(err))
 		}
-	}
-	if complete {
+		return nil
+	})
+}
+
+// ensureReader resolves the paper's copy and brings the web view up. It starts
+// one task per paper: the task checks the copy, creates the web view on the
+// first paper of the page instance or navigates the existing one, and lands the
+// state the card renders. Nothing here touches the file system or the window
+// while the frame builds.
+func (p *PaperPage) ensureReader(a *app.App, paperID string) {
+	p.mu.Lock()
+	if p.readerBusy || p.readerFor == paperID {
 		p.mu.Unlock()
 		return
 	}
-	p.pdfLoading = true
+	p.readerFor = paperID
+	p.readerSeq++
+	seq := p.readerSeq
+	p.readerKind, p.readerErr, p.readerBusy = readerLoading, "", true
 	p.mu.Unlock()
 
 	api := p.Services.Paper
-	a.RunTask(i18n.T("pages.paper.task_text"), func(ctx context.Context, t *app.Task) error {
-		text, err := api.ReadPaperText(ctx, paperID, from, paperPagesPerView)
+	a.RunTask(i18n.T("pages.paper.task_reader"), func(ctx context.Context, t *app.Task) error {
+		fileURL, err := api.PaperFileURL(ctx, paperID)
+
+		// Take the state after the read: the user may have left this paper,
+		// and then the result belongs to the reader state its successor owns.
 		p.mu.Lock()
-		if p.loadedID != paperID {
-			// Another paper opened: the newer load owns the reader state.
-			p.mu.Unlock()
-			a.Notify()
-			return nil
-		}
-		p.pdfLoading = false
-		if p.pdfFrom != from {
-			// The window moved while this read ran; its pages are still useful
-			// for the cache, so they land, but the state of the new window is
-			// not overwritten.
-			p.storeWindowLocked(from, text, nil)
-			p.mu.Unlock()
-			a.Notify()
-			return nil
-		}
-		if text.PageCount > 0 {
-			p.pdfCount = text.PageCount
-		}
-		p.storeWindowLocked(from, text, err)
-		if err == nil {
-			p.pdfFailFrom, p.pdfFailKind, p.pdfFailMsg = -1, paperTextOK, ""
-		} else {
-			p.pdfFailFrom = from
-			switch {
-			case errors.Is(err, ErrPaperCopyMissing):
-				p.pdfFailKind, p.pdfFailMsg = paperTextMissing, ""
-			case errors.Is(err, ErrPaperNoTextLayer):
-				p.pdfFailKind, p.pdfFailMsg = paperTextScan, ""
-			default:
-				p.pdfFailKind, p.pdfFailMsg = paperTextFailed, errtext.Text(err)
-			}
-		}
+		stale := p.readerSeq != seq
 		p.mu.Unlock()
+		if stale {
+			p.finishReader(seq, nil, nil)
+			a.Notify()
+			return nil
+		}
+		if err != nil {
+			p.finishReader(seq, nil, err)
+			a.Notify()
+			return nil
+		}
+
+		p.mu.Lock()
+		wv := p.reader
+		p.mu.Unlock()
+
+		// The web view is built once per page instance, in this task: the
+		// window handle is read here, never while a frame builds. LoadURL
+		// reuses it for every other paper.
+		var loadErr error
+		if wv == nil {
+			var win *mg.Window
+			if p.Services.Window != nil {
+				win = p.Services.Window()
+			}
+			if win == nil {
+				loadErr = errNoWindow
+			} else {
+				wv, loadErr = win.NewWebView(mg.WebViewOptions{URL: fileURL})
+			}
+		} else {
+			loadErr = wv.Page().LoadURL(fileURL)
+		}
+		p.finishReader(seq, wv, loadErr)
 		a.Notify()
 		return nil
 	})
 }
 
-// storeWindowLocked caches the pages a read returned and marks every page of
-// the window as read only when the whole window succeeded.
-func (p *PaperPage) storeWindowLocked(from int, text PaperText, err error) {
-	for _, page := range text.Pages {
-		blocks := append([]string(nil), page.Blocks...)
-		p.pdfPages[page.PageNo] = blocks
-	}
-	if err != nil {
-		return
-	}
-	last := from + paperPagesPerView - 1
-	if p.pdfCount > 0 && last > p.pdfCount {
-		last = p.pdfCount
-	}
-	for n := from; n <= last; n++ {
-		if _, ok := p.pdfPages[n]; !ok {
-			p.pdfPages[n] = nil
-		}
-		p.pdfSeen[n] = true
-	}
-}
-
-// moveText shifts the reader's window by one screenful. The last window starts
-// on the page that still shows the final page, so the pager never opens an
-// empty window.
-func (p *PaperPage) moveText(a *app.App, paperID string, delta int) {
+// finishReader installs the result of a reader task. A result whose sequence
+// is stale leaves the state to the newer request, but a web view it created is
+// still kept, so the next paper reuses it.
+func (p *PaperPage) finishReader(seq int, wv *mg.WebView, err error) {
 	p.mu.Lock()
-	from, count := p.pdfFrom, p.pdfCount
-	next := from + delta*paperPagesPerView
-	if next < 1 {
-		next = 1
+	p.readerBusy = false
+	if wv != nil && p.reader == nil {
+		p.reader = wv
 	}
-	if delta > 0 && count > 0 {
-		lastStart := ((count-1)/paperPagesPerView)*paperPagesPerView + 1
-		if next > lastStart {
-			next = lastStart
+	if p.readerSeq == seq {
+		switch {
+		case err == nil:
+			p.readerKind, p.readerErr = readerReady, ""
+		case errors.Is(err, ErrPaperCopyMissing):
+			p.readerKind, p.readerErr = readerMissing, ""
+		default:
+			p.readerKind, p.readerErr = readerFailed, errtext.Text(err)
 		}
 	}
-	if next == from {
-		p.mu.Unlock()
-		return
-	}
-	p.pdfFrom = next
-	p.pdfFailFrom, p.pdfFailKind, p.pdfFailMsg = -1, paperTextOK, ""
 	p.mu.Unlock()
-	p.ensureText(a, paperID)
 }
 
 // paperSnapshot returns the paper and the load state the frame renders.

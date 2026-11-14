@@ -1,16 +1,19 @@
 package boot
 
-// The paper page reaches one project paper through this adapter: the extracted
-// PDF text of the imported copy, the Paper Note fields and the research notes
-// whose Markdown links the paper. It reuses the literature module's service so
-// the page and the browser always read the same workspace, and every write is
-// made as the in-app user.
+// The paper page reaches one project paper through this adapter: the imported
+// copy's file URL for the embedded reader, the Paper Note fields and the
+// research notes whose Markdown links the paper. It reuses the literature
+// module's service so the page and the browser always read the same workspace,
+// and every write is made as the in-app user.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +21,6 @@ import (
 	"researchos/internal/literature"
 	"researchos/internal/literature/library"
 	"researchos/internal/notes"
-	"researchos/internal/search"
 	"researchos/internal/ui/pages"
 )
 
@@ -54,49 +56,47 @@ func (m *literatureModule) Paper(ctx context.Context, paperID string) (literatur
 	return lib.GetPaper(ctx, paperID)
 }
 
-// ReadPaperText parses one window of the imported copy. The parser works on the
-// workspace path, so the page never joins workspace paths itself, and the
-// failures the page names in its own words are returned as its sentinels.
-func (m *literatureModule) ReadPaperText(ctx context.Context, paperID string, startPage, maxPages int) (pages.PaperText, error) {
+// PaperFileURL resolves the imported copy of a paper to the file URL the
+// embedded reader's web view loads. The copy's existence is checked here, in
+// the caller's task: a page never touches the file system while it renders.
+func (m *literatureModule) PaperFileURL(ctx context.Context, paperID string) (string, error) {
 	lib, err := m.libraryFor(ctx)
 	if err != nil {
-		return pages.PaperText{}, err
+		return "", err
 	}
 	paper, err := lib.GetPaper(ctx, paperID)
 	if err != nil {
-		return pages.PaperText{}, err
+		return "", err
 	}
 	if paper.FilePath == "" {
-		return pages.PaperText{}, pages.ErrPaperCopyMissing
+		return "", pages.ErrPaperCopyMissing
 	}
 	abs, err := m.ws.Paths().Abs(paper.FilePath)
 	if err != nil {
-		return pages.PaperText{}, fmt.Errorf("boot: 解析文献副本路径: %w", err)
+		return "", fmt.Errorf("boot: 解析文献副本路径: %w", err)
 	}
-	doc, parseErr := search.ParsePDFFile(ctx, abs, search.ParseOptions{StartPage: startPage, MaxPage: maxPages})
-	out := pages.PaperText{PageCount: doc.PageCount, Pages: make([]pages.PaperPageText, 0, maxPages)}
-	// Blocks arrive in document order: append each to its page and create the
-	// page entry on its first block, so a blank page simply has none.
-	index := make(map[int]int, maxPages)
-	for _, block := range doc.Blocks {
-		at, ok := index[block.PageNo]
-		if !ok {
-			at = len(out.Pages)
-			index[block.PageNo] = at
-			out.Pages = append(out.Pages, pages.PaperPageText{PageNo: block.PageNo})
+	if _, err := os.Stat(abs); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", pages.ErrPaperCopyMissing
 		}
-		out.Pages[at].Blocks = append(out.Pages[at].Blocks, block.Text)
+		return "", fmt.Errorf("boot: 检查文献副本 %s: %w", abs, err)
 	}
-	switch {
-	case parseErr == nil:
-		return out, nil
-	case errors.Is(parseErr, fs.ErrNotExist):
-		return out, pages.ErrPaperCopyMissing
-	case errors.Is(parseErr, search.ErrNoTextLayer):
-		return out, pages.ErrPaperNoTextLayer
-	default:
-		return out, parseErr
+	return fileURL(abs), nil
+}
+
+// fileURL renders an absolute OS path as the file URL a web view loads: slash
+// separators and percent escapes, so F:\papers\a b.pdf becomes
+// file:///F:/papers/a%20b.pdf. A UNC share keeps its host.
+func fileURL(abs string) string {
+	p := filepath.ToSlash(abs)
+	if strings.HasPrefix(p, "//") {
+		host, rest, _ := strings.Cut(strings.TrimPrefix(p, "//"), "/")
+		return (&url.URL{Scheme: "file", Host: host, Path: "/" + rest}).String()
 	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return (&url.URL{Scheme: "file", Path: p}).String()
 }
 
 func (m *literatureModule) OpenPaper(ctx context.Context, paperID string) error {
@@ -105,6 +105,15 @@ func (m *literatureModule) OpenPaper(ctx context.Context, paperID string) error 
 		return err
 	}
 	return lib.Open(ctx, paperID, literature.PDFImportedCopy)
+}
+
+// OpenPaperWith lets the user pick another application for the imported copy.
+func (m *literatureModule) OpenPaperWith(ctx context.Context, paperID string) error {
+	lib, err := m.libraryFor(ctx)
+	if err != nil {
+		return err
+	}
+	return lib.OpenWith(ctx, paperID)
 }
 
 func (m *literatureModule) PaperNote(ctx context.Context, projectID, paperID string) (*literature.PaperNote, error) {
