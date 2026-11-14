@@ -305,6 +305,12 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			}).Clicked() {
 				l.openPreview(a)
 			}
+			if v.Button(i18n.T("pages.literature.btn_import_direct"), components.ButtonOptions{
+				Variant:  components.VariantSecondary,
+				Disabled: loading || l.sel.Len() == 0,
+			}).Clicked() {
+				l.startImport(a, projectID, l.selectedKeys())
+			}
 			ui.Text(v.C, i18n.Tf("pages.literature.selected_count", map[string]string{
 				"count": strconv.Itoa(l.sel.Len()),
 			})).FontSize(tokens.Typography.Secondary.Size)
@@ -396,7 +402,11 @@ func (l *Literature) dialog(v *components.UI, a *app.App, projectID string) {
 			})
 			if confirm.Clicked() {
 				l.previewOpen = false
-				l.startImport(a, projectID)
+				keys := make([]string, 0, len(preview))
+				for _, entry := range preview {
+					keys = append(keys, entry.ZoteroKey)
+				}
+				l.startImport(a, projectID, keys)
 			}
 		},
 	}, func() {
@@ -700,15 +710,13 @@ func (l *Literature) selection(ctx context.Context, api LiteratureAPI, keys []st
 	}
 }
 
-// startImport runs the pipeline. Progress reaches the task, so the shell draws
-// it in the task strip while the import copies PDFs.
-func (l *Literature) startImport(a *app.App, projectID string) {
+// startImport runs the pipeline on the given item keys, with or without a
+// preceding preview: duplicates of existing papers are deduplicated by the
+// service (linked or skipped), never copied twice. Progress reaches the task,
+// so the shell draws it in the task strip while the import copies PDFs.
+func (l *Literature) startImport(a *app.App, projectID string, keys []string) {
 	api := l.Services.Literature
 	l.mu.Lock()
-	keys := make([]string, 0, len(l.state.preview))
-	for _, entry := range l.state.preview {
-		keys = append(keys, entry.ZoteroKey)
-	}
 	chosen := make(map[string]string, len(l.state.chosen))
 	for key, attachment := range l.state.chosen {
 		chosen[key] = attachment
