@@ -30,6 +30,7 @@ import (
 	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
+	"researchos/internal/weeklyreview"
 )
 
 // settingsAI is the session state of the AI tab. Task-written fields are
@@ -99,6 +100,15 @@ type settingsAI struct {
 	roleChat      settingsRoleForm
 	roleEmbedding settingsRoleForm
 	roleRerank    settingsRoleForm
+
+	// skills are the workspace-level writing skills of weekly report
+	// generation; the editor dialog is frame-owned.
+	skills        weeklyreview.SkillSet
+	skillsLoading bool
+	skillsLoaded  bool
+	skillsTab     int
+	skillsErr     string
+	skillEditor   weeklySkillEditor
 }
 
 // aiProviderForm is the write-only provider form. apiKey is cleared when the
@@ -165,6 +175,75 @@ func (s *Settings) aiLoad() {
 	if need {
 		s.aiReload()
 	}
+}
+
+// aiSkillsLoad reads the weekly writing skills once. They are workspace-level
+// and need no AI provider, so the card stays usable while AI is unconfigured.
+func (s *Settings) aiSkillsLoad(a *app.App) {
+	// Reload on every entry to the tab: a skill may have been edited from
+	// the weekly dialog in between.
+	s.ai.mu.Lock()
+	need := !s.ai.skillsLoading && (!s.ai.skillsLoaded || s.ai.skillsTab != s.tab)
+	if need {
+		s.ai.skillsTab = s.tab
+	}
+	s.ai.mu.Unlock()
+	if !need || a == nil || s.Services.Weekly == nil {
+		return
+	}
+	project := a.Project()
+	if project == nil {
+		return
+	}
+	s.ai.mu.Lock()
+	s.ai.skillsLoading = true
+	s.ai.mu.Unlock()
+	api := s.Services.Weekly
+	projectID := project.ID
+	a.RunTask(i18n.T("pages.weekly_review.skill_task_load"), func(ctx context.Context, t *app.Task) error {
+		set, err := api.Skills(ctx, projectID)
+		s.ai.mu.Lock()
+		s.ai.skillsLoading = false
+		s.ai.skillsLoaded = true
+		if err != nil {
+			s.ai.skillsErr = weeklyError(err)
+		} else {
+			s.ai.skills = set
+			s.ai.skillsErr = ""
+		}
+		s.ai.mu.Unlock()
+		a.Notify()
+		return nil
+	})
+}
+
+// aiSkillsCard is the weekly writing skill list. Saving or deleting reloads it
+// through the returned set, so the list always shows what the store accepted.
+func (s *Settings) aiSkillsCard(v *components.UI, a *app.App) {
+	project := a.Project()
+	if project == nil || s.Services.Weekly == nil {
+		return
+	}
+	s.ai.mu.Lock()
+	set, errText, loaded := s.ai.skills, s.ai.skillsErr, s.ai.skillsLoaded
+	s.ai.mu.Unlock()
+	if !loaded {
+		v.Skeleton(components.SkeletonOptions{Lines: 3})
+		return
+	}
+	if errText != "" {
+		v.Banner(components.BannerOptions{
+			Tone:    components.Warning,
+			Title:   i18n.T("pages.settings.ai.load_problem"),
+			Message: errText,
+		})
+	}
+	weeklySkillCard(v, a, s.Services, project.ID, set, &s.ai.skillEditor, func(updated weeklyreview.SkillSet) {
+		s.ai.mu.Lock()
+		s.ai.skills = updated
+		s.ai.skillsErr = ""
+		s.ai.mu.Unlock()
+	})
 }
 
 // aiReload reads providers, every provider's model cache and the role list off
@@ -309,6 +388,8 @@ func (s *Settings) aiTab(v *components.UI, a *app.App) {
 			Message: problem,
 		})
 	}
+	s.aiSkillsLoad(a)
+	s.aiSkillsCard(v, a)
 	s.aiReadiness(v, view)
 	s.aiActionBanners(v, view)
 	s.aiProviderCard(v, a, view)
@@ -1348,6 +1429,14 @@ func (s *Settings) aiDialogs(v *components.UI, a *app.App) {
 	s.aiProviderDeleteDialog(v, a)
 	s.aiManualDialog(v, a)
 	s.aiModelDeleteDialog(v, a)
+	if project := a.Project(); project != nil {
+		s.ai.skillEditor.dialog(v, a, s.Services, project.ID, func(updated weeklyreview.SkillSet) {
+			s.ai.mu.Lock()
+			s.ai.skills = updated
+			s.ai.skillsErr = ""
+			s.ai.mu.Unlock()
+		})
+	}
 }
 
 // aiProviderDialog is the write-only provider form.

@@ -198,6 +198,7 @@ func allowedNumbers(digest *ActivityDigest) map[string]bool {
 		for _, item := range sec.Items {
 			add(item.Summary)
 			add(item.Detail)
+			add(item.Brief)
 			add(item.Old)
 			add(item.New)
 		}

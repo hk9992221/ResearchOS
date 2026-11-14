@@ -1577,9 +1577,15 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		}
 		t.Stage(i18n.T("pages.weekly_review.stage_generate"))
 		t.Progress(30, 100)
+		// Keep the skill the report was written with; a report generated
+		// before skills existed falls back to the workspace default.
+		skillID := ""
+		if report.Meta.Generation != nil {
+			skillID = report.Meta.Generation.SkillID
+		}
 		outcome, err := api.GenerateDraft(ctx, projectID, weeklyreview.GenerateInput{
 			ReportID: reportID, Replace: true, Actor: weeklyreview.ActorUser,
-			Progress: weeklySectionProgress(t),
+			SkillID: skillID, Progress: weeklySectionProgress(t),
 		})
 		degraded := outcome != nil && outcome.Report != nil && weeklyDegraded(err)
 		switch {
@@ -1970,6 +1976,13 @@ func weeklyProvenanceRows(report *weeklyreview.WeeklyReport) [][2]string {
 		)
 		if n := len(gen.AIOutputIDs); n > 0 {
 			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_ai_calls"), strconv.Itoa(n)})
+		}
+		if gen.SkillName != "" || gen.SkillID != "" {
+			name := gen.SkillName
+			if name == "" {
+				name = gen.SkillID
+			}
+			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_skill"), name})
 		}
 		if gen.Notes != "" {
 			rows = append(rows, [2]string{i18n.T("pages.weekly_review.prov_notes"), gen.Notes})

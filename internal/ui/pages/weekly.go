@@ -82,6 +82,10 @@ type WeeklyAPI interface {
 	DeleteReport(ctx context.Context, projectID, reportID string) error
 	RestoreReport(ctx context.Context, projectID, reportID string) error
 	Export(ctx context.Context, projectID string, in weeklyreview.ExportInput) (*weeklyreview.ExportResult, error)
+	Skills(ctx context.Context, projectID string) (weeklyreview.SkillSet, error)
+	SaveSkill(ctx context.Context, projectID string, in weeklyreview.SkillInput) (weeklyreview.SkillSet, error)
+	DeleteSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error)
+	SetDefaultSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error)
 	AIEnabled(projectID string) bool
 	RevealFolder(dir string) error
 }
@@ -130,6 +134,15 @@ type Weekly struct {
 	genDone        bool
 	genReportID    string
 	genTask        *app.Task
+
+	// skills are the workspace writing skills and the generation dialog's
+	// selection; skillEditor is the shared edit dialog.
+	skills        weeklyreview.SkillSet
+	skillsLoading bool
+	skillsLoaded  bool
+	genSkillID    string
+	genSkillLabel string
+	skillEditor   weeklySkillEditor
 
 	delID    string
 	delTitle string
@@ -474,6 +487,7 @@ func (n *Weekly) openGenerate(a *app.App, projectID string) {
 	n.genOverwrite = false
 	n.periodBlocked = false
 	n.genAI = n.Services.Weekly.AIEnabled(projectID)
+	n.skillsLoad(a, projectID)
 	if n.genLoaded && n.project == projectID {
 		return
 	}
@@ -493,6 +507,40 @@ func (n *Weekly) openGenerate(a *app.App, projectID string) {
 		n.mu.Lock()
 		n.defPeriod = weeklyCurrentWeek(period, time.Now())
 		n.genPeriodReady = true
+		n.mu.Unlock()
+		a.Notify()
+		return nil
+	})
+}
+
+// skillsLoad reads the writing skills once per session. The generation dialog
+// needs them for its selector even before the first generation.
+func (n *Weekly) skillsLoad(a *app.App, projectID string) {
+	api := n.Services.Weekly
+	if api == nil || a == nil {
+		return
+	}
+	// Refresh on every dialog open: the settings tab may have changed the
+	// set since the last generation.
+	n.mu.Lock()
+	need := !n.skillsLoading
+	if need {
+		n.skillsLoading = true
+	}
+	n.mu.Unlock()
+	if !need {
+		return
+	}
+	a.RunTask(i18n.T("pages.weekly_review.skill_task_load"), func(ctx context.Context, t *app.Task) error {
+		set, err := api.Skills(ctx, projectID)
+		n.mu.Lock()
+		n.skillsLoading = false
+		n.skillsLoaded = true
+		if err != nil {
+			n.problems = append(n.problems[:0], weeklyError(err))
+		} else {
+			n.skills = set
+		}
 		n.mu.Unlock()
 		a.Notify()
 		return nil
@@ -626,6 +674,18 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 	if !n.genOpen {
 		return
 	}
+	// The skill editor takes the dialog's place while it is open: one modal
+	// at a time, and the generation state survives underneath.
+	if n.skillEditor.open {
+		n.skillEditor.dialog(v, a, n.Services, projectID, func(updated weeklyreview.SkillSet) {
+			n.mu.Lock()
+			n.skills = updated
+			n.mu.Unlock()
+			n.genSkillLabel = ""
+			a.Notify()
+		})
+		return
+	}
 	n.adoptPeriod()
 	n.mu.Lock()
 	generating, errText, note := n.generating, n.genErr, n.genNote
@@ -670,6 +730,9 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 		if !n.genLoaded {
 			v.Skeleton(components.SkeletonOptions{Lines: 2})
 			return
+		}
+		if n.genAI {
+			n.skillPicker(v, a, projectID)
 		}
 		if n.genQuick == 2 {
 			start := ui.DateInput(v.C, &n.genStart).Label(i18n.T("pages.weekly_review.field_start"))
@@ -775,6 +838,73 @@ func (n *Weekly) normalizeDates() {
 	}
 }
 
+// skillSetSnapshot is the frame's copy of the loaded skills.
+func (n *Weekly) skillSetSnapshot() weeklyreview.SkillSet {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	set := n.skills
+	set.Skills = append([]weeklyreview.Skill(nil), n.skills.Skills...)
+	return set
+}
+
+// skillPicker is the generation dialog's writing-skill choice plus the entry
+// to edit it: the same skills the AI settings tab manages.
+func (n *Weekly) skillPicker(v *components.UI, a *app.App, projectID string) {
+	set := n.skillSetSnapshot()
+	if len(set.Skills) == 0 {
+		return
+	}
+	labels := make([]string, 0, len(set.Skills))
+	ids := make([]string, 0, len(set.Skills))
+	for _, skill := range set.Skills {
+		label := skill.Name
+		if skill.ID == set.Default || (set.Default == "" && skill.Builtin) {
+			label += " " + i18n.T("pages.weekly_review.skill_default_suffix")
+		}
+		labels = append(labels, label)
+		ids = append(ids, skill.ID)
+	}
+	if n.genSkillLabel == "" {
+		if index := indexOf(ids, set.Default); index >= 0 {
+			n.genSkillLabel, n.genSkillID = labels[index], ids[index]
+		} else {
+			n.genSkillLabel, n.genSkillID = labels[0], ids[0]
+		}
+	} else if index := indexOf(labels, n.genSkillLabel); index >= 0 {
+		n.genSkillID = ids[index]
+	} else {
+		// The list changed under the dialog (renamed or deleted skill).
+		n.genSkillLabel = ""
+	}
+	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.End).Wrap().Children(func() {
+		sel := v.Select(&n.genSkillLabel, components.SelectOptions{
+			Label:   i18n.T("pages.weekly_review.field_skill"),
+			Options: labels,
+		})
+		if sel.Changed() {
+			if index := indexOf(labels, n.genSkillLabel); index >= 0 {
+				n.genSkillID = ids[index]
+			}
+		}
+		if v.Button(i18n.T("pages.weekly_review.skill_edit"), components.ButtonOptions{
+			Variant: components.VariantGhost,
+			Size:    components.SizeSmall,
+			Icon:    icons.Edit,
+		}).Clicked() {
+			for _, skill := range set.Skills {
+				if skill.ID == n.genSkillID {
+					if skill.Builtin {
+						n.skillEditor.newSkill(skill)
+					} else {
+						n.skillEditor.editSkill(skill)
+					}
+					break
+				}
+			}
+		}
+	})
+}
+
 // period builds the half-open period of the dialog's dates.
 func (n *Weekly) period() (weeklyreview.Period, error) {
 	if n.genStart.IsZero() || n.genEnd.IsZero() {
@@ -837,6 +967,7 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 	api := n.Services.Weekly
 	includeAI := n.genAI
 	replace := !n.needOverwrite || n.genOverwrite
+	skillID := n.genSkillID
 	task := a.RunTask(i18n.T("pages.weekly_review.task_generate"), func(ctx context.Context, t *app.Task) error {
 		gctx, cancel := context.WithCancel(ctx)
 		t.SetCancel(cancel)
@@ -846,6 +977,7 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 			IncludeAI: includeAI,
 			Replace:   replace,
 			Actor:     weeklyreview.ActorUser,
+			SkillID:   skillID,
 		}
 		if includeAI {
 			in.Progress = weeklySectionProgress(t)

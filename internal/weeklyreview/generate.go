@@ -65,7 +65,11 @@ func (s *service) GenerateDraft(ctx context.Context, in GenerateInput) (*Generat
 		return outcome, serviceError(ErrAIUnavailable, "AI 服务未配置")
 	}
 
-	run := s.generateSections(ctx, info, digest, report.ID, in.Progress)
+	skill, err := s.resolveSkill(ctx, in.SkillID)
+	if err != nil {
+		return outcome, err
+	}
+	run := s.generateSections(ctx, info, digest, report.ID, skill, in.Progress)
 
 	if len(run.ids) == 0 {
 		// Nothing usable came back: keep the current body, or write the
@@ -100,6 +104,8 @@ func (s *service) GenerateDraft(ctx context.Context, in GenerateInput) (*Generat
 	meta.AIStatus = "ok"
 	meta.AIOutputIDs = run.ids
 	meta.AIOutputID = run.ids[0]
+	meta.SkillID = skill.ID
+	meta.SkillName = skill.Name
 	if len(run.failed) > 0 {
 		meta.Notes = partialNote(run.failed, run.firstErr)
 	}
@@ -198,7 +204,8 @@ func (s *service) GenerateForPeriod(ctx context.Context, in GeneratePeriodInput)
 		return &GenerateOutcome{Report: report, Digest: digest}, nil
 	}
 	return s.GenerateDraft(ctx, GenerateInput{
-		ReportID: report.ID, Replace: in.Replace || created, Actor: in.Actor, Progress: in.Progress,
+		ReportID: report.ID, Replace: in.Replace || created, Actor: in.Actor,
+		SkillID: in.SkillID, Progress: in.Progress,
 	})
 }
 
@@ -314,6 +321,13 @@ func digestSourceRefs(d *ActivityDigest, limit int) []output.SourceRef {
 	return out
 }
 
+// Prompt bounds keep one section call small enough to finish inside the
+// chat timeout.
+const (
+	promptSectionItems = 24
+	promptBriefRunes   = 200
+)
+
 // sectionAttempts is how many calls one section gets before the
 // deterministic skeleton stands in for it.
 const sectionAttempts = 2
@@ -346,7 +360,7 @@ type sectionRun struct {
 // generateSections renders the seven sections one model call at a time. One
 // large call times out; seven small ones each finish in seconds, a failure
 // costs one section instead of the report, and the reader sees progress.
-func (s *service) generateSections(ctx context.Context, info projectInfo, digest *ActivityDigest, reportID string, progress SectionProgress) sectionRun {
+func (s *service) generateSections(ctx context.Context, info projectInfo, digest *ActivityDigest, reportID string, skill Skill, progress SectionProgress) sectionRun {
 	run := sectionRun{lines: make(map[SectionKey][]string, len(defaultTemplate.Sections))}
 	entity := &output.EntityRef{Type: string(schema.EntityWeeklyReport), ID: reportID}
 	total := len(defaultTemplate.Sections)
@@ -364,7 +378,7 @@ func (s *service) generateSections(ctx context.Context, info projectInfo, digest
 			ProjectID:       s.projectID,
 			TaskKind:        taskKind,
 			PromptVersion:   promptVersion,
-			Messages:        sectionMessages(info, digest, sec),
+			Messages:        sectionMessages(info, digest, sec, skill),
 			SourceRefs:      sectionSourceRefs(digest, sec.Key),
 			Entity:          entity,
 			MaxOutputTokens: sectionMaxTokens,
@@ -429,7 +443,7 @@ func sectionIsEmpty(d *ActivityDigest, key SectionKey) bool {
 }
 
 // sectionMessages is the prompt for exactly one section.
-func sectionMessages(info projectInfo, digest *ActivityDigest, sec TemplateSection) []protocol.ChatMessage {
+func sectionMessages(info projectInfo, digest *ActivityDigest, sec TemplateSection, skill Skill) []protocol.ChatMessage {
 	var body strings.Builder
 	body.WriteString("项目：" + info.Name + "\n")
 	if info.Summary != "" {
@@ -459,18 +473,26 @@ func sectionMessages(info projectInfo, digest *ActivityDigest, sec TemplateSecti
 	if raw, err := json.MarshalIndent(sectionPromptDigest(digest, sec.Key), "", "  "); err == nil {
 		body.Write(raw)
 	}
+	system := promptSectionContract
+	if text := strings.TrimSpace(skill.Prompt); text != "" {
+		system += "\n\n写作规范（Skill：「" + skill.Name + "」）：\n" + text
+	}
 	return []protocol.ChatMessage{
-		{Role: protocol.RoleSystem, Content: promptSectionSystem},
+		{Role: protocol.RoleSystem, Content: system},
 		{Role: protocol.RoleUser, Content: body.String()},
 	}
 }
 
 // sectionPromptDigest scopes the digest to the one section being written.
 func sectionPromptDigest(d *ActivityDigest, key SectionKey) any {
+	items := sectionItems(d, key)
+	if len(items) > promptSectionItems {
+		items = items[:promptSectionItems]
+	}
 	scoped := &ActivityDigest{
 		Period:   d.Period,
 		Timezone: d.Timezone,
-		Sections: []DigestSection{{Key: key, Title: sectionTitle(key), Items: sectionItems(d, key)}},
+		Sections: []DigestSection{{Key: key, Title: sectionTitle(key), Items: items}},
 	}
 	switch key {
 	case SectionProblem:
@@ -601,17 +623,19 @@ func partialNote(failed []SectionKey, cause error) string {
 	return note
 }
 
-// promptSectionSystem is the shared contract of a single-section call.
-const promptSectionSystem = `你是科研周报撰写助手。本次只写七个分区中的**一个**分区，只输出该分区的正文（Markdown 列表或短段落），不要输出任何标题、不要解释、不要 JSON 包装。
+// promptSectionContract is the hard contract of one section call. It is code,
+// not a skill: a skill may shape emphasis, never the facts, structure or the
+// validation gate.
+const promptSectionContract = `你是科研周报撰写助手。本次只写七个分区中的**一个**分区，只输出该分区的正文（Markdown 列表或短段落），不要输出任何标题、不要解释、不要 JSON 包装。
 
-读者是导师和合作者：他们要看到这一周的实质进展与价值，不是文件操作日志。
-1. 只写有信息量的工作：完成了什么、推进到哪一步、得到什么结果、遇到什么阻碍。
-2. 不要写「创建项目」「导入文献」「创建笔记」「新建任务」「导出文件」这类记录性动作——它们不是进展；输入里即使出现也不要写。
-3. 同一实体或同一主题的多条记录合并成一条「做了什么 → 现在什么状态」，不要按时间逐条复述。
-4. 输出 2–6 条；每条不超过 120 字；每条事实性条目末尾附 [[ref:type:id]] 引用（可多个）。
-5. 只能使用输入的活动条目、候选计划与项目元信息；不得补充外部知识，不得编造数值、结论或实验结果。
-6. 引用 unconfirmed_source=true 的内容必须标注「（待确认）」；无来源的成果性表述同样标注。
-7. 实验不得下「成功/失败」结论；Idea 状态只能引用 status.changed 的新值。
+硬性约束：
+1. 输出 2–6 条；每条不超过 120 字；每条事实性条目末尾附 [[ref:type:id]] 引用（可多个）。
+2. 只能使用输入的活动条目、候选计划与项目元信息；不得补充外部知识，不得编造数值、结论或实验结果。
+3. 数值只能引用输入中出现过的数字；不确定的度量用文字描述并标「（待确认）」。
+4. 引用 unconfirmed_source=true 的内容必须标注「（待确认）」；无来源的成果性表述同样标注。
+5. 计划项只能出现在「下周计划」，只能来自候选，不得写成已完成；其他分区不得写计划。
+6. 实验与运行不得下「成功/失败」结论；Idea 状态只能引用 status.changed 的新值。
+7. 不写「创建项目」「导入文献」「创建笔记」「新建任务」「导出文件」这类记录性动作——它们不是进展。
 8. 本节没有可写的实质内容时，只输出一行「本周期无记录」。`
 
 // promptDigest is the compact digest projection sent to the model.
@@ -625,6 +649,9 @@ func promptDigest(d *ActivityDigest) any {
 		New               string `json:"new,omitempty"`
 		State             string `json:"state"`
 		UnconfirmedSource bool   `json:"unconfirmed_source"`
+		// Context is what the entity itself says: an idea's statement and
+		// evidence balance, an experiment's purpose, a task's description.
+		Context string `json:"context,omitempty"`
 	}
 	type section struct {
 		Key   string `json:"key"`
@@ -663,6 +690,7 @@ func promptDigest(d *ActivityDigest) any {
 			cs.Items = append(cs.Items, item{
 				Type: it.Ref.Type, ID: it.Ref.ID, Summary: it.Summary, Detail: it.Detail,
 				Old: it.Old, New: it.New, State: it.State, UnconfirmedSource: it.UnconfirmedSource,
+				Context: truncateRunes(it.Brief, promptBriefRunes),
 			})
 		}
 		out.Sections = append(out.Sections, cs)

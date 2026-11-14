@@ -296,6 +296,7 @@ func digestItem(ev events.Activity, briefs map[EntityRef]EntityBrief, loc *time.
 			EventIDs:          []string{ev.ID},
 			UnconfirmedSource: brief.AIContentUnconfirmed,
 			Broken:            brief.Broken,
+			Brief:             brief.Abstract,
 		},
 	}
 }
@@ -307,7 +308,11 @@ func digestItem(ev events.Activity, briefs map[EntityRef]EntityBrief, loc *time.
 // them only for reference grounding and the muted count in the digest tab).
 func housekeeping(ev events.Activity) bool {
 	switch ev.Type {
-	case schema.EventEntityCreated, schema.EventEntityDeleted, schema.EventEntityRestored,
+	case schema.EventEntityCreated:
+		// Recording evidence for an idea is a research judgement, not
+		// filing: it is the material that says whether the idea holds.
+		return ev.EntityType != schema.EntityEvidence
+	case schema.EventEntityDeleted, schema.EventEntityRestored,
 		schema.EventPaperImported, schema.EventPaperOverwriteConfirmed, schema.EventPaperMetadataUpdated,
 		schema.EventReportGenerated, schema.EventProjectExported:
 		return true
@@ -799,17 +804,20 @@ func (s *service) resolveBriefs(ctx context.Context, refs []EntityRef) (map[Enti
 	global := s.ws.Global().DB()
 	groups := groupRefs(refs)
 
+	// The abstract is the entity's own text. Without it the model can only
+	// repeat titles ("Idea 进展"), never say what the idea claims or what
+	// supports it.
 	for typ, ids := range groups {
 		switch schema.EntityType(typ) {
 		case schema.EntityNote:
 			q, args := queryIN(`SELECT id, title, kind, deleted_at FROM notes WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title, kind string
 				var deleted sql.NullString
 				if err := rows.Scan(&id, &title, &kind, &deleted); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, "", deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
@@ -824,148 +832,220 @@ func (s *service) resolveBriefs(ctx context.Context, refs []EntityRef) (map[Enti
 			}
 		case schema.EntityDBRecord:
 			q, args := queryIN(`SELECT id, title, deleted_at FROM db_records WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title string
 				var deleted sql.NullString
 				if err := rows.Scan(&id, &title, &deleted); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, "", deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityIdea:
-			q, args := queryIN(`SELECT id, title, deleted_at FROM ideas WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
-				var id, title string
+			q, args := queryIN(`SELECT id, title, description, status, deleted_at FROM ideas WHERE id`, ids)
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
+				var id, title, description, status string
 				var deleted sql.NullString
-				if err := rows.Scan(&id, &title, &deleted); err != nil {
-					return "", "", false, false, err
+				if err := rows.Scan(&id, &title, &description, &status, &deleted); err != nil {
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				abstract := "状态：" + status
+				if statement := strings.TrimSpace(description); statement != "" {
+					abstract += "；" + statement
+				}
+				return id, title, abstract, deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
+			if err := s.fillIdeaEvidence(ctx, db, ids, out); err != nil {
+				return nil, err
+			}
 		case schema.EntityEvidence:
-			q, args := queryIN(`SELECT id, substr(content,1,80), deleted_at, ai_generated, confirmed FROM evidence WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
-				var id, content string
+			q, args := queryIN(`SELECT id, substr(content,1,80), content, direction, deleted_at, ai_generated, confirmed FROM evidence WHERE id`, ids)
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
+				var id, content, full, direction string
 				var deleted sql.NullString
 				var aiGenerated, confirmed int
-				if err := rows.Scan(&id, &content, &deleted, &aiGenerated, &confirmed); err != nil {
-					return "", "", false, false, err
+				if err := rows.Scan(&id, &content, &full, &direction, &deleted, &aiGenerated, &confirmed); err != nil {
+					return "", "", "", false, false, err
 				}
-				return id, content, deleted.Valid, aiGenerated == 1 && confirmed == 0, nil
+				label := "支持："
+				if direction == "oppose" {
+					label = "反驳："
+				}
+				return id, content, label + full, deleted.Valid, aiGenerated == 1 && confirmed == 0, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityExperiment:
-			q, args := queryIN(`SELECT id, title, deleted_at FROM experiments WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
-				var id, title string
+			q, args := queryIN(`SELECT id, title, purpose, deleted_at FROM experiments WHERE id`, ids)
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
+				var id, title, purpose string
 				var deleted sql.NullString
-				if err := rows.Scan(&id, &title, &deleted); err != nil {
-					return "", "", false, false, err
+				if err := rows.Scan(&id, &title, &purpose, &deleted); err != nil {
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, purpose, deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityRun:
 			q, args := queryIN(`SELECT id, id, deleted_at FROM runs WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title string
 				var deleted sql.NullString
 				if err := rows.Scan(&id, &title, &deleted); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, "", deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntitySnapshot:
 			q, args := queryIN(`SELECT s.id, s.id, s.ai_output_id, o.status FROM snapshots s
 				LEFT JOIN ai_outputs o ON o.id = s.ai_output_id WHERE s.id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title string
 				var aiOutput, status sql.NullString
 				if err := rows.Scan(&id, &title, &aiOutput, &status); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
 				unconfirmed := aiOutput.Valid && status.Valid && status.String == "draft"
-				return id, title, false, unconfirmed, nil
+				return id, title, "", false, unconfirmed, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityTask:
-			q, args := queryIN(`SELECT id, title, deleted_at, archived_at FROM tasks WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
-				var id, title string
+			q, args := queryIN(`SELECT id, title, description_md, deleted_at, archived_at FROM tasks WHERE id`, ids)
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
+				var id, title, description string
 				var deleted, archived sql.NullString
-				if err := rows.Scan(&id, &title, &deleted, &archived); err != nil {
-					return "", "", false, false, err
+				if err := rows.Scan(&id, &title, &description, &deleted, &archived); err != nil {
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, description, deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityWeeklyReport:
 			q, args := queryIN(`SELECT id, period_start || ' ~ ' || period_end, deleted_at FROM weekly_reports WHERE id`, ids)
-			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title string
 				var deleted sql.NullString
 				if err := rows.Scan(&id, &title, &deleted); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				return id, title, deleted.Valid, false, nil
+				return id, title, "", deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityPaper:
 			q, args := queryIN(`SELECT id, metadata, file_state FROM papers WHERE id`, ids)
-			if err := collectBriefs(ctx, global, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, global, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, meta, state string
 				if err := rows.Scan(&id, &meta, &state); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				title := jsonTitle(meta)
-				return id, title, false, state == "missing", nil
+				return id, jsonTitle(meta), jsonAbstract(meta), false, state == "missing", nil
 			}); err != nil {
 				return nil, err
 			}
 		case schema.EntityProject:
 			q, args := queryIN(`SELECT id, name FROM projects WHERE id`, ids)
-			if err := collectBriefs(ctx, global, typ, q, args, out, func(rows *sql.Rows) (string, string, bool, bool, error) {
+			if err := collectBriefs(ctx, global, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, name string
 				if err := rows.Scan(&id, &name); err != nil {
-					return "", "", false, false, err
+					return "", "", "", false, false, err
 				}
-				return id, name, false, false, nil
+				return id, name, "", false, false, nil
 			}); err != nil {
 				return nil, err
 			}
 		}
 	}
+	for ref, brief := range out {
+		brief.Abstract = truncateRunes(strings.TrimSpace(brief.Abstract), maxBriefRunes)
+		out[ref] = brief
+	}
 	return out, nil
 }
 
+// fillIdeaEvidence appends the evidence balance to each idea's abstract: the
+// model needs to know whether the claim is supported or contradicted before it
+// can say anything about the idea's reliability.
+func (s *service) fillIdeaEvidence(ctx context.Context, db *sql.DB, ids []string, out map[EntityRef]EntityBrief) error {
+	q, args := queryIN(`SELECT idea_id, direction, COUNT(*) FROM evidence
+		WHERE deleted_at IS NULL AND idea_id`, ids)
+	rows, err := db.QueryContext(ctx, q+` GROUP BY idea_id, direction`, args...)
+	if err != nil {
+		return fmt.Errorf("weeklyreview: idea evidence: %w", err)
+	}
+	defer rows.Close()
+	support := map[string]int{}
+	oppose := map[string]int{}
+	for rows.Next() {
+		var id, direction string
+		var n int
+		if err := rows.Scan(&id, &direction, &n); err != nil {
+			return fmt.Errorf("weeklyreview: idea evidence: %w", err)
+		}
+		if direction == "oppose" {
+			oppose[id] += n
+		} else {
+			support[id] += n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		ref := EntityRef{Type: string(schema.EntityIdea), ID: id}
+		brief, ok := out[ref]
+		if !ok {
+			continue
+		}
+		s, o := support[id], oppose[id]
+		if s == 0 && o == 0 {
+			continue
+		}
+		brief.Abstract += fmt.Sprintf("；证据 %d 条支持 / %d 条反驳", s, o)
+		out[ref] = brief
+	}
+	return nil
+}
+
 func collectBriefs(ctx context.Context, db *sql.DB, typ, query string, args []any, out map[EntityRef]EntityBrief,
-	scan func(*sql.Rows) (id, title string, broken, unconfirmed bool, err error)) error {
+	scan func(*sql.Rows) (id, title, abstract string, broken, unconfirmed bool, err error)) error {
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("weeklyreview: resolve briefs: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		id, title, broken, unconfirmed, err := scan(rows)
+		id, title, abstract, broken, unconfirmed, err := scan(rows)
 		if err != nil {
 			return fmt.Errorf("weeklyreview: resolve briefs: %w", err)
 		}
 		out[EntityRef{Type: typ, ID: id}] = EntityBrief{
-			Title: title, Broken: broken, AIContentUnconfirmed: unconfirmed,
+			Title: title, Abstract: abstract, Broken: broken, AIContentUnconfirmed: unconfirmed,
 		}
 	}
 	return rows.Err()
+}
+
+// jsonAbstract returns the paper's abstract from its Zotero metadata.
+func jsonAbstract(metadata string) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(metadata), &m); err != nil {
+		return ""
+	}
+	for _, key := range []string{"abstractNote", "abstract", "Abstract"} {
+		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func jsonTitle(metadata string) string {
