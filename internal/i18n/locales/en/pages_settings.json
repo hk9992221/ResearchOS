@@ -52,6 +52,8 @@
   "pages.settings.ai.capability.embedding": "Embedding",
   "pages.settings.ai.capability.rerank": "Rerank",
   "pages.settings.ai.card_models": "Model cache",
+  "pages.settings.ai.card_models_collapse": "Collapse model cache",
+  "pages.settings.ai.card_models_expand": "Expand model cache",
   "pages.settings.ai.card_providers": "Providers",
   "pages.settings.ai.card_roles": "Role assignments",
   "pages.settings.ai.clear_key": "Clear the saved key",

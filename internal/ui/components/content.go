@@ -3,6 +3,7 @@ package components
 import (
 	"github.com/egoist/mygo/ui"
 
+	"researchos/internal/ui/icons"
 	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
@@ -14,10 +15,26 @@ type CardOptions struct {
 	Description string
 	// Actions builds the controls at the end of the title row.
 	Actions func()
+	// Collapse makes the title row a disclosure that folds the body away;
+	// nil keeps the body always shown.
+	Collapse *CollapseOptions
 	// Padding defaults to 16.
 	Padding float32
 	// MaxWidth limits the card's width; zero fills the parent.
 	MaxWidth float32
+}
+
+// CollapseOptions makes a card's title row a disclosure, as SwiftUI's
+// DisclosureGroup: a click on the row, or Enter or Space while it has the
+// focus, folds the body, and the chevron at the end of the row points down
+// while the body shows and right while it is folded.
+type CollapseOptions struct {
+	// Open is the state the title row toggles: true shows the body. The
+	// page owns the pointer, so the state outlives the frame.
+	Open *bool
+	// Label names the toggle for assistive technology, in the terms of the
+	// action it performs now, such as "收起模型缓存" while open.
+	Label string
 }
 
 // Card builds a surface panel with a border and the design system's radius.
@@ -39,26 +56,51 @@ func (u *UI) Card(o CardOptions, body func()) ui.Element {
 		card.MaxWidth(o.MaxWidth)
 	}
 	card.Children(func() {
-		if o.Title != "" || o.Description != "" || o.Actions != nil {
-			ui.Column(u.C).Gap(tokens.Space1).Children(func() {
-				ui.Row(u.C).Gap(tokens.Space3).AlignItems(ui.Center).Children(func() {
-					ui.Column(u.C).Grow(1).Gap(tokens.Space1).Children(func() {
-						if o.Title != "" {
-							ui.Text(u.C, o.Title).
-								FontSize(tokens.Typography.CardTitle.Size).
-								FontWeight(int(tokens.Typography.CardTitle.Weight))
-						}
-						if o.Description != "" {
-							u.caption(o.Description)
-						}
-					})
-					if o.Actions != nil {
-						ui.Row(u.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(o.Actions)
-					}
-				})
+		title := func() {
+			ui.Column(u.C).Grow(1).Gap(tokens.Space1).Children(func() {
+				if o.Title != "" {
+					ui.Text(u.C, o.Title).
+						FontSize(tokens.Typography.CardTitle.Size).
+						FontWeight(int(tokens.Typography.CardTitle.Weight))
+				}
+				if o.Description != "" {
+					u.caption(o.Description)
+				}
 			})
 		}
-		body()
+		actions := func() {
+			if o.Actions != nil {
+				ui.Row(u.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(o.Actions)
+			}
+		}
+		if o.Collapse == nil || o.Collapse.Open == nil {
+			if o.Title != "" || o.Description != "" || o.Actions != nil {
+				ui.Column(u.C).Gap(tokens.Space1).Children(func() {
+					ui.Row(u.C).Gap(tokens.Space3).AlignItems(ui.Center).Children(func() {
+						title()
+						actions()
+					})
+				})
+			}
+			body()
+			return
+		}
+		parts := ui.CollapsibleBase(u.C, o.Collapse.Open)
+		row := parts.Trigger.FillWidth().Gap(tokens.Space3).AlignItems(ui.Center)
+		if o.Collapse.Label != "" {
+			row = row.Label(o.Collapse.Label)
+		}
+		row.Children(func() {
+			title()
+			actions()
+			chevron := icons.ChevronDown
+			if !*o.Collapse.Open {
+				chevron = icons.ChevronRight
+			}
+			u.Icon(chevron, icons.SizeDefault).TextColor(mygo.Color(p.TextSecondary))
+		})
+		// Hidden while folded, so the body is not built at all.
+		parts.Panel(body).Gap(tokens.RelatedGap)
 	})
 	return card
 }

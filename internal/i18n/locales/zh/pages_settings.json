@@ -52,6 +52,8 @@
   "pages.settings.ai.capability.embedding": "Embedding",
   "pages.settings.ai.capability.rerank": "Rerank",
   "pages.settings.ai.card_models": "模型缓存",
+  "pages.settings.ai.card_models_collapse": "收起模型缓存",
+  "pages.settings.ai.card_models_expand": "展开模型缓存",
   "pages.settings.ai.card_providers": "Provider 列表",
   "pages.settings.ai.card_roles": "用途分配",
   "pages.settings.ai.clear_key": "清除已保存的密钥",

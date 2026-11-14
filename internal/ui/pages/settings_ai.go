@@ -92,6 +92,9 @@ type settingsAI struct {
 
 	modelProviderLabel string
 	modelProviderID    string
+	// modelCacheOpen is the model cache card's disclosure state: expanded
+	// until the user folds it.
+	modelCacheOpen *bool
 
 	roleChat      settingsRoleForm
 	roleEmbedding settingsRoleForm
@@ -517,10 +520,28 @@ func (s *Settings) aiProviderActions(v *components.UI, a *app.App, p provider.Pr
 	})
 }
 
+// aiModelCacheOpen is the model cache card's disclosure state, expanded
+// until the user folds it.
+func (s *Settings) aiModelCacheOpen() *bool {
+	if s.ai.modelCacheOpen == nil {
+		open := true
+		s.ai.modelCacheOpen = &open
+	}
+	return s.ai.modelCacheOpen
+}
+
 // aiModelCard is the cached model table of one provider.
 func (s *Settings) aiModelCard(v *components.UI, a *app.App, view aiView) {
 	busy := s.aiBusy()
-	v.Card(components.CardOptions{Title: i18n.T("pages.settings.ai.card_models")}, func() {
+	open := s.aiModelCacheOpen()
+	toggle := i18n.T("pages.settings.ai.card_models_collapse")
+	if !*open {
+		toggle = i18n.T("pages.settings.ai.card_models_expand")
+	}
+	v.Card(components.CardOptions{
+		Title:    i18n.T("pages.settings.ai.card_models"),
+		Collapse: &components.CollapseOptions{Open: open, Label: toggle},
+	}, func() {
 		if len(view.providers) == 0 {
 			s.aiEmpty(v, i18n.T("pages.settings.ai.empty_no_provider"), "", nil)
 			return
