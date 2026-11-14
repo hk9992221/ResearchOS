@@ -190,12 +190,19 @@ func (n *Notes) Page(v *components.UI, r ports.Route) {
 	n.load(a, project.ID)
 	list := n.visible()
 	n.tickDialogs()
+	// When the page has nothing to list and no search, the empty state below
+	// offers the create action; a second primary button in the header would
+	// only repeat it.
+	empty := len(list) == 0 && !n.blank() && strings.TrimSpace(n.query) == ""
 
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.notes.title"),
 			Description: i18n.Tf("pages.notes.description", map[string]string{"project": project.Name}),
 			Actions: func() {
+				if empty {
+					return
+				}
 				if v.Button(i18n.T("pages.notes.btn_create"), components.ButtonOptions{
 					Variant: components.VariantPrimary,
 					Icon:    icons.Plus,
@@ -326,11 +333,12 @@ func (n *Notes) banners(v *components.UI) {
 
 // toolbar is the search field and the two choices that shape the list.
 func (n *Notes) toolbar(v *components.UI) {
-	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.End).Wrap().Children(func() {
+	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Center).Wrap().Children(func() {
 		v.SearchInput(&n.query, components.SearchOptions{
 			Label:       i18n.T("pages.notes.field_search"),
 			Placeholder: i18n.T("pages.notes.field_search_hint"),
-		})
+			Compact:     true,
+		}).Width(components.SearchFieldWidth)
 		ui.Spacer(v.C)
 		ui.Segmented(v.C, &n.view,
 			i18n.T("pages.notes.view_cards"),

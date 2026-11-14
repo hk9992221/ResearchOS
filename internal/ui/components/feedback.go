@@ -49,7 +49,7 @@ func (u *UI) Banner(o BannerOptions) ui.Element {
 	}
 	fg := u.foreground(o.Tone)
 	row := ui.Row(u.C).
-		Fill().
+		FillWidth().
 		Padding(tokens.Space3, tokens.PanelPadding).
 		Gap(tokens.RelatedGap).
 		AlignItems(ui.Start).
@@ -90,6 +90,11 @@ type EmptyStateOptions struct {
 	OnAction    func()
 }
 
+// EmptyStateMinimumHeight is the floor of an empty state: the explanation
+// centers in a block tall enough to read as the page's content, rather than
+// hugging the toolbar above it.
+const EmptyStateMinimumHeight float32 = 360
+
 // EmptyState builds a centered explanation of an empty area. A bare blank
 // region is never an acceptable empty state.
 func (u *UI) EmptyState(o EmptyStateOptions) ui.Element {
@@ -99,7 +104,8 @@ func (u *UI) EmptyState(o EmptyStateOptions) ui.Element {
 		icon = icons.FileText
 	}
 	return ui.Column(u.C).
-		Fill().
+		FillWidth().
+		MinHeight(EmptyStateMinimumHeight).
 		Padding(tokens.PageBlockGap).
 		Gap(tokens.RelatedGap).
 		AlignItems(ui.Center).
@@ -119,7 +125,11 @@ func (u *UI) EmptyState(o EmptyStateOptions) ui.Element {
 					MaxWidth(tokens.Space12 * 8)
 			}
 			if o.ActionLabel != "" {
-				u.Button(o.ActionLabel, ButtonOptions{Variant: VariantPrimary, Size: SizeMedium, Icon: icons.Plus, OnClick: o.OnAction})
+				// The button hugs its content, so the row centers it: a
+				// column child would take the whole width and snap left.
+				ui.Row(u.C).Justify(ui.Center).Children(func() {
+					u.Button(o.ActionLabel, ButtonOptions{Variant: VariantPrimary, Size: SizeMedium, Icon: icons.Plus, OnClick: o.OnAction})
+				})
 			}
 		})
 }

@@ -229,12 +229,19 @@ func (n *Ideas) Page(v *components.UI, r ports.Route) {
 	n.tickLoad(v, a, project.ID)
 	list := n.snapshot()
 	n.tickDialogs()
+	// An unfiltered empty list shows its create action in the empty state, so
+	// the header does not repeat the same primary button.
+	empty := len(list) == 0 && !n.blank() && !readOnly &&
+		strings.TrimSpace(n.query) == "" && len(n.statuses) == 0
 
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.ideas.title"),
 			Description: i18n.Tf("pages.ideas.description", map[string]string{"project": project.Name}),
 			Actions: func() {
+				if empty {
+					return
+				}
 				if v.Button(i18n.T("pages.ideas.btn_create"), components.ButtonOptions{
 					Variant:  components.VariantPrimary,
 					Icon:     icons.Plus,
@@ -378,7 +385,7 @@ func (n *Ideas) banners(v *components.UI) {
 // toolbar is the search field, the status chips, the sort menu and the view
 // switch.
 func (n *Ideas) toolbar(v *components.UI) {
-	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.End).Wrap().Children(func() {
+	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Center).Wrap().Children(func() {
 		n.searchField(v)
 		ui.Spacer(v.C)
 		n.sortMenu(v)
@@ -392,13 +399,11 @@ func (n *Ideas) toolbar(v *components.UI) {
 
 // searchField is the server-side title/description search.
 func (n *Ideas) searchField(v *components.UI) {
-	box := ui.Column(v.C).Gap(tokens.Space1).Width(320)
-	box.Children(func() {
-		v.SearchInput(&n.query, components.SearchOptions{
-			Label:       i18n.T("pages.ideas.field_search"),
-			Placeholder: i18n.T("pages.ideas.field_search_hint"),
-		})
-	})
+	v.SearchInput(&n.query, components.SearchOptions{
+		Label:       i18n.T("pages.ideas.field_search"),
+		Placeholder: i18n.T("pages.ideas.field_search_hint"),
+		Compact:     true,
+	}).Width(components.SearchFieldWidth)
 }
 
 // sortMenu chooses the service sort of the list.

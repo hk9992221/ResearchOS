@@ -258,7 +258,7 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			v.Skeleton(components.SkeletonOptions{Lines: 5})
 			return
 		}
-		ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
+		ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.End).Children(func() {
 			picker := v.Select(&selector, components.SelectOptions{
 				Label:   i18n.T("pages.literature.field_collection"),
 				Options: names,
@@ -271,7 +271,8 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			searchField := v.SearchInput(&l.query, components.SearchOptions{
 				Label:       i18n.T("pages.literature.field_search"),
 				Placeholder: i18n.T("pages.literature.field_search_hint"),
-			})
+				Compact:     true,
+			}).Width(components.SearchFieldWidth)
 			if searchField.Submitted() {
 				l.loadItems(a)
 			}
