@@ -88,6 +88,10 @@ func (e *weeklySkillEditor) dialog(v *components.UI, a *app.App, svc *Services, 
 			Disabled:    e.busy,
 		})
 		area.MinHeight(tokens.Space12 * 7)
+		// A long skill text scrolls inside the field rather than growing the
+		// dialog past the window: the dialog body and the field each keep
+		// their room, and the save buttons stay visible.
+		area.MaxHeight(tokens.Space12 * 8)
 		if e.err != "" {
 			ui.Text(v.C, e.err).
 				FontSize(tokens.Typography.Secondary.Size).
@@ -240,6 +244,7 @@ func weeklySkillPicker(v *components.UI, a *app.App, svc *Services, projectID st
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
 			Icon:    icons.Edit,
+			Align:   ui.End,
 		}).Clicked() {
 			for _, skill := range set.Skills {
 				if skill.ID != *id {

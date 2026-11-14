@@ -80,6 +80,7 @@ func (d *ExperimentDetail) createRunDialog(v *components.UI, a *app.App, project
 				if v.IconButton(icons.Close, i18n.T("pages.experiments.run_param_remove"), components.IconButtonOptions{
 					Variant: components.VariantGhost,
 					Size:    components.SizeSmall,
+					Align:   ui.End,
 				}).Clicked() {
 					d.runParams = append(d.runParams[:i], d.runParams[i+1:]...)
 					if len(d.runParams) == 0 {
@@ -113,7 +114,7 @@ func (d *ExperimentDetail) createRunDialog(v *components.UI, a *app.App, project
 // runDirField is the directory selector of a run: inherit by default, or pick
 // an override. A dropped folder becomes the override.
 func (d *ExperimentDetail) runDirField(v *components.UI) {
-	ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.End).Children(func() {
+	ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 		ui.Row(v.C).Grow(1).Children(func() {
 			v.Input(&d.runDir, components.FieldOptions{
 				Label:       i18n.T("pages.experiments.run_dir_label"),
@@ -123,7 +124,8 @@ func (d *ExperimentDetail) runDirField(v *components.UI) {
 			})
 		})
 		if v.Button(i18n.T("pages.experiments.btn_choose_folder"), components.ButtonOptions{
-			Icon: icons.FolderOpen,
+			Icon:  icons.FolderOpen,
+			Align: ui.Center,
 		}).Clicked() {
 			if d.Services.ChooseFolder != nil {
 				if dir, err := d.Services.ChooseFolder(); err == nil && strings.TrimSpace(dir) != "" {
@@ -133,6 +135,7 @@ func (d *ExperimentDetail) runDirField(v *components.UI) {
 		}
 		if v.Button(i18n.T("pages.experiments.run_dir_clear"), components.ButtonOptions{
 			Variant: components.VariantGhost,
+			Align:   ui.Center,
 		}).Clicked() {
 			d.runDir = ""
 		}
@@ -476,7 +479,8 @@ func (d *ExperimentDetail) directoryDialog(v *components.UI, a *app.App, project
 				})
 			})
 			if v.Button(i18n.T("pages.experiments.btn_choose_folder"), components.ButtonOptions{
-				Icon: icons.FolderOpen,
+				Icon:  icons.FolderOpen,
+				Align: ui.End,
 			}).Clicked() {
 				if d.Services.ChooseFolder != nil {
 					if dir, err := d.Services.ChooseFolder(); err == nil && strings.TrimSpace(dir) != "" {

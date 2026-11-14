@@ -278,6 +278,7 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			}
 			if v.Button(i18n.T("pages.literature.btn_search"), components.ButtonOptions{
 				Variant: components.VariantSecondary,
+				Align:   ui.End,
 			}).Clicked() {
 				l.loadItems(a)
 			}

@@ -46,7 +46,7 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 		}
 	}
 	if projectID == "" {
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
+		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.consistency.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Scan,
@@ -62,7 +62,7 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 	results, applyErr, applying := s.results, s.applyErr, s.applying
 	s.mu.Unlock()
 
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.4, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.consistency.title"),
 			Description: i18n.T("pages.consistency.description"),

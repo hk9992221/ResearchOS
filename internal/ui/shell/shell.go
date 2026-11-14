@@ -115,11 +115,17 @@ func (s *Shell) View(c *ui.Context) {
 			s.topBar(v, narrow)
 			ui.Divider(c)
 			s.taskStrip(v)
-			if showInspector {
-				s.splitArea(v, width-sidebarWidth, inspector)
-			} else {
-				s.content(v)
-			}
+			// The work area takes the height the toolbar and the task strip
+			// leave: without a bounded height a page's scroll view and an
+			// inspector's body would grow past the window, which clips the
+			// last controls instead of scrolling them into view.
+			ui.Column(v.C).FillWidth().Grow(1).Clip().Children(func() {
+				if showInspector {
+					s.splitArea(v, width-sidebarWidth, inspector)
+				} else {
+					s.content(v)
+				}
+			})
 		})
 	})
 
@@ -395,7 +401,7 @@ func (s *Shell) splitArea(v *components.UI, total float32, insp app.Inspector) {
 		s.content(v)
 	}, func() {
 		s.inspector(v, insp)
-	})
+	}).Fill()
 	s.mainSize = size
 }
 

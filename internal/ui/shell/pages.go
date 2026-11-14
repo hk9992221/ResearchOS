@@ -874,7 +874,7 @@ func projectTable(v *components.UI, ctx context.Context, a *app.App, page *proje
 // names are the same in every language; only their descriptions translate.
 func helpPage(a *app.App) Page {
 	return func(v *components.UI, r ports.Route) {
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
+		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{
 				Title:       pageTitle(app.RouteHelp),
 				Description: i18n.T("shell.help.description"),

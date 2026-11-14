@@ -617,10 +617,12 @@ func (n *Ideas) group(v *components.UI, a *app.App, projectID string, status ide
 				TextColor(mygo.Color(p.TextMuted))
 			return
 		}
-		ui.Row(v.C).FillWidth().Wrap().Gap(tokens.ComponentGap).AlignItems(ui.Start).Children(func() {
-			for _, idea := range items {
-				n.groupCard(v, a, projectID, idea, readOnly)
-			}
+		v.CardGrid(components.CardGridOptions{
+			Count:    len(items),
+			MinWidth: ideasCardMinWidth,
+			MaxWidth: ideasCardMaxWidth,
+			Gap:      tokens.ComponentGap,
+			Card:     func(i int) { n.groupCard(v, a, projectID, items[i], readOnly) },
 		})
 	})
 	if readOnly {
@@ -643,8 +645,6 @@ func (n *Ideas) groupCard(v *components.UI, a *app.App, projectID string, idea *
 		Background(mygo.Color(p.BgSubtle)).
 		Border(1, mygo.Color(p.BorderDefault)).
 		Radius(tokens.RadiusMD).
-		MinWidth(ideasCardMinWidth).
-		MaxWidth(ideasCardMaxWidth).
 		OnClick(open)
 	if !readOnly {
 		card.Drag(ideaDrag{ID: idea.ID, Title: idea.Title, Status: idea.Status})

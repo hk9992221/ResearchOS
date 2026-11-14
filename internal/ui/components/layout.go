@@ -13,20 +13,59 @@ const ReadingWidth float32 = 860
 
 // PageContainerOptions configures the page's content area.
 type PageContainerOptions struct {
-	// MaxWidth limits the content; zero fills the window.
+	// MaxWidth caps the content at a reading measure (ReadingWidth). Only a
+	// page that is itself long-form prose sets it: a page of data — a
+	// settings form, a list, a board, a table — leaves it zero and fills the
+	// width the window gives it.
 	MaxWidth float32
 	Children func()
 }
 
 // PageContainer applies the design system's 24px page margin and an optional
-// maximum width, and lays its content out in a column.
+// reading measure, and lays its content out in a column. A page without
+// MaxWidth fills the work area at every window size; a capped page sits in
+// the middle of the work area rather than hugging its left edge.
 func (u *UI) PageContainer(o PageContainerOptions) ui.Element {
 	col := ui.Column(u.C).FillWidth().Padding(tokens.PagePadding).Gap(tokens.PageBlockGap)
 	if o.MaxWidth > 0 {
-		col.MaxWidth(o.MaxWidth)
+		col.MaxWidth(o.MaxWidth).Margin(0, ui.Auto)
 	}
 	col.Children(o.Children)
 	return col
+}
+
+// ToolbarRowOptions configures ToolbarRow.
+type ToolbarRowOptions struct {
+	// Align places the controls across the row; zero centers them. A row
+	// that mixes fields, whose labels sit above their controls, with buttons
+	// uses End, so the buttons line up with the control boxes rather than
+	// with the labels.
+	Align ui.Align
+	// Content builds the row's controls.
+	Content func()
+}
+
+// ToolbarRow lays controls out in one row at the top of a card or page, with
+// one gap between them, wrapping when the window is narrow. A button in it
+// gives Align: ui.End (or ui.Center, for compact controls), since a button
+// otherwise hugs its content from the start of its parent, which in a row is
+// the top.
+//
+//	u.ToolbarRow(ToolbarRowOptions{Align: ui.End, Content: func() {
+//		u.Select(&f.provider, SelectOptions{Label: ..., Width: 280})
+//		u.Button(label, ButtonOptions{Align: ui.End})
+//	}})
+func (u *UI) ToolbarRow(o ToolbarRowOptions) ui.Element {
+	row := ui.Row(u.C).
+		FillWidth().
+		Gap(tokens.ComponentGap).
+		Wrap()
+	if o.Align == 0 {
+		row.AlignItems(ui.Center)
+	} else {
+		row.AlignItems(o.Align)
+	}
+	return row.Children(o.Content)
 }
 
 // PageHeaderOptions configures the header every page starts with

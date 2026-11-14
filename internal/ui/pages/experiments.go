@@ -474,7 +474,7 @@ func (l *ExperimentsList) directoryField(v *components.UI, target string) {
 	if target != "create" {
 		return
 	}
-	ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.End).Children(func() {
+	ui.Row(v.C).Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 		ui.Row(v.C).Grow(1).Children(func() {
 			v.Input(path, components.FieldOptions{
 				Label:       i18n.T("pages.experiments.field_dir"),
@@ -484,7 +484,8 @@ func (l *ExperimentsList) directoryField(v *components.UI, target string) {
 			})
 		})
 		if v.Button(i18n.T("pages.experiments.btn_choose_folder"), components.ButtonOptions{
-			Icon: icons.FolderOpen,
+			Icon:  icons.FolderOpen,
+			Align: ui.Center,
 		}).Clicked() {
 			l.pickFolder(path)
 		}

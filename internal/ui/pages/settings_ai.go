@@ -93,8 +93,8 @@ type settingsAI struct {
 
 	modelProviderLabel string
 	modelProviderID    string
-	// modelCacheOpen is the model cache card's disclosure state: expanded
-	// until the user folds it.
+	// modelCacheOpen is the model cache card's disclosure state: folded
+	// until the user opens it.
 	modelCacheOpen *bool
 
 	roleChat      settingsRoleForm
@@ -607,11 +607,12 @@ func (s *Settings) aiProviderActions(v *components.UI, a *app.App, p provider.Pr
 	})
 }
 
-// aiModelCacheOpen is the model cache card's disclosure state, expanded
-// until the user folds it.
+// aiModelCacheOpen is the model cache card's disclosure state. It starts
+// folded: a provider's cache holds tens to hundreds of models, and the whole
+// list must not lengthen the AI tab until the user asks for it.
 func (s *Settings) aiModelCacheOpen() *bool {
 	if s.ai.modelCacheOpen == nil {
-		open := true
+		open := false
 		s.ai.modelCacheOpen = &open
 	}
 	return s.ai.modelCacheOpen
@@ -643,7 +644,7 @@ func (s *Settings) aiModelCard(v *components.UI, a *app.App, view aiView) {
 			// A provider rename changed the label; keep the selection by id.
 			s.ai.modelProviderLabel = labels[index]
 		}
-		ui.Row(v.C).FillWidth().Gap(tokens.RelatedGap).AlignItems(ui.End).Wrap().Children(func() {
+		v.ToolbarRow(components.ToolbarRowOptions{Align: ui.End, Content: func() {
 			sel := v.Select(&s.ai.modelProviderLabel, components.SelectOptions{
 				Label:    i18n.T("pages.settings.ai.field_provider"),
 				Options:  labels,
@@ -659,6 +660,7 @@ func (s *Settings) aiModelCard(v *components.UI, a *app.App, view aiView) {
 				Variant: components.VariantSecondary, Size: components.SizeSmall,
 				Icon:     icons.Refresh,
 				Disabled: busy,
+				Align:    ui.End,
 				Loading:  view.actionBusy == "sync:"+s.ai.modelProviderID,
 				OnClick:  func() { s.aiSyncModels(a, s.ai.modelProviderID) },
 			})
@@ -666,9 +668,10 @@ func (s *Settings) aiModelCard(v *components.UI, a *app.App, view aiView) {
 				Variant: components.VariantSecondary, Size: components.SizeSmall,
 				Icon:     icons.Plus,
 				Disabled: busy,
+				Align:    ui.End,
 				OnClick:  func() { s.aiOpenManualModel(s.ai.modelProviderID) },
 			})
-		})
+		}})
 		models := view.models[s.ai.modelProviderID]
 		if len(models) == 0 {
 			s.aiEmpty(v, i18n.T("pages.settings.ai.empty_models"), "", nil)
@@ -798,7 +801,7 @@ func (s *Settings) aiRoleRow(v *components.UI, a *app.App, view aiView, r role.R
 		if form.modelLabel == "" {
 			form.modelLabel = aiPlaceholderModel()
 		}
-		ui.Row(v.C).FillWidth().Gap(tokens.RelatedGap).AlignItems(ui.End).Wrap().Children(func() {
+		v.ToolbarRow(components.ToolbarRowOptions{Content: func() {
 			providerSel := v.Select(&form.providerLabel, components.SelectOptions{
 				Label:    i18n.Tf("pages.settings.ai.role_provider_label", map[string]string{"role": roleLabel(r)}),
 				Options:  append([]string{aiPlaceholderProvider()}, labels...),
@@ -834,6 +837,7 @@ func (s *Settings) aiRoleRow(v *components.UI, a *app.App, view aiView, r role.R
 				Variant:  components.VariantSecondary,
 				Size:     components.SizeSmall,
 				Disabled: busy || providerID == "" || form.modelLabel == aiPlaceholderModel(),
+				Align:    ui.Center,
 				Loading:  view.roleBusy == r && view.roleBusyAct == "save",
 				OnClick:  func() { s.aiSaveRole(a, r, view) },
 			})
@@ -841,10 +845,11 @@ func (s *Settings) aiRoleRow(v *components.UI, a *app.App, view aiView, r role.R
 			v.Button(i18n.T("pages.settings.ai.btn_clear_role"), components.ButtonOptions{
 				Variant: components.VariantGhost, Size: components.SizeSmall,
 				Disabled: clearDisabled,
+				Align:    ui.Center,
 				Loading:  view.roleBusy == r && view.roleBusyAct == "clear",
 				OnClick:  func() { s.aiClearRole(a, r) },
 			})
-		})
+		}})
 		if form.err != "" {
 			ui.Text(v.C, form.err).
 				FontSize(tokens.Typography.Caption.Size).

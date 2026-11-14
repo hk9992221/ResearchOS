@@ -56,7 +56,7 @@ func (s *Trash) Page(v *components.UI, r ports.Route) {
 		projectID = p.ID
 	}
 	if projectID == "" {
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
+		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.trash.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Trash,
@@ -90,7 +90,7 @@ func (s *Trash) Page(v *components.UI, r ports.Route) {
 	visible := filterTrash(items, s.filterKey)
 	sortTrash(visible, s.newFirst)
 
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.4, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.trash.title"),
 			Description: i18n.T("pages.trash.description"),

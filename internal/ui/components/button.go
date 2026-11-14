@@ -51,7 +51,13 @@ type ButtonOptions struct {
 	// label: the button keeps its size while the action runs.
 	Loading bool
 	// Width fixes the button's width; zero lets the content size it.
-	Width   float32
+	Width float32
+	// Align places the button across its parent, for a button beside a
+	// taller control in a toolbar row: a button hugs its content and sits at
+	// the start of a column, which in a row leaves it above the control it
+	// belongs to, so a row of fields and buttons gives its buttons Center.
+	// Zero keeps that default.
+	Align   ui.Align
 	OnClick func()
 
 	// iconOnly makes a square button of one size, with no horizontal
@@ -123,6 +129,9 @@ func (u *UI) Button(text string, o ButtonOptions) ui.Element {
 	if o.Tooltip != "" {
 		btn.Tooltip(o.Tooltip)
 	}
+	if o.Align != 0 {
+		btn.AlignSelf(o.Align)
+	}
 	if o.Label != "" {
 		btn.Label(o.Label)
 	}
@@ -179,7 +188,9 @@ type IconButtonOptions struct {
 	// Disabled and Loading behave as ButtonOptions.
 	Disabled bool
 	Loading  bool
-	OnClick  func()
+	// Align behaves as ButtonOptions.Align.
+	Align   ui.Align
+	OnClick func()
 }
 
 // IconButton builds a square button showing only an icon. label names it for
@@ -194,6 +205,7 @@ func (u *UI) IconButton(icon *icons.Icon, label string, o IconButtonOptions) ui.
 		Tooltip:  label,
 		Disabled: o.Disabled,
 		Loading:  o.Loading,
+		Align:    o.Align,
 		iconOnly: true,
 		OnClick:  o.OnClick,
 	})

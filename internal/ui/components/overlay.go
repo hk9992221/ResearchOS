@@ -51,17 +51,27 @@ type DialogOptions struct {
 	Actions func()
 }
 
+// DialogWindowMargin is the room a dialog keeps from the window's edges: a
+// dialog taller than the window scrolls its body within this margin instead
+// of growing past the window, so its footer buttons stay reachable.
+const DialogWindowMargin float32 = tokens.Space8
+
 // Dialog builds a modal dialog over a dimmed window. It keeps the keyboard
 // while open, Tab cycles inside it, Escape closes it, and the focus returns
-// to the control that opened it when it closes.
+// to the control that opened it when it closes. The panel is bounded by the
+// window: its title stays, its body scrolls when the content is long, and the
+// footer actions stay at the bottom where they are always reachable.
 func (u *UI) Dialog(open *bool, o DialogOptions, body func()) ui.Element {
 	width := o.Width
 	if width <= 0 {
 		width = tokens.Space12 * 10
 	}
+	winW, winH := u.C.Size()
 	return ui.DialogBase(u.C, open, func(backdrop, panel ui.Element) {
 		backdrop.Background(mygo.Color(tokens.Scrim))
 		panel.Width(width).
+			MaxWidth(max(winW-DialogWindowMargin, tokens.Space12*5)).
+			MaxHeight(max(winH-DialogWindowMargin, tokens.Space12*5)).
 			Padding(tokens.Space6).
 			Gap(tokens.RelatedGap).
 			Radius(tokens.RadiusXL).
@@ -81,7 +91,9 @@ func (u *UI) Dialog(open *bool, o DialogOptions, body func()) ui.Element {
 					TextColor(mygo.Color(u.T.Palette.TextSecondary))
 			}
 		})
-		body()
+		ui.Scroll(u.C).FillWidth().Grow(1).Children(func() {
+			ui.Column(u.C).FillWidth().Gap(tokens.RelatedGap).Children(body)
+		})
 		if o.Actions != nil {
 			ui.Row(u.C).Gap(tokens.ComponentGap).Justify(ui.End).Children(o.Actions)
 		}
@@ -137,7 +149,10 @@ func (u *UI) ConfirmDialog(o ConfirmOptions) ui.Element {
 	return ui.DialogBase(u.C, o.Open, func(backdrop, panel ui.Element) {
 		st := ui.Local(panel, "confirm", func() confirmState { return confirmState{} })
 		backdrop.Background(mygo.Color(tokens.Scrim))
+		winW, winH := u.C.Size()
 		panel.Width(tokens.Space12*10).
+			MaxWidth(max(winW-DialogWindowMargin, tokens.Space12*5)).
+			MaxHeight(max(winH-DialogWindowMargin, tokens.Space12*5)).
 			Padding(tokens.Space6).
 			Gap(tokens.RelatedGap).
 			Radius(tokens.RadiusXL).
@@ -145,20 +160,24 @@ func (u *UI) ConfirmDialog(o ConfirmOptions) ui.Element {
 			Border(1, mygo.Color(u.T.Palette.BorderDefault)).
 			Shadow(0, 8, 24, 0, mygo.Color(tokens.Shadow))
 
-		ui.Text(u.C, o.Title).
-			FontSize(tokens.Typography.SectionTitle.Size).
-			FontWeight(int(tokens.Typography.SectionTitle.Weight)).
-			TextColor(mygo.Color(u.T.Palette.TextPrimary))
-		if o.Message != "" {
-			ui.Text(u.C, o.Message).
-				FontSize(tokens.Typography.Body.Size).
-				TextColor(mygo.Color(u.T.Palette.TextSecondary))
-		}
-		if st.err != "" {
-			ui.Text(u.C, st.err).
-				FontSize(tokens.Typography.Secondary.Size).
-				TextColor(mygo.Color(u.T.Palette.StatusDanger))
-		}
+		ui.Scroll(u.C).FillWidth().Grow(1).Children(func() {
+			ui.Column(u.C).FillWidth().Gap(tokens.RelatedGap).Children(func() {
+				ui.Text(u.C, o.Title).
+					FontSize(tokens.Typography.SectionTitle.Size).
+					FontWeight(int(tokens.Typography.SectionTitle.Weight)).
+					TextColor(mygo.Color(u.T.Palette.TextPrimary))
+				if o.Message != "" {
+					ui.Text(u.C, o.Message).
+						FontSize(tokens.Typography.Body.Size).
+						TextColor(mygo.Color(u.T.Palette.TextSecondary))
+				}
+				if st.err != "" {
+					ui.Text(u.C, st.err).
+						FontSize(tokens.Typography.Secondary.Size).
+						TextColor(mygo.Color(u.T.Palette.StatusDanger))
+				}
+			})
+		})
 		ui.Row(u.C).Gap(tokens.ComponentGap).Justify(ui.End).Children(func() {
 			if u.Button(cancelLabel, ButtonOptions{Variant: VariantSecondary, Size: SizeMedium}).Clicked() {
 				*o.Open = false

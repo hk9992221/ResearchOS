@@ -1820,6 +1820,7 @@ func deadlineField(v *components.UI, date **time.Time, label string) bool {
 				Size:    components.SizeSmall,
 				Icon:    icons.Clock,
 				Label:   label,
+				Align:   ui.End,
 			}).Clicked() {
 				now := time.Now()
 				today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
@@ -1836,6 +1837,7 @@ func deadlineField(v *components.UI, date **time.Time, label string) bool {
 			Size:    components.SizeSmall,
 			Icon:    icons.Close,
 			Label:   label,
+			Align:   ui.End,
 		}).Clicked() {
 			*date = nil
 			changed = true

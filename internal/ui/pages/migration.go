@@ -47,7 +47,7 @@ type Migration struct {
 // Page renders the migration flow.
 func (m *Migration) Page(v *components.UI, r ports.Route) {
 	if m.Services.Workspace == nil {
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
+		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.migration.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.FolderOpen,
@@ -71,7 +71,7 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 		}
 	}
 
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.3, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.migration.title"),
 			Description: i18n.T("pages.migration.description"),

@@ -36,7 +36,7 @@ type Diagnostics struct {
 // Page renders the diagnostic report.
 func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 	if s.Services.Diagnostics == nil || s.Services.App == nil {
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth, Children: func() {
+		v.PageContainer(components.PageContainerOptions{Children: func() {
 			v.PageHeader(components.PageHeaderOptions{Title: i18n.T("pages.diagnostics.title")})
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Diagnostics,
@@ -51,7 +51,7 @@ func (s *Diagnostics) Page(v *components.UI, r ports.Route) {
 	report, loaded, loading, errText, include := s.report, s.loaded, s.loading, s.err, s.includeFileScan
 	s.mu.Unlock()
 
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.5, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.diagnostics.title"),
 			Description: i18n.T("pages.diagnostics.description"),

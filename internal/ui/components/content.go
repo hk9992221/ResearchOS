@@ -20,8 +20,6 @@ type CardOptions struct {
 	Collapse *CollapseOptions
 	// Padding defaults to 16.
 	Padding float32
-	// MaxWidth limits the card's width; zero fills the parent.
-	MaxWidth float32
 }
 
 // CollapseOptions makes a card's title row a disclosure, as SwiftUI's
@@ -52,9 +50,6 @@ func (u *UI) Card(o CardOptions, body func()) ui.Element {
 		Background(mygo.Color(p.BgSurface)).
 		Border(1, mygo.Color(p.BorderDefault)).
 		Radius(tokens.RadiusLG)
-	if o.MaxWidth > 0 {
-		card.MaxWidth(o.MaxWidth)
-	}
 	card.Children(func() {
 		title := func() {
 			ui.Column(u.C).Grow(1).Gap(tokens.Space1).Children(func() {
@@ -103,6 +98,72 @@ func (u *UI) Card(o CardOptions, body func()) ui.Element {
 		parts.Panel(body).Gap(tokens.RelatedGap)
 	})
 	return card
+}
+
+// CardGridMinWidth is the narrowest a card in a CardGrid may be, below which
+// a column is dropped: a card narrower than this reads as a list row.
+const CardGridMinWidth float32 = 288
+
+// CardGridOptions configures an adaptive grid of cards.
+type CardGridOptions struct {
+	// Count is the number of cards.
+	Count int
+	// MinWidth is the narrowest a card may be. The grid fits as many columns
+	// as the width allows and takes fewer as the window narrows; zero uses
+	// CardGridMinWidth. The cards share their column equally.
+	MinWidth float32
+	// MaxWidth, when set, keeps a card from growing past a readable width: a
+	// wide grid takes another column while its cards stay at least MinWidth.
+	MaxWidth float32
+	// Gap spaces the cards; zero uses SectionGap.
+	Gap float32
+	// Card builds card i. It fills its column, and its row stretches it to
+	// the height of the tallest card there.
+	Card func(i int)
+}
+
+// CardGrid lays cards out in as many columns as its width has room for, so
+// that the columns line up at every window size: every card of a row is as
+// tall as the tallest there, and the grid reflows as the window resizes. It
+// measures the width the frame gave it, so the page never computes its own
+// width; the first frame of a grid lays one column and the next reflows.
+func (u *UI) CardGrid(o CardGridOptions) ui.Element {
+	grid := ui.Grid(u.C).FillWidth()
+	if o.Count <= 0 {
+		return grid
+	}
+	gap := o.Gap
+	if gap <= 0 {
+		gap = tokens.SectionGap
+	}
+	minWidth := o.MinWidth
+	if minWidth <= 0 {
+		minWidth = CardGridMinWidth
+	}
+	cols := 1
+	if w := grid.Bounds().W; w > 0 {
+		cols = max(1, int((w+gap)/(minWidth+gap)))
+		// A card wider than MaxWidth reads poorly; another column is better
+		// while the cards in it stay at least MinWidth wide.
+		if o.MaxWidth > minWidth {
+			for cols < o.Count {
+				card := (w - gap*float32(cols-1)) / float32(cols)
+				next := (w - gap*float32(cols)) / float32(cols+1)
+				if card <= o.MaxWidth || next < minWidth {
+					break
+				}
+				cols++
+			}
+		}
+		cols = min(cols, o.Count)
+	}
+	grid.Gap(gap).Columns(cols)
+	grid.Children(func() {
+		for i := range o.Count {
+			o.Card(i)
+		}
+	})
+	return grid
 }
 
 // Column describes a table column (ui_plan.md §10.1).

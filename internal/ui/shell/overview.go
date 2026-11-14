@@ -40,9 +40,11 @@ type OverviewAPI interface {
 	Invalidate(projectID string)
 }
 
-// overviewWideWidth is the §6.3 breakpoint: a window at least this wide shows
-// two card columns, anything narrower shows one.
-const overviewWideWidth float32 = 1100
+// overviewCardMinWidth is the narrowest a §6.3 widget card may be: the overview
+// fits as many columns of at least this width as the window has room for, so a
+// wide window shows more than the two columns of the original design and a
+// narrow one shows a single column.
+const overviewCardMinWidth float32 = 560
 
 // overviewFocusRunes bounds the focus text a card shows. focus_md is allowed
 // 20000 characters; the complete text stays reachable through the edit dialog.
@@ -277,7 +279,7 @@ func (o *overviewState) refreshingWidget(w overview.WidgetID) bool {
 // render builds the header, the state banners and the card grid.
 func (o *overviewState) render(v *components.UI, a *app.App, projects *projectsPage, ctx context.Context, p *project.Project, snap *overview.Snapshot, loading bool, problems []string) {
 	archived := p.Status == project.StatusArchived
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.4, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       p.Name,
 			Description: p.Summary,
@@ -351,29 +353,24 @@ func (o *overviewState) render(v *components.UI, a *app.App, projects *projectsP
 	}})
 }
 
-// skeletonGrid reserves the final two-column layout while the first snapshot
-// loads, so the cards do not jump in when the data arrives.
+// skeletonGrid reserves the final grid while the first snapshot loads, so the
+// cards do not jump in when the data arrives.
 func (o *overviewState) skeletonGrid(v *components.UI) {
-	two := overviewTwoColumn(v)
 	cards := make([]func(), 0, len(overviewWidgetOrder))
 	for _, w := range overviewWidgetOrder {
 		w := w
 		cards = append(cards, func() {
-			card := v.Card(components.CardOptions{Title: cardTitle(w)}, func() {
+			v.Card(components.CardOptions{Title: cardTitle(w)}, func() {
 				v.Skeleton(components.SkeletonOptions{Lines: 3})
 			})
-			if two {
-				card.Grow(1)
-			}
 		})
 	}
-	overviewGrid(v, two, cards)
+	overviewGrid(v, cards)
 }
 
 // grid renders the eight cards in §3.2 order and hides the ones the service
 // reports unavailable.
 func (o *overviewState) grid(v *components.UI, a *app.App, p *project.Project, snap *overview.Snapshot, archived bool) {
-	two := overviewTwoColumn(v)
 	cards := make([]func(), 0, len(overviewWidgetOrder))
 	for _, w := range overviewWidgetOrder {
 		st := widgetState(snap, w)
@@ -382,59 +379,30 @@ func (o *overviewState) grid(v *components.UI, a *app.App, p *project.Project, s
 		}
 		w, st := w, st
 		cards = append(cards, func() {
-			o.card(v, a, p, snap, archived, w, st, two)
+			o.card(v, a, p, snap, archived, w, st)
 		})
 	}
-	overviewGrid(v, two, cards)
+	overviewGrid(v, cards)
 }
 
-// overviewTwoColumn reports whether the window is wide enough for §6.3's two
-// columns. The breakpoint is the window width, so it does not move when the
-// sidebar collapses.
-func overviewTwoColumn(v *components.UI) bool {
-	width, _ := v.C.Size()
-	return width >= overviewWideWidth
-}
-
-// overviewGrid lays the cards out in the §6.3 grid: two growing cards on each
-// row when the window is wide, one column of full-width cards below 1100px. A
-// row with a single card keeps an empty second column, so a hidden widget does
-// not stretch the card beside it.
-//
-// Wide rows align their cards with Stretch, the layout's native equal-height
-// mechanism: the row takes the height of its taller card, and the cross-axis
-// stretch of the flex line gives the shorter card that same height. Each card
-// keeps laying its own children out from the top, so a short card holds its
-// title and body at the top and only gains empty space below; nothing is
-// clipped and no per-card height is guessed. Rows are independent, so each
-// pair is only as tall as its own taller card.
-func overviewGrid(v *components.UI, two bool, cards []func()) {
-	ui.Column(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-		if !two {
-			for _, card := range cards {
-				card()
-			}
-			return
-		}
-		for i := 0; i < len(cards); i += 2 {
-			i := i
-			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Stretch).Children(func() {
-				cards[i]()
-				if i+1 < len(cards) {
-					cards[i+1]()
-				} else {
-					ui.Spacer(v.C).Grow(1)
-				}
-			})
-		}
+// overviewGrid lays the cards out in the §6.3 grid: as many columns of
+// overviewCardMinWidth as the window has room for, reflowing as it resizes.
+// A card of a row is as tall as the row's tallest, so the rows line up; each
+// card keeps laying its own children out from the top and only gains empty
+// space below, so nothing is clipped and no per-card height is guessed.
+func overviewGrid(v *components.UI, cards []func()) {
+	v.CardGrid(components.CardGridOptions{
+		Count:    len(cards),
+		MinWidth: overviewCardMinWidth,
+		Card:     func(i int) { cards[i]() },
 	})
 }
 
 // card renders one widget: its title, the unconfirmed badge, the degraded
 // refresh, and the "view all" action. Grow fills half of a two-column row.
-func (o *overviewState) card(v *components.UI, a *app.App, p *project.Project, snap *overview.Snapshot, archived bool, w overview.WidgetID, st overview.WidgetState, grow bool) {
+func (o *overviewState) card(v *components.UI, a *app.App, p *project.Project, snap *overview.Snapshot, archived bool, w overview.WidgetID, st overview.WidgetState) {
 	viewAll := overviewViewAll(a, p.ID, snap, w, archived)
-	card := v.Card(components.CardOptions{
+	v.Card(components.CardOptions{
 		Title: cardTitle(w),
 		Actions: func() {
 			if st.PendingConfirmation {
@@ -465,9 +433,6 @@ func (o *overviewState) card(v *components.UI, a *app.App, p *project.Project, s
 		}
 		o.cardBody(v, a, p, snap, w)
 	})
-	if grow {
-		card.Grow(1)
-	}
 }
 
 // cardBody renders the payload of one widget. Every branch ends in either real

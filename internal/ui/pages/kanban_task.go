@@ -494,16 +494,18 @@ func (d *taskDetail) labelsEditor(v *components.UI, a *app.App, k *Kanban, proje
 		ui.Row(v.C).FillWidth().Gap(tokens.Space1).Wrap().Children(func() {
 			for _, label := range d.labels {
 				row := ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center)
-				v.Badge(label, components.Neutral)
-				if !readOnly {
-					if v.IconButton(icons.Close, i18n.Tf("pages.kanban.label_remove", map[string]string{"label": label}), components.IconButtonOptions{
-						Variant: components.VariantGhost,
-						Size:    components.SizeSmall,
-					}).Clicked() {
-						d.removeLabel(k, a, projectID, label)
+				row.Children(func() {
+					v.Badge(label, components.Neutral)
+					if !readOnly {
+						if v.IconButton(icons.Close, i18n.Tf("pages.kanban.label_remove", map[string]string{"label": label}), components.IconButtonOptions{
+							Variant: components.VariantGhost,
+							Size:    components.SizeSmall,
+							Align:   ui.Center,
+						}).Clicked() {
+							d.removeLabel(k, a, projectID, label)
+						}
 					}
-				}
-				_ = row
+				})
 			}
 		})
 		if readOnly {
@@ -613,17 +615,17 @@ func (d *taskDetail) checklistTab(v *components.UI, a *app.App, k *Kanban, proje
 				return
 			}
 			if v.IconButton(icons.ChevronUp, i18n.T("pages.kanban.checklist_up"), components.IconButtonOptions{
-				Variant: components.VariantGhost, Size: components.SizeSmall, Disabled: i == 0,
+				Variant: components.VariantGhost, Size: components.SizeSmall, Disabled: i == 0, Align: ui.Center,
 			}).Clicked() && i > 0 {
 				d.reorderChecklist(k, a, projectID, items, i, i-1)
 			}
 			if v.IconButton(icons.ChevronDown, i18n.T("pages.kanban.checklist_down"), components.IconButtonOptions{
-				Variant: components.VariantGhost, Size: components.SizeSmall, Disabled: i+1 >= len(items),
+				Variant: components.VariantGhost, Size: components.SizeSmall, Disabled: i+1 >= len(items), Align: ui.Center,
 			}).Clicked() && i+1 < len(items) {
 				d.reorderChecklist(k, a, projectID, items, i, i+1)
 			}
 			if v.IconButton(icons.Trash, i18n.T("pages.kanban.checklist_remove"), components.IconButtonOptions{
-				Variant: components.VariantGhost, Size: components.SizeSmall,
+				Variant: components.VariantGhost, Size: components.SizeSmall, Align: ui.Center,
 			}).Clicked() {
 				d.removeChecklist(k, a, projectID, item.ID)
 			}

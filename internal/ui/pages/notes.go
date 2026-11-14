@@ -352,13 +352,15 @@ func (n *Notes) toolbar(v *components.UI) {
 	})
 }
 
-// cards lays the notes out in a wrapping grid of cards.
+// cards lays the notes out in a grid of equal-height cards: as many columns
+// as the width has room for, reflowing as the window resizes.
 func (n *Notes) cards(v *components.UI, a *app.App, projectID string, list []*notes.Note) {
 	n.ensureExcerpts(a, projectID, list)
-	ui.Row(v.C).FillWidth().Wrap().Gap(tokens.SectionGap).AlignItems(ui.Start).Children(func() {
-		for _, note := range list {
-			n.card(v, a, note)
-		}
+	v.CardGrid(components.CardGridOptions{
+		Count:    len(list),
+		MinWidth: noteCardMinWidth,
+		MaxWidth: noteCardMaxWidth,
+		Card:     func(i int) { n.card(v, a, list[i]) },
 	})
 }
 
@@ -373,10 +375,7 @@ func (n *Notes) card(v *components.UI, a *app.App, note *notes.Note) {
 		Gap(tokens.RelatedGap).
 		Background(mygo.Color(p.BgSurface)).
 		Border(1, mygo.Color(p.BorderDefault)).
-		Radius(tokens.RadiusLG).
-		Grow(1).
-		MinWidth(noteCardMinWidth).
-		MaxWidth(noteCardMaxWidth)
+		Radius(tokens.RadiusLG)
 	if card.Hovered() {
 		card.Border(1, mygo.Color(p.BorderStrong))
 	}

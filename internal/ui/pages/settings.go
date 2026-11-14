@@ -82,7 +82,7 @@ func (s *Settings) Page(v *components.UI, r ports.Route) {
 	info, scan, cfg, loadErr, loaded, loading := s.info, s.scan, s.cfg, s.loadErr, s.loaded, s.loading
 	s.mu.Unlock()
 
-	v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.3, Children: func() {
+	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.settings.title"),
 			Description: i18n.T("pages.settings.description"),
