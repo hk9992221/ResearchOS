@@ -240,7 +240,7 @@
   "pages.ideas.task_status": "正在变更状态",
   "pages.ideas.task_title": "正在保存标题",
   "pages.ideas.task_unlink": "正在解除关联",
-  "pages.ideas.title": "Idea",
+  "pages.ideas.title": "想法",
   "pages.ideas.title_required": "必须填写标题",
   "pages.ideas.title_too_long": "标题超过 200 字",
   "pages.ideas.toast_create_fail": "创建 Idea 失败",

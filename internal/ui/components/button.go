@@ -198,3 +198,20 @@ func (u *UI) IconButton(icon *icons.Icon, label string, o IconButtonOptions) ui.
 		OnClick:  o.OnClick,
 	})
 }
+
+// MenuButton builds a small ghost button whose label is the current choice
+// and whose arrow opens build's menu, as the appearance control does. It is
+// the toolbar form of a choice among a few values; a page that picks one of
+// many uses a Select field instead.
+func (u *UI) MenuButton(label string, build func(m *ui.Menu)) ui.Element {
+	m := buttonMetricsFor(SizeSmall)
+	p := u.T.Palette
+	return ui.MenuButton(u.C, label, build).
+		Padding(m.padV, m.padH).
+		MinHeight(m.minHeight).
+		Gap(tokens.Space1).
+		Radius(tokens.RadiusMD).
+		Border(1, mygo.Color(tokens.Transparent)).
+		TextColor(mygo.Color(p.TextPrimary)).
+		FontSize(m.fontSize)
+}

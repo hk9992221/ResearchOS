@@ -31,7 +31,7 @@
   "pages.notes.field_note_description": "Description",
   "pages.notes.field_note_title": "Title",
   "pages.notes.field_search": "Search notes",
-  "pages.notes.field_search_hint": "Title",
+  "pages.notes.field_search_hint": "Search by title",
   "pages.notes.field_title": "Title",
   "pages.notes.field_title_hint": "What the note is about",
   "pages.notes.missing_message": "The body is read-only until the file is restored.",
