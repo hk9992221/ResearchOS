@@ -18,6 +18,10 @@ type FieldOptions struct {
 	Disabled    bool
 	ReadOnly    bool
 	AutoFocus   bool
+	// Compact drops the visible label for a control in a toolbar row, where
+	// the placeholder and the neighbouring controls carry the meaning. The
+	// label still names the control for assistive technology.
+	Compact bool
 }
 
 // Input builds a single-line text input. The label names it for assistive
@@ -98,12 +102,18 @@ func (u *UI) Select(selected *string, o SelectOptions) ui.Element {
 	}, in)
 }
 
+// SearchFieldWidth is the width of a search field in a page toolbar, so the
+// toolbars of the modules line up with each other.
+const SearchFieldWidth float32 = 280
+
 // SearchOptions configures a search field.
 type SearchOptions struct {
 	// Label names the search for assistive technology, as "Search papers".
 	Label       string
 	Placeholder string
 	Disabled    bool
+	// Compact drops the visible label for a search field in a toolbar row.
+	Compact bool
 }
 
 // SearchInput builds the design system's search field: a magnifying glass, the
@@ -119,7 +129,7 @@ func (u *UI) SearchInput(query *string, o SearchOptions) ui.Element {
 		}
 		return e
 	}
-	return u.field(FieldOptions{Label: o.Label, Disabled: o.Disabled}, in)
+	return u.field(FieldOptions{Label: o.Label, Disabled: o.Disabled, Compact: o.Compact}, in)
 }
 
 // ToggleOptions configures a check box, radio group or switch.
@@ -217,6 +227,15 @@ func (u *UI) toggle(o ToggleOptions, control func()) ui.Element {
 func (u *UI) field(o FieldOptions, control func() ui.Element) ui.Element {
 	var ctrl ui.Element
 	build := func() { ctrl = control() }
+	if o.Compact {
+		// No visible label: the control keeps the accessible name, and the
+		// row it sits in explains it.
+		build()
+		if o.Label != "" {
+			ctrl.Label(o.Label)
+		}
+		return ctrl
+	}
 	if o.Label == "" {
 		u.toggle(ToggleOptions{Description: o.Description, Error: o.Error}, build)
 		return ctrl

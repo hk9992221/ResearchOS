@@ -521,21 +521,9 @@ func (k *Kanban) boardView(v *components.UI, a *app.App, projectID string) {
 		})
 		return
 	}
-	total := 0
-	for _, col := range board.Columns {
-		total += len(col.Tasks)
-	}
-	if total == 0 {
-		// The columns stay usable (their quick add creates the first task);
-		// the guidance sits above them instead of replacing the board.
-		v.Banner(components.BannerOptions{
-			Tone:        components.Info,
-			Title:       i18n.T("pages.kanban.empty_title"),
-			Message:     i18n.T("pages.kanban.empty_reason"),
-			ActionLabel: i18n.T("pages.kanban.btn_new_task"),
-			OnAction:    func() { k.startCreate("") },
-		})
-	}
+	// An empty board needs no banner above the columns: each column states
+	// that it holds no card and offers its own add action, and the page
+	// header already carries the create button.
 	_, height := v.C.Size()
 	boardHeight := height - 260
 	if boardHeight < 320 {

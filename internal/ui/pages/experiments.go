@@ -184,6 +184,9 @@ func (l *ExperimentsList) Page(v *components.UI, r ports.Route) {
 	l.tickDialogs()
 	list := l.visible()
 	readOnly := project.ArchivedAt != nil
+	// The empty state offers the create action when the page lists nothing
+	// and no filter narrows it; the header keeps only the reload button.
+	empty := len(list) == 0 && strings.TrimSpace(l.query) == "" && !l.brokenOnly && !l.unseenOnly
 
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
@@ -195,6 +198,9 @@ func (l *ExperimentsList) Page(v *components.UI, r ports.Route) {
 					Icon:    icons.Refresh,
 				}).Clicked() {
 					l.reload(a, project.ID)
+				}
+				if empty {
+					return
 				}
 				if v.Button(i18n.T("pages.experiments.btn_create"), components.ButtonOptions{
 					Variant:  components.VariantPrimary,
@@ -303,7 +309,8 @@ func (l *ExperimentsList) toolbar(v *components.UI) {
 			v.SearchInput(&l.query, components.SearchOptions{
 				Label:       i18n.T("pages.experiments.field_search"),
 				Placeholder: i18n.T("pages.experiments.field_search_hint"),
-			})
+				Compact:     true,
+			}).Width(components.SearchFieldWidth)
 		})
 		v.Checkbox(&l.brokenOnly, i18n.T("pages.experiments.filter_broken"), components.ToggleOptions{})
 		v.Checkbox(&l.unseenOnly, i18n.T("pages.experiments.filter_unanalyzed"), components.ToggleOptions{})

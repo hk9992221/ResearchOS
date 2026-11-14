@@ -31,7 +31,7 @@
   "pages.notes.field_note_description": "说明",
   "pages.notes.field_note_title": "标题",
   "pages.notes.field_search": "搜索笔记",
-  "pages.notes.field_search_hint": "标题",
+  "pages.notes.field_search_hint": "按标题搜索",
   "pages.notes.field_title": "标题",
   "pages.notes.field_title_hint": "笔记的主题",
   "pages.notes.missing_message": "文件恢复之前，正文只能查看。",

@@ -329,14 +329,18 @@ func (s *Shell) topBar(v *components.UI, narrow bool) {
 			OnClick: func() { s.togglePalette() },
 		})
 
-		// Theme control: shows the current mode, so the state is readable
-		// without an icon that could be mistaken for a system setting.
-		v.Button(themeLabel(s.provider.Mode()), components.ButtonOptions{
-			Variant: components.VariantGhost,
-			Size:    components.SizeSmall,
-			Tooltip: i18n.T("shell.topbar.theme_tooltip"),
-			OnClick: func() { s.cycleTheme() },
-		})
+		// Appearance control: the label names the current mode and the menu
+		// offers the three modes at once, so the choice is readable and does
+		// not require cycling through states to find the wanted one.
+		mode := s.provider.Mode()
+		v.MenuButton(themeLabel(mode), func(m *ui.Menu) {
+			for _, candidate := range appearanceModes {
+				item := m.Item(themeLabel(candidate)).ID(string(candidate)).Radio(candidate == mode)
+				if item.Chosen() {
+					s.setTheme(candidate)
+				}
+			}
+		}).Label(i18n.T("shell.topbar.theme_label")).Tooltip(i18n.T("shell.topbar.theme_tooltip"))
 	})
 }
 
@@ -478,8 +482,27 @@ func (s *Shell) navigate(r ports.Route) {
 	s.app.Navigate(r)
 }
 
-// cycleTheme advances Light → Dark → System → Light, persists it and reports
-// it through a toast. The current route and page data are untouched.
+// appearanceModes are the themes the appearance menu offers, in the order it
+// lists them.
+var appearanceModes = []theme.Mode{theme.System, theme.Light, theme.Dark}
+
+// setTheme switches the appearance, persists it and reports it through a
+// toast. The current route and page data are untouched.
+func (s *Shell) setTheme(next theme.Mode) {
+	if next == s.provider.Mode() {
+		return
+	}
+	if err := s.provider.SetMode(s.ctx, next); err != nil {
+		s.app.Toast(app.LevelDanger, i18n.T("shell.theme.toast_save_fail_title"), errtext.Text(err))
+		return
+	}
+	s.app.Toast(app.LevelInfo,
+		i18n.Tf("shell.theme.toast_switch_title", map[string]string{"mode": themeLabel(next)}),
+		i18n.T("shell.theme.toast_switch_message"))
+}
+
+// cycleTheme advances Light → Dark → System → Light, for the command palette,
+// and reports it through a toast.
 func (s *Shell) cycleTheme() {
 	next := theme.Dark
 	switch s.provider.Mode() {
@@ -490,13 +513,7 @@ func (s *Shell) cycleTheme() {
 	default:
 		next = theme.Light
 	}
-	if err := s.provider.SetMode(s.ctx, next); err != nil {
-		s.app.Toast(app.LevelDanger, i18n.T("shell.theme.toast_save_fail_title"), errtext.Text(err))
-		return
-	}
-	s.app.Toast(app.LevelInfo,
-		i18n.Tf("shell.theme.toast_switch_title", map[string]string{"mode": themeLabel(next)}),
-		i18n.T("shell.theme.toast_switch_message"))
+	s.setTheme(next)
 }
 
 // loadProjectsIfNeeded fetches the project list in the background once, so the

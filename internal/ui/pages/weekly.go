@@ -161,12 +161,18 @@ func (n *Weekly) Page(v *components.UI, r ports.Route) {
 	n.tickDialogs()
 	n.load(a, project.ID)
 	items := n.visible()
+	// An empty history shows its generate action in the empty state, so the
+	// header does not repeat the same primary button.
+	empty := len(items) == 0 && !n.blank()
 
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.weekly_review.title"),
 			Description: i18n.Tf("pages.weekly_review.description", map[string]string{"project": project.Name}),
 			Actions: func() {
+				if empty {
+					return
+				}
 				if v.Button(i18n.T("pages.weekly_review.btn_generate"), components.ButtonOptions{
 					Variant:  components.VariantPrimary,
 					Icon:     icons.Plus,
@@ -188,7 +194,7 @@ func (n *Weekly) Page(v *components.UI, r ports.Route) {
 		switch {
 		case n.blank():
 			v.Skeleton(components.SkeletonOptions{Lines: 6})
-		case len(items) == 0:
+		case empty:
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:        icons.WeeklyReview,
 				Title:       i18n.T("pages.weekly_review.empty_title"),
@@ -297,32 +303,38 @@ func (n *Weekly) banners(v *components.UI) {
 }
 
 // toolbar is the status and period filters, the title filter and the recycle
-// bin switch.
+// bin switch. The controls share one 32px row: the placeholder names each
+// field, so no label sits above it and the controls line up with the buttons.
 func (n *Weekly) toolbar(v *components.UI, projectID string) {
 	choices, keys := weeklyStatusChoices()
-	if expected := weeklyStatusLabel(n.statusKey, choices, keys); n.statusLabel != expected {
-		if key, ok := weeklyStatusKey(n.statusLabel, choices, keys); ok {
-			n.statusKey = key
-		}
+	if key, ok := weeklyStatusKey(n.statusLabel, choices, keys); ok {
+		n.statusKey = key
+	} else {
+		// The select was just created: show the filter the key names.
+		n.statusLabel = weeklyStatusLabel(n.statusKey, choices, keys)
 	}
-	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.End).Wrap().Children(func() {
+	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.Center).Wrap().Children(func() {
 		v.Select(&n.statusLabel, components.SelectOptions{
 			Label:   i18n.T("pages.weekly_review.field_status"),
 			Options: choices,
 			Compact: true,
+			Width:   120,
 		})
 		v.SearchInput(&n.query, components.SearchOptions{
 			Label:       i18n.T("pages.weekly_review.field_search"),
 			Placeholder: i18n.T("pages.weekly_review.field_search_hint"),
-		})
+			Compact:     true,
+		}).Width(components.SearchFieldWidth)
 		v.Input(&n.fromText, components.FieldOptions{
 			Label:       i18n.T("pages.weekly_review.field_from"),
-			Placeholder: "YYYY-MM-DD",
-		})
+			Placeholder: i18n.T("pages.weekly_review.field_from_hint"),
+			Compact:     true,
+		}).Width(160)
 		v.Input(&n.toText, components.FieldOptions{
 			Label:       i18n.T("pages.weekly_review.field_to"),
-			Placeholder: "YYYY-MM-DD",
-		})
+			Placeholder: i18n.T("pages.weekly_review.field_to_hint"),
+			Compact:     true,
+		}).Width(160)
 		ui.Spacer(v.C)
 		v.Checkbox(&n.showDeleted, i18n.T("pages.weekly_review.field_deleted"), components.ToggleOptions{})
 		if v.Button(i18n.T("pages.weekly_review.btn_reload"), components.ButtonOptions{
