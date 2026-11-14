@@ -732,7 +732,8 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 			return
 		}
 		if n.genAI {
-			n.skillPicker(v, a, projectID)
+			set := n.skillSetSnapshot()
+			weeklySkillPicker(v, a, n.Services, projectID, set, &n.genSkillLabel, &n.genSkillID, &n.skillEditor)
 		}
 		if n.genQuick == 2 {
 			start := ui.DateInput(v.C, &n.genStart).Label(i18n.T("pages.weekly_review.field_start"))
@@ -845,64 +846,6 @@ func (n *Weekly) skillSetSnapshot() weeklyreview.SkillSet {
 	set := n.skills
 	set.Skills = append([]weeklyreview.Skill(nil), n.skills.Skills...)
 	return set
-}
-
-// skillPicker is the generation dialog's writing-skill choice plus the entry
-// to edit it: the same skills the AI settings tab manages.
-func (n *Weekly) skillPicker(v *components.UI, a *app.App, projectID string) {
-	set := n.skillSetSnapshot()
-	if len(set.Skills) == 0 {
-		return
-	}
-	labels := make([]string, 0, len(set.Skills))
-	ids := make([]string, 0, len(set.Skills))
-	for _, skill := range set.Skills {
-		label := skill.Name
-		if skill.ID == set.Default || (set.Default == "" && skill.Builtin) {
-			label += " " + i18n.T("pages.weekly_review.skill_default_suffix")
-		}
-		labels = append(labels, label)
-		ids = append(ids, skill.ID)
-	}
-	if n.genSkillLabel == "" {
-		if index := indexOf(ids, set.Default); index >= 0 {
-			n.genSkillLabel, n.genSkillID = labels[index], ids[index]
-		} else {
-			n.genSkillLabel, n.genSkillID = labels[0], ids[0]
-		}
-	} else if index := indexOf(labels, n.genSkillLabel); index >= 0 {
-		n.genSkillID = ids[index]
-	} else {
-		// The list changed under the dialog (renamed or deleted skill).
-		n.genSkillLabel = ""
-	}
-	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.End).Wrap().Children(func() {
-		sel := v.Select(&n.genSkillLabel, components.SelectOptions{
-			Label:   i18n.T("pages.weekly_review.field_skill"),
-			Options: labels,
-		})
-		if sel.Changed() {
-			if index := indexOf(labels, n.genSkillLabel); index >= 0 {
-				n.genSkillID = ids[index]
-			}
-		}
-		if v.Button(i18n.T("pages.weekly_review.skill_edit"), components.ButtonOptions{
-			Variant: components.VariantGhost,
-			Size:    components.SizeSmall,
-			Icon:    icons.Edit,
-		}).Clicked() {
-			for _, skill := range set.Skills {
-				if skill.ID == n.genSkillID {
-					if skill.Builtin {
-						n.skillEditor.newSkill(skill)
-					} else {
-						n.skillEditor.editSkill(skill)
-					}
-					break
-				}
-			}
-		}
-	})
 }
 
 // period builds the half-open period of the dialog's dates.
