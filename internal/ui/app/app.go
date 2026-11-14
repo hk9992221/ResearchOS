@@ -111,6 +111,7 @@ type App struct {
 
 	mu        sync.Mutex
 	route     ports.Route
+	routeSeq  uint64
 	proj      *project.Project
 	sidebar   bool
 	inspector Inspector
@@ -150,6 +151,15 @@ func (a *App) Route() ports.Route {
 	return copyRoute(a.route)
 }
 
+// RouteSeq returns a counter that grows with every route change. A page that
+// reloads its data on entry compares the value with the one it saw on the
+// previous frame, so a repaint alone does not count as an entry.
+func (a *App) RouteSeq() uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.routeSeq
+}
+
 // Navigate makes r the current route. A project page without a project id
 // takes the open project's id. Params are copied so a caller cannot mutate the
 // navigation state afterwards.
@@ -158,6 +168,7 @@ func (a *App) Navigate(r ports.Route) {
 	if r.ProjectID == "" && a.proj != nil {
 		r.ProjectID = a.proj.ID
 	}
+	a.routeSeq++
 	a.route = copyRoute(r)
 	a.mu.Unlock()
 	a.changed()
@@ -215,6 +226,7 @@ func (a *App) OpenProject(ctx context.Context, id string) error {
 	}
 	a.mu.Lock()
 	a.proj = &sess.Project
+	a.routeSeq++
 	a.route = ports.Route{Kind: ports.RouteOverview, ProjectID: sess.Project.ID}
 	a.mu.Unlock()
 	a.changed()
@@ -238,6 +250,7 @@ func (a *App) CreateProject(ctx context.Context, in project.CreateInput) (*proje
 	cp := *created
 	a.mu.Lock()
 	a.proj = &cp
+	a.routeSeq++
 	a.route = ports.Route{Kind: ports.RouteOverview, ProjectID: cp.ID}
 	a.mu.Unlock()
 	a.changed()
@@ -310,6 +323,7 @@ func (a *App) DeleteProject(ctx context.Context, req project.PermanentDeleteRequ
 	if p := a.Project(); p != nil && p.ID == req.ProjectID {
 		a.mu.Lock()
 		a.proj = nil
+		a.routeSeq++
 		a.route = ports.Route{Kind: RouteProjects}
 		a.mu.Unlock()
 		a.changed()
@@ -350,6 +364,7 @@ func (a *App) CloseProject(ctx context.Context) error {
 	}
 	a.mu.Lock()
 	a.proj = nil
+	a.routeSeq++
 	a.route = ports.Route{Kind: RouteProjects}
 	a.mu.Unlock()
 	a.changed()

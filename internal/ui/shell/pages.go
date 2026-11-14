@@ -131,14 +131,16 @@ func PlaceholderPage(kind ports.RouteKind) Page {
 
 // DefaultPages returns the pages the shell can render today: the shell's own
 // Home, Projects and Help, the project overview, and honest placeholders for
-// the modules and system pages that later milestones fill.
-func DefaultPages(ctx context.Context, a *app.App) map[ports.RouteKind]Page {
+// the modules and system pages that later milestones fill. api is the
+// workspace-scoped Overview aggregation; it may be nil only before a workspace
+// opens, when the overview page is not reachable.
+func DefaultPages(ctx context.Context, a *app.App, api OverviewAPI) map[ports.RouteKind]Page {
 	projects := &projectsPage{}
 	pages := map[ports.RouteKind]Page{
 		app.RouteHome:       homePage(ctx, a, projects),
 		app.RouteHelp:       helpPage(a),
 		app.RouteProjects:   projects.view(ctx, a),
-		ports.RouteOverview: overviewPage(ctx, a, projects),
+		ports.RouteOverview: overviewPage(ctx, a, projects, api),
 	}
 	for _, kind := range []ports.RouteKind{
 		app.RouteInbox,
@@ -866,82 +868,6 @@ func projectTable(v *components.UI, ctx context.Context, a *app.App, page *proje
 			}
 		},
 	})
-}
-
-// overviewPage shows the open project's identity; statistics belong to
-// SPEC-03.
-func overviewPage(ctx context.Context, a *app.App, page *projectsPage) Page {
-	return func(v *components.UI, r ports.Route) {
-		p := a.Project()
-		if p == nil {
-			v.PageContainer(components.PageContainerOptions{Children: func() {
-				v.PageHeader(components.PageHeaderOptions{Title: pageTitle(ports.RouteOverview)})
-				v.EmptyState(components.EmptyStateOptions{
-					Icon:   icons.Projects,
-					Title:  i18n.T("shell.overview.empty_no_project_title"),
-					Reason: i18n.T("shell.overview.empty_no_project_reason"),
-				})
-			}})
-			return
-		}
-		archived := p.Status == project.StatusArchived
-		v.PageContainer(components.PageContainerOptions{MaxWidth: components.ReadingWidth * 1.4, Children: func() {
-			v.PageHeader(components.PageHeaderOptions{
-				Title:       p.Name,
-				Description: p.Summary,
-				Actions: func() {
-					v.Button(i18n.T("shell.overview.btn_open_folder"), components.ButtonOptions{
-						Variant: components.VariantGhost,
-						Size:    components.SizeSmall,
-						Icon:    icons.FolderOpen,
-						OnClick: func() { openProjectFolder(a, p.ID) },
-					})
-					v.Button(i18n.T("shell.overview.btn_edit"), components.ButtonOptions{
-						Variant: components.VariantGhost,
-						Size:    components.SizeSmall,
-						Icon:    icons.Edit,
-						OnClick: func() { requestDialog(a, editProjectParam, p.ID) },
-					})
-					archiveLabel, archiveIcon := i18n.T("shell.overview.btn_archive"), icons.Archive
-					if archived {
-						archiveLabel, archiveIcon = i18n.T("shell.overview.btn_unarchive"), icons.ArchiveRestore
-					}
-					v.Button(archiveLabel, components.ButtonOptions{
-						Variant: components.VariantGhost,
-						Size:    components.SizeSmall,
-						Icon:    archiveIcon,
-						OnClick: func() { page.archive(a, *p) },
-					})
-					v.Button(i18n.T("shell.overview.btn_close"), components.ButtonOptions{
-						Variant: components.VariantGhost,
-						Size:    components.SizeSmall,
-						OnClick: func() { closeProject(a, ctx, p.ID) },
-					})
-				},
-			})
-			ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-				v.Card(components.CardOptions{Title: i18n.T("shell.overview.card_goals")}, func() {
-					text := p.Goals
-					if text == "" {
-						text = i18n.T("shell.overview.goals_empty")
-					}
-					ui.Text(v.C, text).FontSize(tokens.Typography.Body.Size)
-				}).Grow(1)
-				v.Card(components.CardOptions{Title: i18n.T("shell.overview.card_focus")}, func() {
-					text := p.FocusMD
-					if text == "" {
-						text = i18n.T("shell.overview.focus_empty")
-					}
-					ui.Text(v.C, text).FontSize(tokens.Typography.Body.Size)
-				}).Grow(1)
-			})
-			v.EmptyState(components.EmptyStateOptions{
-				Icon:   icons.Overview,
-				Title:  i18n.T("shell.overview.stats_title"),
-				Reason: i18n.T("shell.overview.stats_reason"),
-			})
-		}})
-	}
 }
 
 // helpPage lists the shell's keyboard shortcuts and workspace identity. Key

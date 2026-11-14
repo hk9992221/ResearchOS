@@ -126,8 +126,9 @@ type mcpService struct {
 // which case the SPEC-11 §2.2 rule applies and the search tools stay
 // unpublished. ai carries the workspace's SPEC-02 stack so the AI-backed tools
 // work exactly like the pages; a nil stack leaves them reporting
-// ai_unavailable.
-func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service, searchSvc *search.Service, ai *aiModule) *mcpService {
+// ai_unavailable. overviewSvc is the workspace's one aggregation service, which
+// the facade shares with the Overview page.
+func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore *settings.Store, confirmations confirm.Service, searchSvc *search.Service, ai *aiModule, overviewSvc *overview.Service) *mcpService {
 	host := &mcpService{done: make(chan struct{})}
 	socket, err := mcp.SocketPath()
 	if err != nil {
@@ -138,7 +139,7 @@ func startMCP(ws *fworkspace.Workspace, projects *project.Service, settingsStore
 
 	facade := mcpfacade.New(mcpfacade.Options{
 		Project:   projects,
-		Overview:  overview.New(overview.Options{Workspace: ws}),
+		Overview:  overviewSvc,
 		Export:    export.New(export.Options{Workspace: ws}),
 		Workspace: ws,
 	})

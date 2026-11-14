@@ -32,6 +32,7 @@ import (
 	"researchos/internal/foundation/trash"
 	fworkspace "researchos/internal/foundation/workspace"
 	"researchos/internal/i18n"
+	"researchos/internal/overview"
 	"researchos/internal/ports"
 	"researchos/internal/project"
 	"researchos/internal/search"
@@ -268,10 +269,14 @@ func (r *Runtime) open(ctx context.Context, path string) error {
 		appLogger{}.Warn("boot: 检索模块不可用", "err", searchErr)
 	}
 	lit := newLiteratureModule(ws, searchSvc)
+	// One Overview aggregation serves both the page and the MCP facade: they
+	// share the snapshot cache, and a page refresh is visible to a tool call
+	// in the same workspace.
+	overviewSvc := overview.New(overview.Options{Workspace: ws})
 	pagesService := r.pageServices(ws, svc, a, migrations, lit, lit, newNotesModule(ws), ai, settingsStore)
-	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc, ai)
+	host := startMCP(ws, projects, settingsStore, r.confirm, searchSvc, ai, overviewSvc)
 
-	pageSet := shell.DefaultPages(ctx, a)
+	pageSet := shell.DefaultPages(ctx, a, overviewSvc)
 	for kind, page := range pages.System(pagesService) {
 		pageSet[kind] = page
 	}
