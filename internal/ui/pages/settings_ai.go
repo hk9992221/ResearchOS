@@ -191,17 +191,12 @@ func (s *Settings) aiSkillsLoad(a *app.App) {
 	if !need || a == nil || s.Services.Weekly == nil {
 		return
 	}
-	project := a.Project()
-	if project == nil {
-		return
-	}
 	s.ai.mu.Lock()
 	s.ai.skillsLoading = true
 	s.ai.mu.Unlock()
 	api := s.Services.Weekly
-	projectID := project.ID
 	a.RunTask(i18n.T("pages.weekly_review.skill_task_load"), func(ctx context.Context, t *app.Task) error {
-		set, err := api.Skills(ctx, projectID)
+		set, err := api.Skills(ctx, "")
 		s.ai.mu.Lock()
 		s.ai.skillsLoading = false
 		s.ai.skillsLoaded = true
@@ -219,9 +214,9 @@ func (s *Settings) aiSkillsLoad(a *app.App) {
 
 // aiSkillsCard is the weekly writing skill list. Saving or deleting reloads it
 // through the returned set, so the list always shows what the store accepted.
+// The set is workspace-level: no project needs to be open.
 func (s *Settings) aiSkillsCard(v *components.UI, a *app.App) {
-	project := a.Project()
-	if project == nil || s.Services.Weekly == nil {
+	if s.Services.Weekly == nil {
 		return
 	}
 	s.ai.mu.Lock()
@@ -238,7 +233,7 @@ func (s *Settings) aiSkillsCard(v *components.UI, a *app.App) {
 			Message: errText,
 		})
 	}
-	weeklySkillCard(v, a, s.Services, project.ID, set, &s.ai.skillEditor, func(updated weeklyreview.SkillSet) {
+	weeklySkillCard(v, a, s.Services, "", set, &s.ai.skillEditor, func(updated weeklyreview.SkillSet) {
 		s.ai.mu.Lock()
 		s.ai.skills = updated
 		s.ai.skillsErr = ""
@@ -1434,14 +1429,13 @@ func (s *Settings) aiDialogs(v *components.UI, a *app.App) {
 	s.aiProviderDeleteDialog(v, a)
 	s.aiManualDialog(v, a)
 	s.aiModelDeleteDialog(v, a)
-	if project := a.Project(); project != nil {
-		s.ai.skillEditor.dialog(v, a, s.Services, project.ID, func(updated weeklyreview.SkillSet) {
-			s.ai.mu.Lock()
-			s.ai.skills = updated
-			s.ai.skillsErr = ""
-			s.ai.mu.Unlock()
-		})
-	}
+	// The skill editor is workspace-level like the card that opens it.
+	s.ai.skillEditor.dialog(v, a, s.Services, "", func(updated weeklyreview.SkillSet) {
+		s.ai.mu.Lock()
+		s.ai.skills = updated
+		s.ai.skillsErr = ""
+		s.ai.mu.Unlock()
+	})
 }
 
 // aiProviderDialog is the write-only provider form.

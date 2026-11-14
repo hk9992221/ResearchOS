@@ -181,38 +181,35 @@ func (m *weeklyModule) Export(ctx context.Context, projectID string, in weeklyre
 	return svc.Export(ctx, in)
 }
 
-// The skill set is workspace-level; any open project resolves the same store.
+// The skill set is workspace-level: it lives in the workspace settings store
+// and needs no project handle, so the same calls serve Settings with no
+// project open and the weekly dialog with one. projectID is part of the shared
+// interface only; it is ignored here.
+
+// skillService resolves the workspace-level service for skill CRUD. The
+// project-scoped collaborators are left nil: no skill method reads them.
+func (m *weeklyModule) skillService() weeklyreview.Service {
+	return weeklyreview.New(m.ws, "", weeklyreview.Options{
+		Clock:    m.ws.Clock(),
+		Settings: m.settings,
+		Logger:   appLogger{},
+	})
+}
 
 func (m *weeklyModule) Skills(ctx context.Context, projectID string) (weeklyreview.SkillSet, error) {
-	svc, err := m.service(ctx, projectID)
-	if err != nil {
-		return weeklyreview.SkillSet{}, err
-	}
-	return svc.Skills(ctx)
+	return m.skillService().Skills(ctx)
 }
 
 func (m *weeklyModule) SaveSkill(ctx context.Context, projectID string, in weeklyreview.SkillInput) (weeklyreview.SkillSet, error) {
-	svc, err := m.service(ctx, projectID)
-	if err != nil {
-		return weeklyreview.SkillSet{}, err
-	}
-	return svc.SaveSkill(ctx, in)
+	return m.skillService().SaveSkill(ctx, in)
 }
 
 func (m *weeklyModule) DeleteSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error) {
-	svc, err := m.service(ctx, projectID)
-	if err != nil {
-		return weeklyreview.SkillSet{}, err
-	}
-	return svc.DeleteSkill(ctx, skillID)
+	return m.skillService().DeleteSkill(ctx, skillID)
 }
 
 func (m *weeklyModule) SetDefaultSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error) {
-	svc, err := m.service(ctx, projectID)
-	if err != nil {
-		return weeklyreview.SkillSet{}, err
-	}
-	return svc.SetDefaultSkill(ctx, skillID)
+	return m.skillService().SetDefaultSkill(ctx, skillID)
 }
 
 // AIEnabled reports whether a chat provider is assigned, so the generation
