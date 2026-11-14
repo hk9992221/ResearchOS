@@ -188,10 +188,10 @@ func (d *ExperimentDetail) planSummary(v *components.UI, plan *experiments.ScanP
 	v.Card(components.CardOptions{Title: i18n.T("pages.experiments.scan_summary")}, func() {
 		ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Wrap().AlignItems(ui.Start).Children(func() {
 			d.stat(v, i18n.T("pages.experiments.scan_total_files"), itoa(plan.TotalFiles))
-			d.stat(v, i18n.T("pages.experiments.scan_total_bytes"), humanBytes(plan.TotalBytes))
+			d.stat(v, i18n.T("pages.experiments.scan_total_bytes"), components.HumanBytes(plan.TotalBytes))
 			d.stat(v, i18n.T("pages.experiments.scan_ai_files"), itoa(plan.IncludedFiles))
-			d.stat(v, i18n.T("pages.experiments.scan_ai_bytes"), humanBytes(plan.IncludedBytes))
-			d.stat(v, i18n.T("pages.experiments.scan_context_bytes"), humanBytes(plan.ContextBytes))
+			d.stat(v, i18n.T("pages.experiments.scan_ai_bytes"), components.HumanBytes(plan.IncludedBytes))
+			d.stat(v, i18n.T("pages.experiments.scan_context_bytes"), components.HumanBytes(plan.ContextBytes))
 		})
 		if plan.Truncated {
 			v.Banner(components.BannerOptions{
@@ -480,7 +480,7 @@ func (d *ExperimentDetail) selectFile(path string) {
 
 // expEntryLabel states kind, size and the AI decision of one file.
 func expEntryLabel(entry *experiments.FileEntry) string {
-	parts := []string{expBaseName(entry.Path), expKindLabel(entry.Kind), humanBytes(entry.Size)}
+	parts := []string{expBaseName(entry.Path), expKindLabel(entry.Kind), components.HumanBytes(entry.Size)}
 	if entry.ExclusionReason != nil {
 		parts = append(parts, i18n.Tf("pages.experiments.tree_excluded", map[string]string{
 			"reason": expReasonLabel(*entry.ExclusionReason),
@@ -631,7 +631,7 @@ func (d *ExperimentDetail) filePreview(v *components.UI, a *app.App, projectID s
 func (d *ExperimentDetail) fileMeta(v *components.UI, a *app.App, plan *experiments.ScanPlan, entry experiments.FileEntry) {
 	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Wrap().Children(func() {
 		v.Badge(expKindLabel(entry.Kind), components.Neutral)
-		ui.Text(v.C, humanBytes(entry.Size)).FontSize(tokens.Typography.Caption.Size).
+		ui.Text(v.C, components.HumanBytes(entry.Size)).FontSize(tokens.Typography.Caption.Size).
 			TextColor(mygo.Color(v.T.Palette.TextMuted)).FontFeatures("tnum")
 		if entry.MTime != "" {
 			ui.Text(v.C, entry.MTime).FontSize(tokens.Typography.Caption.Size).

@@ -98,7 +98,7 @@ func (s *Consistency) Page(v *components.UI, r ports.Route) {
 					orphan := o
 					ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
 						ui.Text(v.C, orphan.RelPath).Grow(1).Font(tokens.SystemFonts.Mono)
-						ui.Text(v.C, humanBytes(orphan.Size)).FontFeatures("tnum")
+						ui.Text(v.C, components.HumanBytes(orphan.Size)).FontFeatures("tnum")
 						v.Button(i18n.T("pages.consistency.btn_register"), components.ButtonOptions{
 							Size: components.SizeSmall,
 							OnClick: func() {

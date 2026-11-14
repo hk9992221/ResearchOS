@@ -168,7 +168,7 @@ func (m *Migration) Page(v *components.UI, r ports.Route) {
 			})}, func() {
 				ui.Column(v.C).Gap(tokens.RelatedGap).Children(func() {
 					m.row(v, i18n.T("pages.migration.row_files"), strconv.Itoa(plan.Files))
-					m.row(v, i18n.T("pages.migration.row_bytes"), humanBytes(plan.Bytes))
+					m.row(v, i18n.T("pages.migration.row_bytes"), components.HumanBytes(plan.Bytes))
 					m.row(v, i18n.T("pages.migration.row_verification"), i18n.T("pages.migration.verification_value"))
 					m.row(v, i18n.T("pages.migration.row_old_folder"), i18n.T("pages.migration.old_folder_value"))
 					v.Button(i18n.T("pages.migration.btn_start"), components.ButtonOptions{
@@ -246,8 +246,8 @@ func (m *Migration) start() {
 				"total": strconv.Itoa(p.FilesTotal),
 			})
 			m.bytes = i18n.Tf("pages.migration.progress_bytes", map[string]string{
-				"done":  humanBytes(p.BytesDone),
-				"total": humanBytes(p.BytesTotal),
+				"done":  components.HumanBytes(p.BytesDone),
+				"total": components.HumanBytes(p.BytesTotal),
 			})
 			m.mu.Unlock()
 			t.Stage(phaseLabel(p.Phase))
