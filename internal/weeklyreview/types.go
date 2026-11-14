@@ -323,10 +323,18 @@ type GenerateInput struct {
 	SkillID string
 	// Progress reports each section as it is generated. Nil is fine.
 	Progress SectionProgress
+	// Delta streams the text of the section being written. Nil is fine: the
+	// stored draft is identical either way.
+	Delta SectionDelta
 }
 
 // SectionProgress reports one finished section generation.
 type SectionProgress func(done, total int, section SectionKey)
+
+// SectionDelta reports streamed text for the section currently being
+// written. It fires on the generation goroutine and only serves progress
+// display; the report body comes from the finished call.
+type SectionDelta func(section SectionKey, delta string)
 
 // GeneratePeriodInput is the combined "generate this week" entry.
 type GeneratePeriodInput struct {
@@ -338,6 +346,8 @@ type GeneratePeriodInput struct {
 	SkillID string
 	// Progress reports each section as it is generated. Nil is fine.
 	Progress SectionProgress
+	// Delta streams the text of the section being written. Nil is fine.
+	Delta SectionDelta
 }
 
 // GenerateOutcome carries the report, digest and validation findings.

@@ -28,6 +28,11 @@ type GenerateRequest struct {
 	Temperature     *float64
 	MaxOutputTokens int
 	ResponseFormat  *protocol.ResponseFormat
+	// OnDelta, when non-nil, streams assistant-visible text as it arrives.
+	// The persisted draft is always the finished body, so a caller may
+	// ignore deltas without changing the result. It runs on the calling
+	// goroutine and must be cheap.
+	OnDelta func(delta string)
 }
 
 // GenerateResult carries the persisted draft plus call metadata.
@@ -67,6 +72,13 @@ type StructuredResponse struct {
 // request always uses role chat_main (§5.9).
 type ChatRunner interface {
 	Chat(ctx context.Context, r role.Role, req gateway.ChatRequest) (gateway.ChatResponse, gateway.ProviderSummary, error)
+}
+
+// ChatStreamRunner is the optional streaming view of a ChatRunner. When the
+// runner has it and the request carries OnDelta, generation streams; a
+// runner without it keeps the unary call and the deltas arrive as one body.
+type ChatStreamRunner interface {
+	ChatStream(ctx context.Context, r role.Role, req gateway.ChatRequest, onDelta func(delta string)) (gateway.ChatResponse, gateway.ProviderSummary, error)
 }
 
 // GenerationOptions wires GenerationService to one project.
@@ -109,6 +121,8 @@ func NewGenerationService(opt GenerationOptions) (GenerationService, error) {
 }
 
 // Generate performs one chat_main call and persists the result as draft.
+// With req.OnDelta set the call streams deltas to the caller; the stored
+// draft is always the finished body.
 // Successful content is never dropped silently: persistence failures
 // return *OutputPersistError with the complete input (§5.9.3, AC-05.5).
 func (g *generator) Generate(ctx context.Context, req GenerateRequest) (GenerateResult, error) {
@@ -121,7 +135,7 @@ func (g *generator) Generate(ctx context.Context, req GenerateRequest) (Generate
 		MaxOutputTokens: req.MaxOutputTokens,
 		ResponseFormat:  req.ResponseFormat,
 	}
-	resp, summary, err := g.gopts.Runner.Chat(ctx, role.RoleChatMain, chatReq)
+	resp, summary, err := g.chat(ctx, chatReq, req.OnDelta)
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -132,6 +146,24 @@ func (g *generator) Generate(ctx context.Context, req GenerateRequest) (Generate
 	}
 	g.emitAnalysis(ctx, out)
 	return GenerateResult{Output: out, Usage: resp.Usage, Attempts: resp.Attempts}, nil
+}
+
+// chat runs one chat_main call, streaming when the runner can and the caller
+// asked for deltas. A runner without the streaming surface falls back to the
+// unary call and reports the finished body as one delta, so OnDelta semantics
+// never depend on the provider.
+func (g *generator) chat(ctx context.Context, req gateway.ChatRequest, onDelta func(delta string)) (gateway.ChatResponse, gateway.ProviderSummary, error) {
+	if onDelta == nil {
+		return g.gopts.Runner.Chat(ctx, role.RoleChatMain, req)
+	}
+	if sr, ok := g.gopts.Runner.(ChatStreamRunner); ok {
+		return sr.ChatStream(ctx, role.RoleChatMain, req, onDelta)
+	}
+	resp, summary, err := g.gopts.Runner.Chat(ctx, role.RoleChatMain, req)
+	if err == nil && resp.Content != "" {
+		onDelta(resp.Content)
+	}
+	return resp, summary, err
 }
 
 func (g *generator) buildDraft(projectID, taskKind, promptVersion string, entity *EntityRef, refs []SourceRef, temp *float64, maxTokens int, summary gateway.ProviderSummary, model, content string, usage *gateway.Usage, attempts int) CreateDraftInput {

@@ -41,6 +41,12 @@ type ProviderSummary struct {
 // Gateway is the unified AI invocation surface.
 type Gateway interface {
 	Chat(ctx context.Context, r role.Role, req ChatRequest) (ChatResponse, ProviderSummary, error)
+	// ChatStream is Chat with incremental delivery: onDelta receives
+	// assistant-visible text as it arrives. The finished ChatResponse is
+	// still returned, so callers that only want the final body can ignore
+	// the callback. Protocols without SSE fall back to one unary request and
+	// deliver the whole body as a single delta.
+	ChatStream(ctx context.Context, r role.Role, req ChatRequest, onDelta func(delta string)) (ChatResponse, ProviderSummary, error)
 	Embed(ctx context.Context, inputs []string) (EmbedResponse, error)
 	Rerank(ctx context.Context, query string, docs []string, topN int) (RerankResponse, error)
 }

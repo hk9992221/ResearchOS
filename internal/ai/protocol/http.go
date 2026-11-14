@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,6 +16,10 @@ import (
 	"researchos/internal/ai/aierr"
 	"researchos/internal/ai/provider"
 )
+
+// sseEventLineLimit bounds one SSE line; response.completed carries the whole
+// answer, so the ceiling is generous but finite.
+const sseEventLineLimit = 16 << 20
 
 // Anthropic protocol version header value sent with every request.
 const anthropicVersion = "2023-05-31"
@@ -87,6 +92,93 @@ func (b base) httpClient() *http.Client {
 		return b.client
 	}
 	return http.DefaultClient
+}
+
+// stream POSTs one JSON body and dispatches every server-sent event to
+// handle until the upstream closes the stream. A non-2xx answer is mapped
+// before reading; read failures keep the context classification so callers
+// can tell cancellation from a dropped connection.
+func (b base) stream(ctx context.Context, path string, body any, handle func(sseEvent) error) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return &aierr.AIError{Kind: aierr.ErrKindInvalidRequest, Protocol: string(b.cfg.Protocol), Message: aierr.Truncate("marshal: " + err.Error()), Cause: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", b.url(path), bytes.NewReader(raw))
+	if err != nil {
+		return &aierr.AIError{Kind: aierr.ErrKindInvalidRequest, Protocol: string(b.cfg.Protocol), Message: aierr.Truncate(err.Error()), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	b.applyAuth(req)
+
+	resp, err := b.httpClient().Do(req)
+	if err != nil {
+		return b.transportError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return b.mapHTTP(resp, data)
+	}
+
+	rdr := bufio.NewReaderSize(resp.Body, 64<<10)
+	var (
+		name string
+		data []byte
+	)
+	dispatch := func() error {
+		if len(data) == 0 {
+			name, data = "", nil
+			return nil
+		}
+		ev := sseEvent{Name: name, Data: data}
+		name, data = "", nil
+		return handle(ev)
+	}
+	for {
+		line, readErr := rdr.ReadString('\n')
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return b.transportError(readErr)
+		}
+		line = strings.TrimRight(line, "\r\n")
+		switch {
+		case line == "":
+			if err := dispatch(); err != nil {
+				return err
+			}
+		case strings.HasPrefix(line, ":"):
+			// comment / keepalive
+		default:
+			field, value, ok := strings.Cut(line, ":")
+			if !ok {
+				field, value = line, ""
+			}
+			value = strings.TrimPrefix(value, " ")
+			switch field {
+			case "event":
+				name = value
+			case "data":
+				if len(data) > 0 {
+					data = append(data, '\n')
+				}
+				data = append(data, value...)
+				if len(data) > sseEventLineLimit {
+					return b.wrapKind(aierr.ErrKindServer, "stream event exceeded the size limit")
+				}
+			}
+		}
+		if readErr != nil {
+			// A final event may arrive without its blank-line terminator.
+			return dispatch()
+		}
+	}
+}
+
+// sseEvent is one dispatched server-sent event: the event name when the
+// upstream sent one, plus the joined data payload.
+type sseEvent struct {
+	Name string
+	Data []byte
 }
 
 // applyAuth sets the protocol's auth header; an empty key means the keyless

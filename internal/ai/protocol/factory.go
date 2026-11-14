@@ -88,3 +88,18 @@ func Chat(adapter ProtocolAdapter) (ChatAdapter, error) {
 	}
 	return ca, nil
 }
+
+// Stream returns the streaming view of an adapter. Protocols that cannot
+// stream (anthropic, gemini today) surface as unsupported_capability so the
+// gateway can serve the same call through unary Chat.
+func Stream(adapter ProtocolAdapter) (StreamAdapter, error) {
+	sa, ok := adapter.(StreamAdapter)
+	if !ok {
+		return nil, &aierr.AIError{
+			Kind:     aierr.ErrKindUnsupported,
+			Protocol: string(adapter.Protocol()),
+			Message:  "protocol does not support streaming chat",
+		}
+	}
+	return sa, nil
+}

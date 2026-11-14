@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -923,7 +924,9 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 			SkillID:   skillID,
 		}
 		if includeAI {
-			in.Progress = weeklySectionProgress(t)
+			progress := newWeeklyGeneration(t)
+			in.Progress = progress.Progress
+			in.Delta = progress.Delta
 		}
 		t.Stage(i18n.T("pages.weekly_review.stage_collect"))
 		t.Progress(10, 100)
@@ -1233,31 +1236,62 @@ func visibleWeeklyRows(n int) float32 {
 	return float32(visible)*44 + 40
 }
 
+// weeklyGeneration renders section-by-section generation in the task strip:
+// "3/7 · 理论研究进展", with the bar creeping inside each section as its
+// streamed text arrives. It fills from 10% to 85%, leaving the tail for
+// validation and the draft write.
+type weeklyGeneration struct {
+	t     *app.Task
+	done  int
+	total int
+	runes int
+}
+
+func newWeeklyGeneration(t *app.Task) *weeklyGeneration {
+	return &weeklyGeneration{t: t}
+}
+
+// Progress reports a section transition.
+func (g *weeklyGeneration) Progress(done, total int, section weeklyreview.SectionKey) {
+	g.done, g.total, g.runes = done, total, 0
+	if total <= 0 {
+		return
+	}
+	if section == "" {
+		g.t.Stage(i18n.T("pages.weekly_review.stage_store"))
+		g.t.Progress(90, 100)
+		return
+	}
+	g.t.Stage(i18n.Tf("pages.weekly_review.stage_section", map[string]string{
+		"done":  strconv.Itoa(done + 1),
+		"total": strconv.Itoa(total),
+		"title": weeklyreview.SectionTitle(section),
+	}))
+	g.t.Progress(g.percent(), 100)
+}
+
+// Delta advances the bar within the current section. The section's exact
+// length is unknowable up front, so 600 streamed runes fill 90% of its slice
+// and the transition to the next section closes the rest.
+func (g *weeklyGeneration) Delta(_ weeklyreview.SectionKey, text string) {
+	if g.total <= 0 {
+		return
+	}
+	g.runes += utf8.RuneCountInString(text)
+	g.t.Progress(g.percent(), 100)
+}
+
+func (g *weeklyGeneration) percent() int {
+	if g.total <= 0 {
+		return 10
+	}
+	frac := min(float64(g.runes)/600, 0.9)
+	return 10 + int((float64(g.done)+frac)*75/float64(g.total))
+}
+
 // weeklyDegraded reports the two codes that leave a usable skeleton in the
 // report: AI is not wired, or the model failed and the deterministic
 // seven-section body was stored instead (AC-12).
-// weeklySectionProgress renders the section-by-section generation in the task
-// strip: "3/7 · 理论研究进展". The bar fills from 10% to 85%, leaving the tail
-// for validation and the draft write.
-func weeklySectionProgress(t *app.Task) weeklyreview.SectionProgress {
-	return func(done, total int, section weeklyreview.SectionKey) {
-		if total <= 0 {
-			return
-		}
-		if section == "" {
-			t.Stage(i18n.T("pages.weekly_review.stage_store"))
-			t.Progress(90, 100)
-			return
-		}
-		t.Stage(i18n.Tf("pages.weekly_review.stage_section", map[string]string{
-			"done":  strconv.Itoa(done + 1),
-			"total": strconv.Itoa(total),
-			"title": weeklyreview.SectionTitle(section),
-		}))
-		t.Progress(10+done*75/total, 100)
-	}
-}
-
 func weeklyDegraded(err error) bool {
 	switch weeklyreview.CodeOf(err) {
 	case weeklyreview.ErrAIUnavailable, weeklyreview.ErrAIOutputInvalid:

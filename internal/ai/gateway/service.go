@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"researchos/internal/ai/aierr"
@@ -73,30 +74,9 @@ func (c *chatFacade) Chat(ctx context.Context, req ChatRequest) (ChatResponse, e
 
 // Chat resolves the role, builds the adapter and applies the retry policy.
 func (s *Service) Chat(ctx context.Context, r role.Role, req ChatRequest) (ChatResponse, ProviderSummary, error) {
-	if err := canceledIfDone(ctx); err != nil {
-		return ChatResponse{}, ProviderSummary{}, err
-	}
-	rr, err := s.resolve(ctx, r, provider.CapabilityChat)
-	if err != nil {
-		return ChatResponse{}, ProviderSummary{}, err
-	}
-	summary := summaryOf(rr)
-	if req.Model == "" {
-		req.Model = rr.Model.ModelID
-	} else if req.Model != rr.Model.ModelID {
-		return ChatResponse{}, summary, &aierr.AIError{
-			Kind: aierr.ErrKindModelNotFound, ProviderID: rr.Provider.ID,
-			ProviderName: rr.Provider.Name, Protocol: string(rr.Provider.Protocol),
-			Model: req.Model, Message: "requested model differs from the role assignment",
-		}
-	}
-	key, err := s.secretFor(ctx, rr.Provider)
+	rr, adapter, req, summary, err := s.openChat(ctx, r, req)
 	if err != nil {
 		return ChatResponse{}, summary, err
-	}
-	adapter, err := s.opts.Factory.New(ctx, rr.Provider, key)
-	if err != nil {
-		return ChatResponse{}, summary, annotate(err, rr)
 	}
 	ca, err := protocol.Chat(adapter)
 	if err != nil {
@@ -116,6 +96,153 @@ func (s *Service) Chat(ctx context.Context, r role.Role, req ChatRequest) (ChatR
 	}
 	s.log(rr, "chat", attempts, start, nil)
 	return resp, summary, nil
+}
+
+// ChatStream is Chat over SSE when the protocol supports it. The per-attempt
+// watchdog restarts on every upstream event, so a long generation is limited
+// by silence (TimeoutChat) rather than by total wall time. A stream that has
+// already emitted text is never retried: a replay would duplicate output.
+// Protocols without streaming keep the unary request and emit the finished
+// body as one delta.
+func (s *Service) ChatStream(ctx context.Context, r role.Role, req ChatRequest, onDelta func(delta string)) (ChatResponse, ProviderSummary, error) {
+	rr, adapter, req, summary, err := s.openChat(ctx, r, req)
+	if err != nil {
+		return ChatResponse{}, summary, err
+	}
+	start := s.opts.Clock.Now()
+	sa, serr := protocol.Stream(adapter)
+	if serr != nil {
+		// Capability fallback: same answer, no incremental delivery.
+		var resp ChatResponse
+		attempts, err := s.run(ctx, "chat_stream", rr, TimeoutChat, func(callCtx context.Context) error {
+			ca, aerr := protocol.Chat(adapter)
+			if aerr != nil {
+				return aerr
+			}
+			var callErr error
+			resp, callErr = ca.Chat(callCtx, req)
+			return callErr
+		})
+		resp.Attempts = attempts
+		if err != nil {
+			s.log(rr, "chat_stream", attempts, start, err)
+			return ChatResponse{}, summary, err
+		}
+		if onDelta != nil && resp.Content != "" {
+			onDelta(resp.Content)
+		}
+		s.log(rr, "chat_stream", attempts, start, nil)
+		return resp, summary, nil
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= s.opts.MaxAttempts; attempt++ {
+		var (
+			resp     ChatResponse
+			emitted  bool
+			timedOut atomic.Bool
+		)
+		callCtx, cancel := context.WithCancel(ctx)
+		watchdog := time.AfterFunc(TimeoutChat, func() {
+			timedOut.Store(true)
+			cancel()
+		})
+		sink := protocol.StreamSink{
+			Delta: func(text string) {
+				emitted = true
+				watchdog.Reset(TimeoutChat)
+				if onDelta != nil {
+					onDelta(text)
+				}
+			},
+			Activity: func() { watchdog.Reset(TimeoutChat) },
+		}
+		resp, lastErr = sa.ChatStream(callCtx, req, sink)
+		watchdog.Stop()
+		cancel()
+		if lastErr == nil {
+			resp.Attempts = attempt
+			s.log(rr, "chat_stream", attempt, start, nil)
+			return resp, summary, nil
+		}
+		if ctx.Err() != nil {
+			canceled := canceledError(ctx, rr)
+			canceled.Attempts = attempt
+			s.log(rr, "chat_stream", attempt, start, canceled)
+			return ChatResponse{}, summary, canceled
+		}
+		ae := annotate(lastErr, rr)
+		switch {
+		case timedOut.Load():
+			ae = annotate(&aierr.AIError{
+				Kind:    aierr.ErrKindTimeout,
+				Message: "stream idle for " + TimeoutChat.String(),
+				Cause:   lastErr,
+			}, rr)
+		case emitted:
+			// Partial text already reached the caller; retrying would
+			// replay it.
+			ae.Attempts = attempt
+			ae.Message = aierr.Truncate("stream broke after partial output: " + ae.Message)
+			s.log(rr, "chat_stream", attempt, start, ae)
+			return ChatResponse{}, summary, ae
+		}
+		ae.Attempts = attempt
+		if !retryable(ae.Kind) || attempt == s.opts.MaxAttempts {
+			s.log(rr, "chat_stream", attempt, start, ae)
+			return ChatResponse{}, summary, ae
+		}
+		delay, ok := s.delayFor(attempt, ae)
+		if !ok {
+			s.log(rr, "chat_stream", attempt, start, ae)
+			return ChatResponse{}, summary, ae
+		}
+		if err := s.opts.Sleep(ctx, delay); err != nil {
+			canceled := canceledError(ctx, rr)
+			canceled.Attempts = attempt
+			s.log(rr, "chat_stream", attempt, start, canceled)
+			return ChatResponse{}, summary, canceled
+		}
+	}
+	final := annotate(lastErr, rr)
+	if ctx.Err() != nil {
+		final = canceledError(ctx, rr)
+	}
+	final.Attempts = s.opts.MaxAttempts
+	s.log(rr, "chat_stream", s.opts.MaxAttempts, start, final)
+	return ChatResponse{}, summary, final
+}
+
+// openChat resolves the chat role, pins the model to the assignment, loads
+// the secret transiently and builds the adapter — shared preflight of Chat
+// and ChatStream so both fail identically before the network (§5.8.1).
+func (s *Service) openChat(ctx context.Context, r role.Role, req ChatRequest) (role.ResolvedRole, protocol.ProtocolAdapter, ChatRequest, ProviderSummary, error) {
+	if err := canceledIfDone(ctx); err != nil {
+		return role.ResolvedRole{}, nil, req, ProviderSummary{}, err
+	}
+	rr, err := s.resolve(ctx, r, provider.CapabilityChat)
+	if err != nil {
+		return role.ResolvedRole{}, nil, req, ProviderSummary{}, err
+	}
+	summary := summaryOf(rr)
+	if req.Model == "" {
+		req.Model = rr.Model.ModelID
+	} else if req.Model != rr.Model.ModelID {
+		return role.ResolvedRole{}, nil, req, summary, &aierr.AIError{
+			Kind: aierr.ErrKindModelNotFound, ProviderID: rr.Provider.ID,
+			ProviderName: rr.Provider.Name, Protocol: string(rr.Provider.Protocol),
+			Model: req.Model, Message: "requested model differs from the role assignment",
+		}
+	}
+	key, err := s.secretFor(ctx, rr.Provider)
+	if err != nil {
+		return role.ResolvedRole{}, nil, req, summary, err
+	}
+	adapter, err := s.opts.Factory.New(ctx, rr.Provider, key)
+	if err != nil {
+		return role.ResolvedRole{}, nil, req, summary, annotate(err, rr)
+	}
+	return rr, adapter, req, summary, nil
 }
 
 // Embed resolves the embedding role and embeds one batch under the
@@ -381,7 +508,7 @@ func toAIErrorPlain(err error) *aierr.AIError {
 	}
 }
 
-func canceledError(ctx context.Context, rr role.ResolvedRole) error {
+func canceledError(ctx context.Context, rr role.ResolvedRole) *aierr.AIError {
 	return annotate(&aierr.AIError{Kind: aierr.ErrKindCanceled, Message: "canceled by caller", Cause: ctx.Err()}, rr)
 }
 

@@ -106,6 +106,37 @@ type ChatAdapter interface {
 	Chat(ctx context.Context, req ChatRequest) (ChatResponse, error)
 }
 
+// StreamSink receives incremental traffic while ChatStream runs. Delta
+// carries assistant-visible text; Activity fires on any upstream event,
+// reasoning deltas and keepalives included, so callers can hold an idle
+// watchdog open while the model thinks. Both hooks are optional.
+type StreamSink struct {
+	Delta    func(text string)
+	Activity func()
+}
+
+// Emit delivers one text delta, skipping empty chunks.
+func (s StreamSink) Emit(text string) {
+	if text != "" && s.Delta != nil {
+		s.Delta(text)
+	}
+}
+
+// Alive reports upstream progress to the activity hook.
+func (s StreamSink) Alive() {
+	if s.Activity != nil {
+		s.Activity()
+	}
+}
+
+// StreamAdapter is the optional incremental-chat capability. Protocols
+// without it keep the unary Chat path; the gateway delivers the finished body
+// as one delta so callers do not branch on protocol (§5.2 capability matrix).
+type StreamAdapter interface {
+	ProtocolAdapter
+	ChatStream(ctx context.Context, req ChatRequest, sink StreamSink) (ChatResponse, error)
+}
+
 // EmbeddingAdapter is implemented by openai_chat, openai_responses and gemini
 // but never by anthropic (§5.2).
 type EmbeddingAdapter interface {

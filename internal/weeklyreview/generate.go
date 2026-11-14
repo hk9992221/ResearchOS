@@ -69,7 +69,7 @@ func (s *service) GenerateDraft(ctx context.Context, in GenerateInput) (*Generat
 	if err != nil {
 		return outcome, err
 	}
-	run := s.generateSections(ctx, info, digest, report.ID, skill, in.Progress)
+	run := s.generateSections(ctx, info, digest, report.ID, skill, in.Progress, in.Delta)
 
 	if len(run.ids) == 0 {
 		// Nothing usable came back: keep the current body, or write the
@@ -205,7 +205,7 @@ func (s *service) GenerateForPeriod(ctx context.Context, in GeneratePeriodInput)
 	}
 	return s.GenerateDraft(ctx, GenerateInput{
 		ReportID: report.ID, Replace: in.Replace || created, Actor: in.Actor,
-		SkillID: in.SkillID, Progress: in.Progress,
+		SkillID: in.SkillID, Progress: in.Progress, Delta: in.Delta,
 	})
 }
 
@@ -359,8 +359,10 @@ type sectionRun struct {
 
 // generateSections renders the seven sections one model call at a time. One
 // large call times out; seven small ones each finish in seconds, a failure
-// costs one section instead of the report, and the reader sees progress.
-func (s *service) generateSections(ctx context.Context, info projectInfo, digest *ActivityDigest, reportID string, skill Skill, progress SectionProgress) sectionRun {
+// costs one section instead of the report, and the reader sees progress. Each
+// call streams when AI supports it, so a long section reports motion instead
+// of a silent wait.
+func (s *service) generateSections(ctx context.Context, info projectInfo, digest *ActivityDigest, reportID string, skill Skill, progress SectionProgress, delta SectionDelta) sectionRun {
 	run := sectionRun{lines: make(map[SectionKey][]string, len(defaultTemplate.Sections))}
 	entity := &output.EntityRef{Type: string(schema.EntityWeeklyReport), ID: reportID}
 	total := len(defaultTemplate.Sections)
@@ -382,6 +384,10 @@ func (s *service) generateSections(ctx context.Context, info projectInfo, digest
 			SourceRefs:      sectionSourceRefs(digest, sec.Key),
 			Entity:          entity,
 			MaxOutputTokens: sectionMaxTokens,
+		}
+		if delta != nil {
+			key := sec.Key
+			req.OnDelta = func(text string) { delta(key, text) }
 		}
 		var got []string
 		for try := 0; try < sectionAttempts; try++ {

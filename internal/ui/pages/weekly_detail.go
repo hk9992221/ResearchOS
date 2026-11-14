@@ -1646,9 +1646,10 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		if skillID == "" && report.Meta.Generation != nil {
 			skillID = report.Meta.Generation.SkillID
 		}
+		progress := newWeeklyGeneration(t)
 		outcome, err := api.GenerateDraft(ctx, projectID, weeklyreview.GenerateInput{
 			ReportID: reportID, Replace: true, Actor: weeklyreview.ActorUser,
-			SkillID: skillID, Progress: weeklySectionProgress(t),
+			SkillID: skillID, Progress: progress.Progress, Delta: progress.Delta,
 		})
 		degraded := outcome != nil && outcome.Report != nil && weeklyDegraded(err)
 		switch {
