@@ -15,6 +15,7 @@ import (
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/trash"
 	"researchos/internal/foundation/workspace"
+	"researchos/internal/i18n"
 )
 
 // Limits from SPEC-08 §5.2, §4.3 and §5.5.
@@ -34,9 +35,11 @@ const (
 	listMaxLimit     = 200 // SPEC-08 §5.2 rule 1 (O-11)
 )
 
-// defaultColumnName / defaultColumnKind seed the board (SPEC-08 §4.3).
+// defaultColumns seed the board (SPEC-08 §4.3). The kind is what the code
+// keys on; the name is the column's own data, seeded in the interface
+// language so a Chinese workspace does not start with English column names.
 var defaultColumns = []struct {
-	name   string
+	name   string // the English name of SPEC-08 §4.3
 	kind   string
 	isDone bool
 }{
@@ -45,6 +48,13 @@ var defaultColumns = []struct {
 	{"In Progress", "in_progress", false},
 	{"Review", "review", false},
 	{"Done", "done", true},
+}
+
+// defaultColumnName is the name a default column carries in the current
+// interface language. The keys are the ones the column dialog offers for the
+// same kinds, so a board and the kind choices never disagree.
+func defaultColumnName(kind string) string {
+	return i18n.T("pages.kanban.default_column_" + kind)
 }
 
 // Options wires the module to its SPEC-01 collaborators. Trash and Relations
@@ -168,23 +178,68 @@ func (m *Module) assertWritable(ctx context.Context) error {
 
 // ensureDefaultColumns is the SPEC-08 §4.3 first-entry backfill: when the
 // task_columns table is completely empty the five defaults are seeded in the
-// caller transaction. It never touches existing rows, so user renames,
-// re-orderings and deletions of default columns survive.
+// caller transaction. It never overwrites existing rows, so user renames,
+// re-orderings and deletions of default columns survive; a board seeded
+// before the names were localised gets them once, in place.
 func (m *Module) ensureDefaultColumns(ctx context.Context, tx *sql.Tx) error {
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM task_columns`).Scan(&n); err != nil {
 		return fmt.Errorf("kanban: seed check: %w", err)
 	}
 	if n > 0 {
-		return nil
+		return m.localizeDefaultColumns(ctx, tx)
 	}
 	at := m.now()
 	for i, c := range defaultColumns {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO task_columns(name, kind, is_done, position, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?)`,
-			c.name, c.kind, boolInt(c.isDone), (i+1)*sortStep, at, at); err != nil {
-			return fmt.Errorf("kanban: seed column %s: %w", c.name, err)
+			defaultColumnName(c.kind), c.kind, boolInt(c.isDone), (i+1)*sortStep, at, at); err != nil {
+			return fmt.Errorf("kanban: seed column %s: %w", c.kind, err)
+		}
+	}
+	return nil
+}
+
+// localizeDefaultColumns renames a default column that still carries the
+// English name of SPEC-08 §4.3 to the interface language. Only a row whose
+// name and kind are both the untouched default matches: a column the user
+// renamed, or a custom column that took the name, is left alone, and a
+// language whose names are the English ones changes nothing. The cards move
+// with the definition, as ColumnService.Rename cascades them, because
+// tasks."column" holds the column name (0200_kanban.sql).
+func (m *Module) localizeDefaultColumns(ctx context.Context, tx *sql.Tx) error {
+	at := m.now()
+	for _, c := range defaultColumns {
+		name := defaultColumnName(c.kind)
+		if name == c.name || strings.TrimSpace(name) == "" {
+			continue
+		}
+		var present int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT count(*) FROM task_columns WHERE name = ? AND kind = ?`,
+			c.name, c.kind).Scan(&present); err != nil {
+			return fmt.Errorf("kanban: localise column %s: %w", c.kind, err)
+		}
+		if present == 0 {
+			continue
+		}
+		// A column already holding the localised name keeps it, and the
+		// default would collide with the primary key: leave that board as
+		// the user arranged it.
+		if _, ok, err := m.columnByName(ctx, tx, name); err != nil {
+			return err
+		} else if ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tasks SET "column" = ? WHERE "column" = ?`, name, c.name); err != nil {
+			return fmt.Errorf("kanban: localise cascade %s: %w", c.kind, err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE task_columns SET name = ?, updated_at = ? WHERE name = ? AND kind = ?`,
+			name, at, c.name, c.kind); err != nil {
+			return fmt.Errorf("kanban: localise column %s: %w", c.kind, err)
 		}
 	}
 	return nil
