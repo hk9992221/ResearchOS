@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"researchos/internal/foundation/schema"
+	"researchos/internal/i18n"
 	"researchos/internal/literature"
 	"researchos/internal/literature/library"
 	"researchos/internal/notes"
@@ -189,14 +190,23 @@ func (m *literatureModule) RelatedNotes(ctx context.Context, projectID, paperID 
 }
 
 // CreateLinkedNote creates a research note whose Markdown links the paper, so
-// the editor and the reverse lookup both see the association.
+// the editor and the reverse lookup both see the association. The title is
+// what the user chose; the description names the paper, and stays empty when
+// the paper has no title.
 func (m *literatureModule) CreateLinkedNote(ctx context.Context, projectID, paperID, title string) (*notes.Note, error) {
 	text := strings.NewReplacer("[", `\[`, "]", `\]`).Replace(title)
 	body := fmt.Sprintf("[%s](ros://paper/%s)\n", text, paperID)
+	description := ""
+	if paper, err := m.Paper(ctx, paperID); err == nil {
+		if name := strings.TrimSpace(paper.Metadata.Title); name != "" {
+			description = i18n.Tf("pages.paper.note_description", map[string]string{"title": name})
+		}
+	}
 	return m.notesFor(projectID).Create(ctx, notes.CreateNoteInput{
-		Kind:  notes.KindScratchpad,
-		Title: title,
-		Body:  body,
-		Actor: schema.ActorUser,
+		Kind:        notes.KindScratchpad,
+		Title:       title,
+		Description: description,
+		Body:        body,
+		Actor:       schema.ActorUser,
 	})
 }

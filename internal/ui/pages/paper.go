@@ -113,8 +113,15 @@ type PaperPage struct {
 	conflict  bool
 	diskHash  string
 
-	creating  bool
-	createErr string
+	creating   bool
+	createErr  string
+	createDone bool
+
+	// The create dialog's draft. newNoteOpen and newNoteTitle are written by
+	// the frame; createDone travels back from the task so the frame closes
+	// the dialog and drops the draft.
+	newNoteOpen  bool
+	newNoteTitle string
 
 	// The notes dock: notesOpen shows the panel beside the reader, noteOpen
 	// and relatedOpen expand its two sections. Only the frame writes them,
@@ -146,6 +153,7 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 	}
 	p.load(a, project.ID, paperID)
 	p.syncDrafts()
+	p.tickCreateDialog()
 
 	paper, loaded, ok := p.paperSnapshot()
 	if loaded && ok {
@@ -203,6 +211,7 @@ func (p *PaperPage) Page(v *components.UI, r ports.Route) {
 			return
 		}
 		p.readerArea(v, a, project.ID, paperID)
+		p.createNoteDialog(v, a, project.ID, paperID)
 	}})
 }
 
@@ -236,7 +245,7 @@ func (p *PaperPage) notesPanel(v *components.UI, a *app.App, projectID, paperID 
 						p.noteForm(v, a, projectID, paperID)
 					})
 					ui.Collapsible(v.C, i18n.T("pages.paper.card_related"), &p.relatedOpen, func() {
-						p.relatedList(v, a, projectID, paperID)
+						p.relatedList(v, a)
 					})
 				})
 			})
@@ -488,7 +497,7 @@ func (p *PaperPage) saveState(dirty bool) (string, components.Tone) {
 // relatedList lists the project notes that link the paper and offers the
 // button that creates one already linked. The panel is narrow, so each note is
 // one row: its title above the update time.
-func (p *PaperPage) relatedList(v *components.UI, a *app.App, projectID, paperID string) {
+func (p *PaperPage) relatedList(v *components.UI, a *app.App) {
 	p.mu.Lock()
 	related := append([]PaperRelatedNote(nil), p.related...)
 	creating := p.creating
@@ -506,7 +515,7 @@ func (p *PaperPage) relatedList(v *components.UI, a *app.App, projectID, paperID
 			Loading:  creating,
 			Disabled: creating,
 		}).Clicked() {
-			p.createLinkedNote(a, projectID, paperID)
+			p.openCreateDialog()
 		}
 	})
 	if len(related) == 0 {
@@ -579,6 +588,9 @@ func (p *PaperPage) reload(a *app.App, projectID, paperID string) {
 		p.problems = nil
 		p.saveErr, p.conflict, p.diskHash = "", false, ""
 		p.createErr = ""
+		p.createDone = false
+		p.newNoteOpen = false
+		p.newNoteTitle = ""
 		// The reader state describes the paper that is leaving; a task still
 		// resolving it lands as stale, and the next frame asks for the new
 		// paper.
@@ -837,17 +849,88 @@ func (p *PaperPage) overwrite(a *app.App, paperID string) {
 	})
 }
 
-// createLinkedNote creates a research note whose body links the paper, then
-// opens it so the user writes in the editor.
+// openCreateDialog opens the create dialog prefilled with the paper's title,
+// which the user may replace; an untitled paper starts with an empty field.
+func (p *PaperPage) openCreateDialog() {
+	p.mu.Lock()
+	p.newNoteTitle = strings.TrimSpace(p.paper.Metadata.Title)
+	p.createErr = ""
+	p.mu.Unlock()
+	p.newNoteOpen = true
+}
+
+// createNoteDialog collects the title of the research note to create. A
+// failure keeps the dialog and its input so the user can retry; a success
+// closes it through tickCreateDialog after the page returns from the editor.
+func (p *PaperPage) createNoteDialog(v *components.UI, a *app.App, projectID, paperID string) {
+	if !p.newNoteOpen {
+		return
+	}
+	p.mu.Lock()
+	creating, errText := p.creating, p.createErr
+	p.mu.Unlock()
+	v.Dialog(&p.newNoteOpen, components.DialogOptions{
+		Title: i18n.T("pages.paper.btn_new_note"),
+		Actions: func() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+				p.newNoteOpen = false
+			}
+			if v.Button(i18n.T("pages.paper.note_create"), components.ButtonOptions{
+				Variant:  components.VariantPrimary,
+				Loading:  creating,
+				Disabled: creating,
+			}).Clicked() {
+				p.createLinkedNote(a, projectID, paperID)
+			}
+		},
+	}, func() {
+		field := v.Input(&p.newNoteTitle, components.FieldOptions{
+			Label:     i18n.T("pages.paper.note_field_title"),
+			AutoFocus: true,
+		})
+		if field.Submitted() {
+			p.createLinkedNote(a, projectID, paperID)
+		}
+		if errText != "" {
+			ui.Text(v.C, errText).
+				FontSize(tokens.Typography.Secondary.Size).
+				TextColor(mygo.Color(v.T.Palette.StatusDanger))
+		}
+	})
+	if !p.newNoteOpen && !creating {
+		// Escape or a press outside closed the dialog: drop the draft title.
+		p.newNoteTitle = ""
+	}
+}
+
+// tickCreateDialog closes the dialog once the create task succeeded, so the
+// task never writes a frame-only field.
+func (p *PaperPage) tickCreateDialog() {
+	p.mu.Lock()
+	done := p.createDone
+	if done {
+		p.createDone = false
+		p.createErr = ""
+	}
+	p.mu.Unlock()
+	if done {
+		p.newNoteOpen = false
+		p.newNoteTitle = ""
+	}
+}
+
+// createLinkedNote creates a research note with the title the user entered,
+// then opens it so the user writes in the editor. An empty title falls back to
+// the neutral name; the note's description names the paper.
 func (p *PaperPage) createLinkedNote(a *app.App, projectID, paperID string) {
+	title := strings.TrimSpace(p.newNoteTitle)
+	if title == "" {
+		title = i18n.T("pages.paper.note_title_untitled")
+	}
 	p.mu.Lock()
 	if p.creating {
 		p.mu.Unlock()
 		return
-	}
-	title := i18n.T("pages.paper.note_title_untitled")
-	if name := strings.TrimSpace(p.paper.Metadata.Title); name != "" {
-		title = i18n.Tf("pages.paper.note_title", map[string]string{"title": name})
 	}
 	p.creating, p.createErr = true, ""
 	p.mu.Unlock()
@@ -859,6 +942,8 @@ func (p *PaperPage) createLinkedNote(a *app.App, projectID, paperID string) {
 		p.creating = false
 		if err != nil {
 			p.createErr = errtext.Text(err)
+		} else {
+			p.createDone = true
 		}
 		p.mu.Unlock()
 		if err != nil {
