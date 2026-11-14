@@ -58,6 +58,17 @@ func (e *ServiceError) withDetails(details map[string]any) *ServiceError {
 	return e
 }
 
+// AsServiceError returns the typed error behind err, or nil when err is not a
+// ServiceError. Callers use it to read Details, such as the unresolved
+// violations Confirm refused with.
+func AsServiceError(err error) *ServiceError {
+	var se *ServiceError
+	if errors.As(err, &se) {
+		return se
+	}
+	return nil
+}
+
 // CodeOf returns the ErrorCode of err, or the empty code for a foreign error.
 func CodeOf(err error) ErrorCode {
 	var se *ServiceError

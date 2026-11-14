@@ -90,39 +90,40 @@ type WeeklyReportView struct {
 	// Frame-only state: the tab, the editor, the dialogs and the local ack
 	// set. Locally acknowledged fingerprints are sent with Confirm, which is
 	// the only call that persists acks (SPEC-09 §5.3 Confirm).
-	tab           int
-	ed            *editor.State
-	edFor         string
-	mode          int
-	lastVersion   uint64
-	lastChange    time.Time
-	composing     bool
-	wasFocused    bool
-	savedPending  bool
-	showOutline   bool
-	outlineOpen   bool
-	splitSize     *float32
-	provOpen      bool
-	anchor        string
-	anchorVer     uint64
-	acks          map[string]bool
-	ackNotes      map[string]string
-	ackFor        string
-	ackNoteInput  string
-	confirmOpen   bool
-	revertOpen    bool
-	regenOpen     bool
-	diffOpen      bool
-	diffState     *editor.DiffState
-	insertOpen    bool
-	exportOpen    bool
-	exportDir     string
-	exportFront   bool
-	exportReady   bool
-	exportOver    bool
-	exportHandled string
-	md            *markdown.Options
-	expanded      map[string]bool
+	tab            int
+	ed             *editor.State
+	edFor          string
+	mode           int
+	lastVersion    uint64
+	lastChange     time.Time
+	composing      bool
+	wasFocused     bool
+	savedPending   bool
+	showOutline    bool
+	outlineOpen    bool
+	splitSize      *float32
+	provOpen       bool
+	anchor         string
+	anchorVer      uint64
+	acks           map[string]bool
+	ackNotes       map[string]string
+	ackFor         string
+	ackNoteInput   string
+	confirmOpen    bool
+	revertOpen     bool
+	regenOpen      bool
+	diffOpen       bool
+	diffState      *editor.DiffState
+	insertOpen     bool
+	exportOpen     bool
+	exportDir      string
+	exportFmtLabel string
+	exportFront    bool
+	exportReady    bool
+	exportOver     bool
+	exportHandled  string
+	md             *markdown.Options
+	expanded       map[string]bool
 }
 
 // Page renders one frame of the report detail.
@@ -1031,7 +1032,15 @@ func (d *WeeklyReportView) checksTab(v *components.UI, a *app.App, report *weekl
 	d.mu.Lock()
 	confirming, confirmErr, revertErr := d.confirming, d.confirmErr, d.revertErr
 	d.mu.Unlock()
-	if checks == nil || len(checks.Violations) == 0 {
+	if checks == nil {
+		// Never validated: claiming a pass here is what made the confirm
+		// dialog contradict itself. Say what is known instead.
+		v.Banner(components.BannerOptions{
+			Tone:    components.Neutral,
+			Title:   i18n.T("pages.weekly_review.checks_not_run_title"),
+			Message: i18n.T("pages.weekly_review.checks_not_run_message"),
+		})
+	} else if len(checks.Violations) == 0 {
 		v.Banner(components.BannerOptions{
 			Tone:    components.Success,
 			Title:   i18n.T("pages.weekly_review.checks_clean_title"),
@@ -1254,7 +1263,12 @@ func (d *WeeklyReportView) confirmDialog(v *components.UI, a *app.App, projectID
 				ui.Text(v.C, "• "+weeklySectionTitle(violation.Section)+" · "+violation.Message).
 					FontSize(tokens.Typography.Secondary.Size)
 			}
-		} else {
+			ui.Text(v.C, i18n.T("pages.weekly_review.confirm_blocked_hint")).
+				FontSize(tokens.Typography.Caption.Size).
+				TextColor(mygo.Color(v.T.Palette.TextMuted))
+		} else if errText == "" {
+			// "Everything is acknowledged" is only true while no confirm has
+			// failed; the service re-validates and may still refuse.
 			ui.Text(v.C, i18n.T("pages.weekly_review.confirm_ready")).
 				FontSize(tokens.Typography.Secondary.Size)
 		}
@@ -1284,6 +1298,34 @@ func (d *WeeklyReportView) unresolvedViolations() []weeklyreview.Violation {
 		}
 	}
 	return out
+}
+
+// adoptUnresolved replaces the local check state with the findings Confirm
+// refused with, so the dialog and the checks tab show the same list the
+// service just computed. The caller must hold d.mu.
+func (d *WeeklyReportView) adoptUnresolved(err error) bool {
+	se := weeklyreview.AsServiceError(err)
+	if se == nil || se.Code != weeklyreview.ErrUnresolvedViolations || d.report == nil {
+		return false
+	}
+	list, ok := se.Details["violations"].([]weeklyreview.Violation)
+	if !ok {
+		return false
+	}
+	meta := d.report.Meta
+	meta.Checks = &weeklyreview.CheckState{CheckedAt: time.Now(), Violations: list}
+	d.report.Meta = meta
+	live := make(map[string]bool, len(list))
+	for _, violation := range list {
+		live[violation.Fingerprint] = true
+	}
+	for fp := range d.acks {
+		if !live[fp] {
+			delete(d.acks, fp)
+			delete(d.ackNotes, fp)
+		}
+	}
+	return true
 }
 
 // confirm sends the local acks with the confirmation; the service persists
@@ -1322,7 +1364,14 @@ func (d *WeeklyReportView) confirm(a *app.App, projectID string) {
 		d.mu.Lock()
 		d.confirming = false
 		if err != nil {
-			d.confirmErr = weeklyError(err)
+			// The service re-validates against a freshly collected digest,
+			// so its unresolved set can be larger than the one this frame
+			// showed. Adopt it instead of dead-ending the dialog.
+			if d.adoptUnresolved(err) {
+				d.confirmErr = ""
+			} else {
+				d.confirmErr = weeklyError(err)
+			}
 		} else {
 			d.report = updated
 			d.confirmOpen = false
@@ -1692,7 +1741,8 @@ func (d *WeeklyReportView) insertRef(typ, id string) {
 	d.ed.Buffer.Edit(editor.Edit{Start: end, End: end, Text: text})
 }
 
-// exportDialog is §6.4: Markdown only, directory, front matter and overwrite.
+// exportDialog is §6.4: Markdown or HTML, directory, front matter and
+// overwrite.
 func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID string, report *weeklyreview.WeeklyReport) {
 	if !d.exportOpen {
 		return
@@ -1700,7 +1750,11 @@ func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID 
 	d.mu.Lock()
 	exporting, errText, path := d.exporting, d.exportErr, d.exportPath
 	d.mu.Unlock()
-	formatLabel := i18n.T("pages.weekly_review.export_format_md")
+	mdLabel := i18n.T("pages.weekly_review.export_format_md")
+	htmlLabel := i18n.T("pages.weekly_review.export_format_html")
+	if d.exportFmtLabel != mdLabel && d.exportFmtLabel != htmlLabel {
+		d.exportFmtLabel = mdLabel
+	}
 	open := true
 	v.Dialog(&open, components.DialogOptions{
 		Title:       i18n.T("pages.weekly_review.export_title"),
@@ -1715,7 +1769,11 @@ func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID 
 				Loading:  exporting,
 				Disabled: exporting,
 			}).Clicked() {
-				d.export(a, projectID, report)
+				format := "md"
+				if d.exportFmtLabel == htmlLabel {
+					format = "html"
+				}
+				d.export(a, projectID, report, format)
 			}
 		},
 	}, func() {
@@ -1726,14 +1784,14 @@ func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID 
 				Message: i18n.T("pages.weekly_review.export_draft_message"),
 			})
 		}
-		v.Select(&formatLabel, components.SelectOptions{
-			Label:    i18n.T("pages.weekly_review.field_format"),
-			Options:  []string{formatLabel},
-			Disabled: true,
+		v.Select(&d.exportFmtLabel, components.SelectOptions{
+			Label:   i18n.T("pages.weekly_review.field_format"),
+			Options: []string{mdLabel, htmlLabel},
 		})
-		ui.Text(v.C, i18n.T("pages.weekly_review.export_pdf_unsupported")).
-			FontSize(tokens.Typography.Caption.Size).
-			TextColor(mygo.Color(v.T.Palette.TextMuted))
+		ext := ".md"
+		if d.exportFmtLabel == htmlLabel {
+			ext = ".html"
+		}
 		dir := v.Input(&d.exportDir, components.FieldOptions{
 			Label:       i18n.T("pages.weekly_review.field_dir"),
 			Placeholder: i18n.T("pages.weekly_review.field_dir_hint"),
@@ -1752,7 +1810,7 @@ func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID 
 		v.Checkbox(&d.exportFront, i18n.T("pages.weekly_review.field_front_matter"), components.ToggleOptions{})
 		v.Checkbox(&d.exportOver, i18n.T("pages.weekly_review.field_overwrite"), components.ToggleOptions{})
 		ui.Text(v.C, i18n.Tf("pages.weekly_review.export_filename", map[string]string{
-			"name": report.Period.StartDate() + "_" + report.Period.EndDate() + "_weekly-report.md",
+			"name": report.Period.StartDate() + "_" + report.Period.EndDate() + "_weekly-report" + ext,
 		})).Font(tokens.SystemFonts.Mono).
 			FontSize(tokens.Typography.Caption.Size).
 			TextColor(mygo.Color(v.T.Palette.TextMuted))
@@ -1789,7 +1847,7 @@ func (d *WeeklyReportView) exportDialog(v *components.UI, a *app.App, projectID 
 	}
 }
 
-func (d *WeeklyReportView) export(a *app.App, projectID string, report *weeklyreview.WeeklyReport) {
+func (d *WeeklyReportView) export(a *app.App, projectID string, report *weeklyreview.WeeklyReport, format string) {
 	if report == nil {
 		return
 	}
@@ -1810,7 +1868,7 @@ func (d *WeeklyReportView) export(a *app.App, projectID string, report *weeklyre
 	a.RunTask(i18n.T("pages.weekly_review.task_export"), func(ctx context.Context, t *app.Task) error {
 		result, err := api.Export(ctx, projectID, weeklyreview.ExportInput{
 			ReportID:    reportID,
-			Format:      "md",
+			Format:      format,
 			Dir:         dir,
 			Overwrite:   overwrite,
 			FrontMatter: &front,

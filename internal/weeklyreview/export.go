@@ -21,8 +21,8 @@ func (s *service) Export(ctx context.Context, in ExportInput) (*ExportResult, er
 	if format == "" {
 		format = "md"
 	}
-	if format != "md" {
-		return nil, serviceError(ErrUnsupportedFormat, "仅支持 Markdown（md）导出")
+	if format != "md" && format != "html" {
+		return nil, serviceError(ErrUnsupportedFormat, "仅支持 Markdown（md）与 HTML（html）导出")
 	}
 	if in.Actor != "" {
 		if _, err := writeActor(in.Actor); err != nil {
@@ -46,13 +46,19 @@ func (s *service) Export(ctx context.Context, in ExportInput) (*ExportResult, er
 	if in.FrontMatter != nil {
 		frontMatter = *in.FrontMatter
 	}
-	payload := renderReportDocument(report, info, frontMatter, s.clock.Now().UTC())
+	now := s.clock.Now().UTC()
+	ext := ".md"
+	payload := renderReportDocument(report, info, frontMatter, now)
+	if format == "html" {
+		ext = ".html"
+		payload = renderReportHTML(report, info, frontMatter, now)
+	}
 
 	dir, err := s.resolveExportDir(ctx, in.Dir, info.Name)
 	if err != nil {
 		return nil, err
 	}
-	base := fmt.Sprintf("%s_%s_weekly-report.md", report.Period.StartDate(), report.Period.EndDate())
+	base := fmt.Sprintf("%s_%s_weekly-report%s", report.Period.StartDate(), report.Period.EndDate(), ext)
 	target := filepath.Join(dir, base)
 	if _, statErr := os.Lstat(target); statErr == nil && !in.Overwrite {
 		return nil, serviceError(ErrExportExists, "目标文件已存在：%s", target)
@@ -65,7 +71,7 @@ func (s *service) Export(ctx context.Context, in ExportInput) (*ExportResult, er
 	}
 	return &ExportResult{
 		Path:   target,
-		Format: "md",
+		Format: format,
 		Bytes:  int64(len(payload)),
 		Status: report.Status,
 	}, nil
