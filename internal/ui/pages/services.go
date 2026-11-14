@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	mg "github.com/egoist/mygo"
+
 	"researchos/internal/foundation/config"
 	"researchos/internal/foundation/confirm"
 	"researchos/internal/foundation/diag"
@@ -58,6 +60,10 @@ type Services struct {
 	// notes that link it. Nil means the module is not assembled, and the page
 	// says so instead of rendering an empty paper.
 	Paper PaperAPI
+	// Window returns the native window the shell draws in, or nil before the
+	// window exists (the wizard, tests). The paper page embeds its PDF reader
+	// in it; a nil window makes the page show its honest unavailable state.
+	Window func() *mg.Window
 	// Notes binds the SPEC-05 note service. Nil means the module is not
 	// assembled, and the page says so instead of rendering an empty list.
 	Notes NotesAPI
@@ -143,19 +149,6 @@ type LiteratureAPI interface {
 	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
 }
 
-// PaperText is one PDF window the in-app reader shows: the total page count
-// and the extracted paragraphs of the pages that were read.
-type PaperText struct {
-	PageCount int
-	Pages     []PaperPageText
-}
-
-// PaperPageText is one page's extracted paragraphs, in reading order.
-type PaperPageText struct {
-	PageNo int
-	Blocks []string
-}
-
 // PaperRelatedNote is one note whose Markdown body links the paper.
 type PaperRelatedNote struct {
 	ID        string
@@ -163,26 +156,24 @@ type PaperRelatedNote struct {
 	UpdatedAt time.Time
 }
 
-// Paper read failures the page names in its own words: a missing imported copy
-// and a page without a text layer (a scan) are states, not exceptions.
-var (
-	// ErrPaperCopyMissing reports that the project's PDF copy is gone.
-	ErrPaperCopyMissing = errors.New("pages: the paper PDF copy is missing")
-	// ErrPaperNoTextLayer reports pages without extractable text.
-	ErrPaperNoTextLayer = errors.New("pages: the paper PDF has no text layer")
-)
+// ErrPaperCopyMissing reports that the project's PDF copy is gone. The page
+// shows it as a state of the reader card, not as an exception.
+var ErrPaperCopyMissing = errors.New("pages: the paper PDF copy is missing")
 
-// PaperAPI is the part of SPEC-04/05 the paper page uses: the in-app reader,
-// the external opener, the Paper Note fields and the research notes that link
-// the paper. The composition root binds it always as ActorUser.
+// PaperAPI is the part of SPEC-04/05 the paper page uses: the embedded PDF
+// reader, the external openers, the Paper Note fields and the research notes
+// that link the paper. The composition root binds it always as ActorUser.
 type PaperAPI interface {
 	Paper(ctx context.Context, paperID string) (literature.Paper, error)
-	// ReadPaperText extracts pages [startPage, startPage+maxPages) of the
-	// imported copy, so a large PDF is read a window at a time.
-	ReadPaperText(ctx context.Context, paperID string, startPage, maxPages int) (PaperText, error)
+	// PaperFileURL resolves the imported copy to the file URL the embedded
+	// web view shows.
+	PaperFileURL(ctx context.Context, paperID string) (string, error)
 	// OpenPaper launches the application the workspace setting selects
 	// (system default or Zotero).
 	OpenPaper(ctx context.Context, paperID string) error
+	// OpenPaperWith lets the user pick another application for the imported
+	// copy: the system "Open with" dialog where the platform has one.
+	OpenPaperWith(ctx context.Context, paperID string) error
 
 	PaperNote(ctx context.Context, projectID, paperID string) (*literature.PaperNote, error)
 	CreatePaperNote(ctx context.Context, projectID, paperID string) (literature.PaperNote, error)

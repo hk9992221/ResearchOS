@@ -69,6 +69,12 @@ type Runtime struct {
 	setupApp *app.App
 	wizard   *pages.Wizard
 
+	// window is the native window the shell draws in. The composition root
+	// attaches it once the application is ready; before that (and in headless
+	// tests) it is nil, and the paper page shows its honest unavailable state
+	// instead of embedding a reader.
+	window *mg.Window
+
 	confirm       confirm.Service
 	dialogOpen    func() ([]string, error)
 	setupErr      string
@@ -135,6 +141,24 @@ func (r *Runtime) Flush() {
 
 // Provider returns the theme provider, which outlives workspaces.
 func (r *Runtime) Provider() *theme.Provider { return r.provider }
+
+// AttachWindow hands the running window to the pages, which place the embedded
+// PDF reader in it. It runs after the window exists and is safe from any
+// goroutine: pages read the handle when they build a frame, so attaching after
+// the services were built still reaches them.
+func (r *Runtime) AttachWindow(w *mg.Window) {
+	r.mu.Lock()
+	r.window = w
+	r.mu.Unlock()
+	mygo.InvalidateAll()()
+}
+
+// Window returns the attached window, or nil before one is attached.
+func (r *Runtime) Window() *mg.Window {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.window
+}
 
 // App returns the shell's application state, or the wizard's state before a
 // workspace opens.
@@ -394,6 +418,10 @@ func (r *Runtime) pageServices(ws *fworkspace.Workspace, appWS *workspace.Servic
 		MCPStatus:    r.mcpStatus,
 		// The notes page installs its editor's close-time flush here.
 		NoteFlush: &pages.NoteFlush{},
+		// The paper page embeds its PDF reader in the attached window. The
+		// method value reads the handle per call, so it is nil only while no
+		// window exists.
+		Window: r.Window,
 	}
 	if ws == nil {
 		return s
