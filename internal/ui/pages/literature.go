@@ -47,6 +47,15 @@ type Literature struct {
 	state    litState
 	problems []string
 
+	// importOpen folds the Zotero browser: the page reads the project library
+	// only until the import is expanded, because reading Zotero is the slow
+	// part of the page. zoteroLoaded records that the browser data was read
+	// once, so folding and expanding again costs nothing, and zloading says a
+	// browser read is in flight.
+	importOpen   bool
+	zoteroLoaded bool
+	zloading     bool
+
 	// These are written while a frame is built only: the collection name shown
 	// in the picker, the search text, the chosen item keys and the open flag of
 	// the preview dialog.
@@ -91,11 +100,22 @@ func (l *Literature) Page(v *components.UI, r ports.Route) {
 	}
 
 	l.load(a, project.ID)
+	open := l.importShown()
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
 			Title:       i18n.T("pages.literature.title"),
 			Description: i18n.Tf("pages.literature.description", map[string]string{"project": project.Name}),
 			Actions: func() {
+				label, icon := i18n.T("pages.literature.btn_expand_import"), icons.ChevronRight
+				if open {
+					label, icon = i18n.T("pages.literature.btn_collapse_import"), icons.ChevronDown
+				}
+				if v.Button(label, components.ButtonOptions{
+					Variant: components.VariantGhost,
+					Icon:    icon,
+				}).Clicked() {
+					l.toggleImport(a)
+				}
 				if v.Button(i18n.T("pages.literature.btn_refresh"), components.ButtonOptions{
 					Variant: components.VariantGhost,
 					Icon:    icons.Refresh,
@@ -105,9 +125,13 @@ func (l *Literature) Page(v *components.UI, r ports.Route) {
 			},
 		})
 		l.banners(v)
-		l.browser(v, a, project.ID)
+		if open {
+			l.browser(v, a, project.ID)
+		}
 		l.linked(v)
-		l.dialog(v, a, project.ID)
+		if open {
+			l.dialog(v, a, project.ID)
+		}
 	}})
 }
 
@@ -192,7 +216,8 @@ func failuresText(result *literature.ImportResult) string {
 // that feeds the preview.
 func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 	l.mu.Lock()
-	s, loading := l.state, l.loading
+	s := l.state
+	loaded, busy := l.zoteroLoaded, l.loading || l.zloading
 	l.mu.Unlock()
 
 	names, keys := collectionLabels(s.collections)
@@ -203,6 +228,12 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 		Title:       i18n.T("pages.literature.card_items"),
 		Description: i18n.T("pages.literature.card_items_desc"),
 	}, func() {
+		// The panel starts as a skeleton until the Zotero read lands: an empty
+		// table would claim the library has no items.
+		if !loaded {
+			v.Skeleton(components.SkeletonOptions{Lines: 5})
+			return
+		}
 		ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
 			picker := v.Select(&selector, components.SelectOptions{
 				Label:   i18n.T("pages.literature.field_collection"),
@@ -228,10 +259,6 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 		})
 
 		if len(s.items) == 0 {
-			if loading {
-				v.Skeleton(components.SkeletonOptions{Lines: 5})
-				return
-			}
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Literature,
 				Title:  i18n.T("pages.literature.items_empty_title"),
@@ -301,13 +328,13 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 		ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).Children(func() {
 			if v.Button(i18n.T("pages.literature.btn_preview"), components.ButtonOptions{
 				Variant:  components.VariantPrimary,
-				Disabled: loading || l.sel.Len() == 0,
+				Disabled: busy || l.sel.Len() == 0,
 			}).Clicked() {
 				l.openPreview(a)
 			}
 			if v.Button(i18n.T("pages.literature.btn_import_direct"), components.ButtonOptions{
 				Variant:  components.VariantSecondary,
-				Disabled: loading || l.sel.Len() == 0,
+				Disabled: busy || l.sel.Len() == 0,
 			}).Clicked() {
 				l.startImport(a, projectID, l.selectedKeys())
 			}
@@ -529,7 +556,7 @@ func visibleTableHeight(rows int) float32 {
 }
 
 // load runs the module load once per project; reload re-runs it after a
-// detection change in the settings.
+// detection change in the settings or a refresh.
 func (l *Literature) load(a *app.App, projectID string) {
 	l.mu.Lock()
 	if l.loading || (l.loaded && l.project == projectID) {
@@ -540,6 +567,9 @@ func (l *Literature) load(a *app.App, projectID string) {
 	l.reload(a, projectID)
 }
 
+// reload reads the project papers, and the Zotero browser too while the import
+// panel is expanded: a folded page never touches Zotero, which is the slow read
+// that made the page stall on a large library.
 func (l *Literature) reload(a *app.App, projectID string) {
 	api := l.Services.Literature
 	l.mu.Lock()
@@ -553,7 +583,17 @@ func (l *Literature) reload(a *app.App, projectID string) {
 	l.loaded = false
 	l.problems = nil
 	if first {
+		// A fresh project opens folded: the browser cache and the preview
+		// belong to the previous project, so the panel starts over.
+		l.importOpen = false
+		l.previewOpen = false
 		l.state.offset = 0
+		l.state.preview = nil
+		l.state.previewErrs = nil
+	}
+	withBrowser := l.importOpen && !l.zloading
+	if withBrowser {
+		l.zloading = true
 	}
 	l.mu.Unlock()
 	if first && l.sel != nil {
@@ -561,85 +601,148 @@ func (l *Literature) reload(a *app.App, projectID string) {
 	}
 
 	a.RunTask(i18n.T("pages.literature.task_load"), func(ctx context.Context, t *app.Task) error {
-		t.Stage(i18n.T("pages.literature.stage_items"))
-		collections, collErr := api.Collections(ctx, "")
-		l.record(collErr)
-		l.mu.Lock()
-		if collErr == nil {
-			l.state.collections = collections
+		if withBrowser {
+			l.readBrowser(ctx, t, api, true)
 		}
-		offset := l.state.offset
-		if first {
-			offset = 0
-			l.state.offset = 0
-		}
-		l.mu.Unlock()
-		page, itemsErr := api.Items(ctx, "", l.collectionKey(), literature.ListItemsOptions{
-			Offset: offset,
-			Limit:  literaturePageSize,
-			Query:  l.queryText(),
-		})
-		l.record(itemsErr)
-		l.mu.Lock()
-		if itemsErr == nil {
-			l.state.items, l.state.total = page.Items, page.Total
-		}
-		l.mu.Unlock()
 
 		t.Stage(i18n.T("pages.literature.stage_project"))
-		papers, papersErr := api.ProjectPapers(ctx, projectID)
-		l.record(papersErr)
-		l.mu.Lock()
-		if papersErr == nil {
-			l.state.papers = papers
-			linked := make(map[string]bool, len(papers))
-			for _, p := range papers {
-				linked[p.Paper.ZoteroKey] = true
-			}
-			l.state.linked = linked
+		papers, err := api.ProjectPapers(ctx, projectID)
+		l.record(err)
+		if err == nil {
+			l.setPapers(papers)
 		}
-		l.mu.Unlock()
 
 		l.finish(true)
+		if withBrowser {
+			l.endBrowser()
+		}
 		return nil
 	})
 }
 
-// loadItems re-reads only the browser page: the picker, the search text and the
-// paging buttons change nothing else.
+// loadItems re-reads only the browser page: the collection, the search text and
+// the paging buttons change nothing else.
 func (l *Literature) loadItems(a *app.App) {
+	l.loadBrowser(a, false)
+}
+
+// toggleImport flips the import panel: expanding reads the browser once, while
+// folding keeps its rows for the next expand, so the Zotero read is not paid
+// again, and closes the preview dialog.
+func (l *Literature) toggleImport(a *app.App) {
+	l.mu.Lock()
+	l.importOpen = !l.importOpen
+	open := l.importOpen
+	if !open {
+		l.previewOpen = false
+	}
+	read := open && !l.zoteroLoaded
+	l.mu.Unlock()
+	if read {
+		l.loadBrowser(a, true)
+	}
+}
+
+// loadBrowser reads the Zotero side of the panel in a managed task: the frame
+// only renders the cache, so a large library never blocks it. withCollections
+// is true on the first expand and on a refresh, false while the rows alone
+// change.
+func (l *Literature) loadBrowser(a *app.App, withCollections bool) {
 	api := l.Services.Literature
 	l.mu.Lock()
-	if l.loading {
+	if l.zloading {
 		l.mu.Unlock()
 		return
 	}
-	l.loading = true
+	l.zloading = true
 	l.mu.Unlock()
 
 	a.RunTask(i18n.T("pages.literature.task_items"), func(ctx context.Context, t *app.Task) error {
-		t.Stage(i18n.T("pages.literature.stage_items"))
-		l.mu.Lock()
-		offset := l.state.offset
-		l.mu.Unlock()
-		page, err := api.Items(ctx, "", l.collectionKey(), literature.ListItemsOptions{
-			Offset: offset,
-			Limit:  literaturePageSize,
-			Query:  l.queryText(),
-		})
-		l.record(err)
-		l.mu.Lock()
-		if err == nil {
-			l.state.items, l.state.total = page.Items, page.Total
-		}
-		l.mu.Unlock()
-		l.finish(err == nil)
+		l.readBrowser(ctx, t, api, withCollections)
+		l.endBrowser()
 		return nil
 	})
 }
 
+// readBrowser reads the collections and the current page of items. Both callers
+// run it inside a task, so no Zotero read happens on the frame thread.
+func (l *Literature) readBrowser(ctx context.Context, t *app.Task, api LiteratureAPI, withCollections bool) {
+	t.Stage(i18n.T("pages.literature.stage_items"))
+	if withCollections {
+		collections, err := api.Collections(ctx, "")
+		l.record(err)
+		if err == nil {
+			l.mu.Lock()
+			l.state.collections = collections
+			l.mu.Unlock()
+		}
+	}
+	l.readItems(ctx, api)
+}
+
+// readItems reads the current browser page into the frame state; a failed read
+// keeps the rows already on screen.
+func (l *Literature) readItems(ctx context.Context, api LiteratureAPI) {
+	l.mu.Lock()
+	offset, collection, query := l.state.offset, l.collection, l.query
+	l.mu.Unlock()
+
+	page, err := api.Items(ctx, "", collection, literature.ListItemsOptions{
+		Offset: offset,
+		Limit:  literaturePageSize,
+		Query:  query,
+	})
+	l.record(err)
+	if err != nil {
+		return
+	}
+	l.mu.Lock()
+	l.state.items, l.state.total = page.Items, page.Total
+	l.mu.Unlock()
+}
+
+// endBrowser clears the browser loading flag; a failed read still marks the
+// panel loaded, so it shows its empty state and the problem banner instead of a
+// skeleton, and a refresh retries.
+func (l *Literature) endBrowser() {
+	l.mu.Lock()
+	l.zloading = false
+	l.zoteroLoaded = true
+	l.mu.Unlock()
+	if l.Services.App != nil {
+		l.Services.App.Notify()
+	}
+}
+
+// importShown reports whether the import panel is expanded.
+func (l *Literature) importShown() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.importOpen
+}
+
+// setPapers stores the project list and rebuilds the "In project" map the
+// browser badges read; the map is empty when nothing was imported, and a nil
+// map read only reports false.
+func (l *Literature) setPapers(papers []literature.ProjectPaper) {
+	linked := make(map[string]bool, len(papers))
+	for _, p := range papers {
+		if key := p.Paper.ZoteroKey; key != "" {
+			linked[key] = true
+		}
+	}
+	l.mu.Lock()
+	l.state.papers = papers
+	l.state.linked = linked
+	l.mu.Unlock()
+}
+
 // openPreview takes the selected item keys and previews them without writing.
+// The dialog belongs to the expanded panel, so a folded page can never open it.
 func (l *Literature) openPreview(a *app.App) {
+	if !l.importShown() {
+		return
+	}
 	keys := l.selectedKeys()
 	if len(keys) == 0 {
 		return
@@ -750,15 +853,10 @@ func (l *Literature) startImport(a *app.App, projectID string, keys []string) {
 		if err == nil {
 			papers, papersErr := api.ProjectPapers(ctx, projectID)
 			l.record(papersErr)
-			l.mu.Lock()
 			if papersErr == nil {
-				l.state.papers = papers
-				linked := make(map[string]bool, len(papers))
-				for _, p := range papers {
-					linked[p.Paper.ZoteroKey] = true
-				}
-				l.state.linked = linked
+				l.setPapers(papers)
 			}
+			l.mu.Lock()
 			l.state.preview = nil
 			l.mu.Unlock()
 			l.sel.Clear()
@@ -846,18 +944,6 @@ func (l *Literature) setChosen(itemKey, attachmentKey string) {
 		l.state.chosen = map[string]string{}
 	}
 	l.state.chosen[itemKey] = attachmentKey
-}
-
-func (l *Literature) collectionKey() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.collection
-}
-
-func (l *Literature) queryText() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.query
 }
 
 // collectionLabels pairs the picker entries with their keys; the first entry is

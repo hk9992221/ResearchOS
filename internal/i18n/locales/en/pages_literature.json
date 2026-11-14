@@ -2,6 +2,8 @@
   "pages.literature.badge_imported": "In project",
   "pages.literature.badge_new": "Not imported",
   "pages.literature.banner_problem": "The literature module reported a problem",
+  "pages.literature.btn_collapse_import": "Collapse import",
+  "pages.literature.btn_expand_import": "Expand import",
   "pages.literature.btn_import": "Import",
   "pages.literature.btn_import_direct": "Import directly",
   "pages.literature.btn_next": "Next",

@@ -2,6 +2,8 @@
   "pages.literature.badge_imported": "已在项目",
   "pages.literature.badge_new": "未导入",
   "pages.literature.banner_problem": "文献模块报告了问题",
+  "pages.literature.btn_collapse_import": "收起导入",
+  "pages.literature.btn_expand_import": "展开导入",
   "pages.literature.btn_import": "导入",
   "pages.literature.btn_import_direct": "直接导入",
   "pages.literature.btn_next": "下一页",
