@@ -837,16 +837,19 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 	api := n.Services.Weekly
 	includeAI := n.genAI
 	replace := !n.needOverwrite || n.genOverwrite
-	in := weeklyreview.GeneratePeriodInput{
-		Period:    period,
-		IncludeAI: includeAI,
-		Replace:   replace,
-		Actor:     weeklyreview.ActorUser,
-	}
 	task := a.RunTask(i18n.T("pages.weekly_review.task_generate"), func(ctx context.Context, t *app.Task) error {
 		gctx, cancel := context.WithCancel(ctx)
 		t.SetCancel(cancel)
 		defer cancel()
+		in := weeklyreview.GeneratePeriodInput{
+			Period:    period,
+			IncludeAI: includeAI,
+			Replace:   replace,
+			Actor:     weeklyreview.ActorUser,
+		}
+		if includeAI {
+			in.Progress = weeklySectionProgress(t)
+		}
 		t.Stage(i18n.T("pages.weekly_review.stage_collect"))
 		t.Progress(10, 100)
 		outcome, genErr := api.GenerateForPeriod(gctx, projectID, in)
@@ -1158,6 +1161,28 @@ func visibleWeeklyRows(n int) float32 {
 // weeklyDegraded reports the two codes that leave a usable skeleton in the
 // report: AI is not wired, or the model failed and the deterministic
 // seven-section body was stored instead (AC-12).
+// weeklySectionProgress renders the section-by-section generation in the task
+// strip: "3/7 · 理论研究进展". The bar fills from 10% to 85%, leaving the tail
+// for validation and the draft write.
+func weeklySectionProgress(t *app.Task) weeklyreview.SectionProgress {
+	return func(done, total int, section weeklyreview.SectionKey) {
+		if total <= 0 {
+			return
+		}
+		if section == "" {
+			t.Stage(i18n.T("pages.weekly_review.stage_store"))
+			t.Progress(90, 100)
+			return
+		}
+		t.Stage(i18n.Tf("pages.weekly_review.stage_section", map[string]string{
+			"done":  strconv.Itoa(done + 1),
+			"total": strconv.Itoa(total),
+			"title": weeklyreview.SectionTitle(section),
+		}))
+		t.Progress(10+done*75/total, 100)
+	}
+}
+
 func weeklyDegraded(err error) bool {
 	switch weeklyreview.CodeOf(err) {
 	case weeklyreview.ErrAIUnavailable, weeklyreview.ErrAIOutputInvalid:

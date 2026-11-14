@@ -323,6 +323,12 @@ func violationV4(parsed parsedReport, digest *ActivityDigest) []Violation {
 	for _, t := range digest.Planned {
 		known[t.Ref.Type+":"+t.Ref.ID] = true
 	}
+	// Filing actions stay out of the body, but a report may still cite the
+	// entity they recorded (a paper imported this week, say). Known, so the
+	// reference is not reported as broken.
+	for _, item := range digest.Housekeeping {
+		known[item.Ref.Type+":"+item.Ref.ID] = true
+	}
 	var out []Violation
 	for _, sec := range parsed.order {
 		for _, line := range parsed.sections[sec] {

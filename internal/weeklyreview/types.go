@@ -99,9 +99,12 @@ const (
 
 // GenerationMeta is the provenance snapshot inside meta.generation.
 type GenerationMeta struct {
-	Mode            string    `json:"mode"`
-	AIStatus        string    `json:"ai_status"`
-	AIOutputID      string    `json:"ai_output_id,omitempty"`
+	Mode       string `json:"mode"`
+	AIStatus   string `json:"ai_status"`
+	AIOutputID string `json:"ai_output_id,omitempty"`
+	// AIOutputIDs lists every section call that contributed to the body, in
+	// template order. Confirm confirms all of them in one transaction.
+	AIOutputIDs     []string  `json:"ai_output_ids,omitempty"`
 	ProviderID      string    `json:"provider_id,omitempty"`
 	ModelID         string    `json:"model_id,omitempty"`
 	PromptVersion   string    `json:"prompt_version,omitempty"`
@@ -111,6 +114,9 @@ type GenerationMeta struct {
 	DigestHash      string    `json:"digest_hash,omitempty"`
 	Attempts        int       `json:"attempts"`
 	Error           string    `json:"error,omitempty"`
+	// Notes explains a partial result, such as sections that fell back to
+	// the deterministic skeleton.
+	Notes string `json:"notes,omitempty"`
 }
 
 // Coverage is the digest coverage snapshot inside meta.coverage.
@@ -242,6 +248,11 @@ type ActivityDigest struct {
 	Truncated   bool
 	Warnings    []string
 	DigestHash  string
+	// Housekeeping holds filing actions (created / imported / deleted,
+	// exports, self-generated reports). They are not progress: they never
+	// reach a body section or the prompt, and only keep their refs known to
+	// the validator.
+	Housekeeping []DigestItem
 }
 
 // EntityBrief is the read-only entity summary used by the digest.
@@ -298,7 +309,12 @@ type GenerateInput struct {
 	ReportID string
 	Replace  bool
 	Actor    Actor
+	// Progress reports each section as it is generated. Nil is fine.
+	Progress SectionProgress
 }
+
+// SectionProgress reports one finished section generation.
+type SectionProgress func(done, total int, section SectionKey)
 
 // GeneratePeriodInput is the combined "generate this week" entry.
 type GeneratePeriodInput struct {
@@ -306,6 +322,8 @@ type GeneratePeriodInput struct {
 	IncludeAI bool
 	Replace   bool
 	Actor     Actor
+	// Progress reports each section as it is generated. Nil is fine.
+	Progress SectionProgress
 }
 
 // GenerateOutcome carries the report, digest and validation findings.

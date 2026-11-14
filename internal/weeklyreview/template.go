@@ -32,6 +32,10 @@ func sectionTitle(key SectionKey) string {
 	return string(key)
 }
 
+// SectionTitle returns the canonical title of a section key, for progress
+// labels and UI text that must match the report body.
+func SectionTitle(key SectionKey) string { return sectionTitle(key) }
+
 func templateSection(key SectionKey) (TemplateSection, bool) {
 	for _, sec := range defaultTemplate.Sections {
 		if sec.Key == key {

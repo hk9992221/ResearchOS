@@ -105,8 +105,13 @@ func (s *service) CollectActivities(ctx context.Context, in CollectInput) (*Acti
 	}
 
 	sections := make(map[SectionKey][]DigestItem)
+	var housekeepingItems []DigestItem
 	for _, ev := range kept {
 		item := digestItem(ev, briefs, loc, warn)
+		if housekeeping(ev) {
+			housekeepingItems = append(housekeepingItems, item.item)
+			continue
+		}
 		sections[item.section] = append(sections[item.section], item.item)
 	}
 
@@ -121,14 +126,18 @@ func (s *service) CollectActivities(ctx context.Context, in CollectInput) (*Acti
 		return nil, err
 	}
 
+	if len(housekeepingItems) > maxSectionItems {
+		housekeepingItems = housekeepingItems[:maxSectionItems]
+	}
 	digest := &ActivityDigest{
-		Period:      period,
-		Timezone:    loc.String(),
-		CollectedAt: s.clock.Now(),
-		Blocked:     blocked,
-		Planned:     planned,
-		Truncated:   truncated,
-		Warnings:    warnings,
+		Period:       period,
+		Timezone:     loc.String(),
+		CollectedAt:  s.clock.Now(),
+		Blocked:      blocked,
+		Planned:      planned,
+		Truncated:    truncated,
+		Warnings:     warnings,
+		Housekeeping: housekeepingItems,
 		Stats: DigestStats{
 			CountsByType:    countsByType,
 			CountsBySection: map[SectionKey]int{},
@@ -289,6 +298,21 @@ func digestItem(ev events.Activity, briefs map[EntityRef]EntityBrief, loc *time.
 			Broken:            brief.Broken,
 		},
 	}
+}
+
+// housekeeping reports whether an event records filing or housekeeping rather
+// than research progress: creating/importing/deleting an entity, exporting, or
+// the module's own report generation. Those events say nothing about the work
+// done, so they never reach a body section or the AI prompt (the digest keeps
+// them only for reference grounding and the muted count in the digest tab).
+func housekeeping(ev events.Activity) bool {
+	switch ev.Type {
+	case schema.EventEntityCreated, schema.EventEntityDeleted, schema.EventEntityRestored,
+		schema.EventPaperImported, schema.EventPaperOverwriteConfirmed, schema.EventPaperMetadataUpdated,
+		schema.EventReportGenerated, schema.EventProjectExported:
+		return true
+	}
+	return false
 }
 
 func itemKind(t events.Type) string {

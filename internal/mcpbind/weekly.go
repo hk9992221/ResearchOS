@@ -166,6 +166,12 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 							ReportID: reportID,
 							Replace:  replace,
 							Actor:    weeklyreview.ActorMCP,
+							Progress: func(done, total int, section weeklyreview.SectionKey) {
+								if section == "" || total <= 0 {
+									return
+								}
+								progress(10+done*80/total, "生成分区 "+weeklyreview.SectionTitle(section))
+							},
 						})
 						if err != nil {
 							return nil, mapWeeklyError(err)
