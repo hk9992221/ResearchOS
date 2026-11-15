@@ -23,6 +23,7 @@ import (
 	"researchos/internal/ui/components"
 	"researchos/internal/ui/errtext"
 	"researchos/internal/ui/icons"
+	"researchos/internal/ui/mygo"
 	"researchos/internal/ui/tokens"
 )
 
@@ -35,6 +36,10 @@ const literaturePageSize = litVisibleRows
 // litVisibleRows is how many table rows fit before the list scrolls inside its
 // own box (design system row height 44px).
 const litVisibleRows = 10
+
+// litCheckWidth is the column of the row check boxes: one square control plus
+// the cell padding of the design system.
+const litCheckWidth float32 = 44
 
 // literatureShared is the generation the paper page bumps after it writes a
 // Paper Note or links a research note: the project table then reloads its note
@@ -87,6 +92,27 @@ type Literature struct {
 	query       string
 	previewOpen bool
 	sel         *ui.Selection[string]
+
+	// includeSub widens a collection import to its subcollections, and pending
+	// is the selection the preview dialog confirms: checked item keys, or the
+	// collection keys of a whole-collection import, which the import then
+	// expands again so it stays one request.
+	includeSub bool
+	pending    literature.ImportSelection
+
+	// resultOpen shows the receipt of the last import: a counts line alone
+	// would hide which entry failed and why.
+	resultOpen bool
+
+	// paperSel chooses rows of the project table for a batch delete; the delete
+	// dialog is the confirmation both the row action and the batch share.
+	paperSel *ui.Selection[string]
+	delOpen  bool
+	delIDs   []string
+	delTitle string
+	delNotes int
+	delBusy  bool
+	delErr   string
 }
 
 // litState is the cached service state the frame renders.
@@ -100,8 +126,10 @@ type litState struct {
 	preview     []literature.ImportPreviewEntry
 	previewErrs []literature.ImportError
 	choices     map[string][]literature.ZoteroAttachment
-	chosen      map[string]string
-	result      *literature.ImportResult
+	// titles labels a preview entry and its outcome by Zotero key: the result
+	// receipt names the paper the user imported, not its key.
+	titles map[string]string
+	result *literature.ImportResult
 }
 
 // Page renders one frame of the literature module.
@@ -112,6 +140,9 @@ func (l *Literature) Page(v *components.UI, r ports.Route) {
 	}
 	if l.sel == nil {
 		l.sel = components.NewSelection[string]()
+	}
+	if l.paperSel == nil {
+		l.paperSel = components.NewSelection[string]()
 	}
 	if l.Services.Literature == nil {
 		l.unavailable(v)
@@ -150,12 +181,14 @@ func (l *Literature) Page(v *components.UI, r ports.Route) {
 		})
 		l.banners(v)
 		if open {
-			l.browser(v, a, project.ID)
+			l.browser(v, a)
 		}
-		l.linked(v)
+		l.linked(v, a)
 		if open {
 			l.dialog(v, a, project.ID)
 		}
+		l.resultDialog(v)
+		l.deleteDialog(v, a, project.ID)
 	}})
 }
 
@@ -190,7 +223,9 @@ func (l *Literature) needsProject(v *components.UI, a *app.App) {
 	}})
 }
 
-// banners reports load failures and the outcome of the last import.
+// banners reports load failures and the items the last import could not bring
+// in: the receipt dialog shows every status, so the banner only keeps the
+// failure that must not scroll away.
 func (l *Literature) banners(v *components.UI) {
 	l.mu.Lock()
 	problems, result := append([]string(nil), l.problems...), l.state.result
@@ -202,22 +237,15 @@ func (l *Literature) banners(v *components.UI) {
 			Message: problem,
 		})
 	}
-	if result == nil {
+	if result == nil || result.Failed == 0 {
 		return
 	}
-	tone := components.Success
-	if result.Failed > 0 {
-		tone = components.Warning
-	}
 	v.Banner(components.BannerOptions{
-		Tone:  tone,
-		Title: i18n.T("pages.literature.result_title"),
-		Message: i18n.Tf("pages.literature.result_counts", map[string]string{
-			"imported": strconv.Itoa(result.Imported),
-			"linked":   strconv.Itoa(result.Linked),
-			"skipped":  strconv.Itoa(result.Skipped),
-			"failed":   strconv.Itoa(result.Failed),
-		}) + failuresText(result),
+		Tone: components.Warning,
+		Title: i18n.Tf("pages.literature.result_failed_title", map[string]string{
+			"failed": strconv.Itoa(result.Failed),
+		}),
+		Message: strings.TrimSpace(failuresText(result)),
 	})
 }
 
@@ -226,19 +254,17 @@ func (l *Literature) banners(v *components.UI) {
 func failuresText(result *literature.ImportResult) string {
 	var lines []string
 	for _, outcome := range result.Outcomes {
-		if outcome.Status == literature.ImportFailed {
-			lines = append(lines, "  "+outcome.ZoteroKey+": "+outcome.Error)
+		if outcome.Status != literature.ImportFailed {
+			continue
 		}
+		lines = append(lines, outcome.ZoteroKey+": "+outcome.Error)
 	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return "\n" + i18n.T("pages.literature.result_failures") + "\n" + strings.Join(lines, "\n")
+	return strings.Join(lines, "\n")
 }
 
-// browser is the Zotero picker: collection, search, paging and the selection
-// that feeds the preview.
-func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
+// browser is the Zotero picker: collection, search, paging and the checked
+// items that feed the preview.
+func (l *Literature) browser(v *components.UI, a *app.App) {
 	l.mu.Lock()
 	s := l.state
 	loaded, busy := l.zoteroLoaded, l.loading || l.zloading
@@ -246,7 +272,6 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 
 	names, keys := collectionLabels(s.collections)
 	selector := labelForKey(l.collection, names, keys)
-	chosen := l.previewChosen()
 
 	v.Card(components.CardOptions{
 		Title:       i18n.T("pages.literature.card_items"),
@@ -284,6 +309,16 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			}
 		})
 
+		// A collection import expands the collection in the service, so its
+		// subcollections are a choice of that action, not of the picker.
+		if l.collection != "" {
+			sub := l.includeSub
+			if v.Checkbox(&sub, i18n.T("pages.literature.field_include_sub"), components.ToggleOptions{}).Changed() {
+				l.includeSub = sub
+				a.Notify()
+			}
+		}
+
 		if len(s.items) == 0 {
 			v.EmptyState(components.EmptyStateOptions{
 				Icon:   icons.Literature,
@@ -293,11 +328,12 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			return
 		}
 
-		items := s.items
+		items, linked := s.items, s.linked
 		state := components.NewTableState()
 		state.Key = func(i int) any { return items[i].Key }
 		table := v.Table(components.TableOptions{
 			Columns: []components.Column{
+				{Title: "", ID: "select", Width: litCheckWidth, Align: ui.Center},
 				{Title: i18n.T("pages.literature.col_title")},
 				{Title: i18n.T("pages.literature.col_type"), Width: 140},
 				{Title: i18n.T("pages.literature.col_date"), Width: 100},
@@ -307,17 +343,30 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 			State:     state,
 			Key:       func(i int) any { return items[i].Key },
 			Selection: l.sel,
+			HeaderCell: func(col int) {
+				if col != 0 {
+					return
+				}
+				l.selectPageCheckbox(v, a, items)
+			},
 			Cell: func(row, col int) {
 				item := items[row]
 				switch col {
 				case 0:
-					ui.Text(v.C, itemDisplayTitle(item)).SingleLine()
+					checked := l.sel.Has(item.Key)
+					box := ui.Checkbox(v.C, &checked, "").Label(itemDisplayTitle(item))
+					if box.Changed() {
+						l.setChecked(item.Key, checked)
+						a.Notify()
+					}
 				case 1:
-					ui.Text(v.C, item.ItemType).SingleLine()
+					ui.Text(v.C, itemDisplayTitle(item)).SingleLine()
 				case 2:
-					ui.Text(v.C, item.Date).SingleLine()
+					ui.Text(v.C, item.ItemType).SingleLine()
 				case 3:
-					if s.linked[item.Key] {
+					ui.Text(v.C, item.Date).SingleLine()
+				case 4:
+					if linked[item.Key] {
 						v.Badge(i18n.T("pages.literature.badge_imported"), components.Success)
 					} else {
 						v.Badge(i18n.T("pages.literature.badge_new"), components.Neutral)
@@ -352,41 +401,109 @@ func (l *Literature) browser(v *components.UI, a *app.App, projectID string) {
 		})
 
 		ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).Children(func() {
-			if v.Button(i18n.T("pages.literature.btn_preview"), components.ButtonOptions{
+			count := l.sel.Len()
+			if v.Button(i18n.Tf("pages.literature.btn_import_selected", map[string]string{
+				"count": strconv.Itoa(count),
+			}), components.ButtonOptions{
 				Variant:  components.VariantPrimary,
-				Disabled: busy || l.sel.Len() == 0,
+				Disabled: busy || count == 0,
 			}).Clicked() {
 				l.openPreview(a)
 			}
-			if v.Button(i18n.T("pages.literature.btn_import_direct"), components.ButtonOptions{
-				Variant:  components.VariantSecondary,
-				Disabled: busy || l.sel.Len() == 0,
-			}).Clicked() {
-				l.startImport(a, projectID, l.selectedKeys())
+			if l.collection != "" {
+				if v.Button(i18n.T("pages.literature.btn_import_collection"), components.ButtonOptions{
+					Variant:  components.VariantSecondary,
+					Disabled: busy,
+				}).Clicked() {
+					l.openCollectionPreview(a)
+				}
 			}
-			ui.Text(v.C, i18n.Tf("pages.literature.selected_count", map[string]string{
-				"count": strconv.Itoa(l.sel.Len()),
-			})).FontSize(tokens.Typography.Secondary.Size)
-			if len(chosen) > 0 {
-				ui.Text(v.C, i18n.T("pages.literature.hint_choices_kept")).
-					FontSize(tokens.Typography.Caption.Size)
+			if count > 0 {
+				if v.Button(i18n.T("pages.literature.btn_clear_selection"), components.ButtonOptions{
+					Variant: components.VariantGhost,
+				}).Clicked() {
+					l.sel.Clear()
+					a.Notify()
+				}
 			}
 		})
 	})
 }
 
-// linked lists the papers the project already holds, so the result of an
-// import is visible without leaving the page.
-func (l *Literature) linked(v *components.UI) {
+// selectPageCheckbox is the check box of the browser's header: it chooses every
+// row on the page, or clears them when the whole page is already chosen.
+func (l *Literature) selectPageCheckbox(v *components.UI, a *app.App, items []literature.ZoteroItem) {
+	state := ui.CheckOff
+	chosen := 0
+	for _, item := range items {
+		if l.sel.Has(item.Key) {
+			chosen++
+		}
+	}
+	switch {
+	case chosen == len(items) && chosen > 0:
+		state = ui.CheckOn
+	case chosen > 0:
+		state = ui.CheckMixed
+	}
+	box := pageCheckBox(v, &state)
+	if !box.Changed() {
+		return
+	}
+	for _, item := range items {
+		l.setChecked(item.Key, state == ui.CheckOn)
+	}
+	a.Notify()
+}
+
+// pageCheckBox is the header check box of a batch table: MyGo's base control
+// has no look of its own, so the page draws the square, a tick when every row
+// is chosen and a dash while only some are.
+func pageCheckBox(v *components.UI, state *ui.CheckState) ui.Element {
+	p := v.T.Palette
+	box := ui.CheckboxStateBase(v.C, state).Label(i18n.T("pages.literature.select_all_page"))
+	box.Children(func() {
+		square := ui.Row(v.C).
+			Width(tokens.Space4).
+			Height(tokens.Space4).
+			Radius(tokens.RadiusSM).
+			Justify(ui.Center).
+			AlignItems(ui.Center)
+		if *state == ui.CheckOff {
+			square.Border(1, mygo.Color(p.BorderStrong))
+		} else {
+			square.Background(mygo.Color(p.AccentDefault)).Border(1, mygo.Color(p.AccentDefault))
+		}
+		square.Children(func() {
+			switch *state {
+			case ui.CheckOn:
+				v.Icon(icons.Check, tokens.Space3).TextColor(mygo.Color(p.BgSurface))
+			case ui.CheckMixed:
+				ui.Row(v.C).Width(tokens.Space2).Height(2).Background(mygo.Color(p.BgSurface))
+			}
+		})
+	})
+	return box
+}
+
+// setChecked adds or removes one key from the browser selection.
+func (l *Literature) setChecked(key string, checked bool) {
+	if checked {
+		l.sel.Add(key)
+		return
+	}
+	l.sel.Remove(key)
+}
+
+// linked lists the papers the project already holds, each removable from the
+// project without touching its copy or its Paper Note.
+func (l *Literature) linked(v *components.UI, a *app.App) {
 	l.mu.Lock()
 	papers := append([]literature.ProjectPaper(nil), l.state.papers...)
 	l.mu.Unlock()
 
-	a := l.Services.App
 	open := func(paperID string) {
-		if a != nil {
-			a.Navigate(ports.Route{Kind: ports.RoutePaper, EntityID: paperID})
-		}
+		a.Navigate(ports.Route{Kind: ports.RoutePaper, EntityID: paperID})
 	}
 	title := i18n.T("pages.literature.card_project")
 	if len(papers) == 0 {
@@ -399,63 +516,323 @@ func (l *Literature) linked(v *components.UI) {
 		})
 		return
 	}
-	state := components.NewTableState()
-	state.Key = func(i int) any { return papers[i].Paper.ID }
+	count := l.paperSel.Len()
 	v.Card(components.CardOptions{
 		Title:       title,
 		Description: i18n.Tf("pages.literature.card_project_desc", map[string]string{"count": strconv.Itoa(len(papers))}),
+		Actions: func() {
+			all := ui.CheckOff
+			switch {
+			case count == len(papers) && count > 0:
+				all = ui.CheckOn
+			case count > 0:
+				all = ui.CheckMixed
+			}
+			if box := pageCheckBox(v, &all); box.Changed() {
+				for _, p := range papers {
+					if all == ui.CheckOn {
+						l.paperSel.Add(p.Paper.ID)
+					} else {
+						l.paperSel.Remove(p.Paper.ID)
+					}
+				}
+				a.Notify()
+			}
+			if count == 0 {
+				return
+			}
+			if v.Button(i18n.Tf("pages.literature.btn_delete_selected", map[string]string{
+				"count": strconv.Itoa(count),
+			}), components.ButtonOptions{
+				Variant:  components.VariantDanger,
+				Size:     components.SizeSmall,
+				Icon:     icons.Trash,
+				Disabled: l.delBusy,
+			}).Clicked() {
+				l.requestDelete(papers, nil)
+			}
+		},
 	}, func() {
+		state := components.NewTableState()
+		state.Key = func(i int) any { return papers[i].Paper.ID }
 		table := v.Table(components.TableOptions{
 			Columns: []components.Column{
+				{Title: "", ID: "select", Width: litCheckWidth, Align: ui.Center},
 				{Title: i18n.T("pages.literature.col_title")},
 				{Title: i18n.T("pages.literature.col_year"), Width: 80},
 				{Title: i18n.T("pages.literature.col_imported"), Width: 160},
 				{Title: i18n.T("pages.literature.col_copy"), Width: 120},
 				{Title: i18n.T("pages.literature.col_note"), Width: 120},
-				{Title: "", Width: 100, Align: ui.End},
+				{Title: "", ID: "actions", Width: 96, Align: ui.End},
 			},
-			Rows: len(papers),
-			Key:  func(i int) any { return papers[i].Paper.ID },
+			Rows:      len(papers),
+			Key:       func(i int) any { return papers[i].Paper.ID },
+			Selection: l.paperSel,
 			Cell: func(row, col int) {
 				p := papers[row]
 				switch col {
 				case 0:
+					checked := l.paperSel.Has(p.Paper.ID)
+					box := ui.Checkbox(v.C, &checked, "").Label(p.Paper.Metadata.Title)
+					if box.Changed() {
+						if checked {
+							l.paperSel.Add(p.Paper.ID)
+						} else {
+							l.paperSel.Remove(p.Paper.ID)
+						}
+						a.Notify()
+					}
+				case 1:
 					if ui.Text(v.C, p.Paper.Metadata.Title).SingleLine().FillWidth().RowClicked() {
 						open(p.Paper.ID)
 					}
-				case 1:
+				case 2:
 					if ui.Text(v.C, strconv.Itoa(p.Paper.Metadata.Year)).FontFeatures("tnum").RowClicked() {
 						open(p.Paper.ID)
 					}
-				case 2:
+				case 3:
 					if ui.Text(v.C, p.LinkedAt.Format("2006-01-02")).FontFeatures("tnum").RowClicked() {
 						open(p.Paper.ID)
 					}
-				case 3:
+				case 4:
 					if p.Broken {
 						v.StatusIndicator(components.Danger, i18n.T("pages.literature.copy_missing"))
 					} else {
 						v.StatusIndicator(components.Success, i18n.T("pages.literature.copy_present"))
 					}
-				case 4:
+				case 5:
 					if p.NoteID != "" {
 						v.Badge(i18n.T("pages.literature.note_present"), components.Success)
 					} else {
 						v.Badge(i18n.T("pages.literature.note_absent"), components.Neutral)
 					}
-				case 5:
-					if v.Button(i18n.T("pages.literature.btn_open_paper"), components.ButtonOptions{
-						Variant: components.VariantSecondary,
-						Size:    components.SizeSmall,
-						Icon:    icons.ExternalLink,
-					}).Clicked() {
-						open(p.Paper.ID)
-					}
+				case 6:
+					ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
+						if v.IconButton(icons.ExternalLink, i18n.T("pages.literature.btn_open_paper"), components.IconButtonOptions{
+							Variant: components.VariantGhost,
+							Size:    components.SizeSmall,
+						}).Clicked() {
+							open(p.Paper.ID)
+						}
+						if v.IconButton(icons.Trash, i18n.T("pages.literature.btn_unlink"), components.IconButtonOptions{
+							Variant:  components.VariantGhost,
+							Size:     components.SizeSmall,
+							Disabled: l.delBusy,
+						}).Clicked() {
+							l.requestDelete(papers, []string{p.Paper.ID})
+						}
+					})
 				}
 			},
 		})
 		table.Height(visibleTableHeight(len(papers)))
 	})
+}
+
+// requestDelete opens the confirmation for the chosen papers: ids nil means
+// the rows checked in the table, a list names exactly those. The dialog states
+// that the Paper Notes stay, and how many of the papers hold one.
+func (l *Literature) requestDelete(papers []literature.ProjectPaper, ids []string) {
+	if ids == nil {
+		ids = make([]string, 0, l.paperSel.Len())
+		for _, p := range papers {
+			if l.paperSel.Has(p.Paper.ID) {
+				ids = append(ids, p.Paper.ID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	title, notes := "", 0
+	for _, p := range papers {
+		for _, id := range ids {
+			if p.Paper.ID != id {
+				continue
+			}
+			title = p.Paper.Metadata.Title
+			if p.NoteID != "" {
+				notes++
+			}
+		}
+	}
+	l.mu.Lock()
+	l.delOpen = true
+	l.delIDs = ids
+	l.delTitle = title
+	l.delNotes = notes
+	l.delErr = ""
+	l.mu.Unlock()
+}
+
+// deleteDialog confirms detaching the papers from the project. The copies, the
+// PDFs and the Paper Notes stay (SPEC-04 §5.5), so the dialog says so before
+// the service runs rather than reporting it afterwards.
+func (l *Literature) deleteDialog(v *components.UI, a *app.App, projectID string) {
+	l.mu.Lock()
+	open, ids := l.delOpen, len(l.delIDs)
+	title, notes, busy, problem := l.delTitle, l.delNotes, l.delBusy, l.delErr
+	l.mu.Unlock()
+	if !open {
+		return
+	}
+	message := i18n.Tf("pages.literature.delete_message", map[string]string{"title": title})
+	if ids > 1 {
+		message = i18n.Tf("pages.literature.delete_batch_message", map[string]string{
+			"count": strconv.Itoa(ids),
+		})
+	}
+	if notes > 0 {
+		message += "\n" + i18n.Tf("pages.literature.delete_notes_kept", map[string]string{
+			"count": strconv.Itoa(notes),
+		})
+	}
+	show := true
+	v.Dialog(&show, components.DialogOptions{
+		Title:       i18n.T("pages.literature.delete_title"),
+		Description: message,
+		Width:       520,
+		Actions: func() {
+			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+				l.closeDelete()
+			}
+			if v.Button(i18n.T("pages.literature.btn_delete_confirm"), components.ButtonOptions{
+				Variant:  components.VariantDanger,
+				Loading:  busy,
+				Disabled: busy,
+			}).Clicked() {
+				l.runDelete(a, projectID)
+			}
+		},
+	}, func() {
+		if problem != "" {
+			ui.Text(v.C, problem).
+				FontSize(tokens.Typography.Secondary.Size).
+				TextColor(mygo.Color(v.T.Palette.StatusDanger))
+		}
+	})
+	if !show && !busy {
+		// Escape or a press outside closed the dialog.
+		l.closeDelete()
+	}
+}
+
+// closeDelete drops the pending confirmation.
+func (l *Literature) closeDelete() {
+	l.mu.Lock()
+	l.delOpen = false
+	l.delIDs = nil
+	l.delTitle = ""
+	l.delNotes = 0
+	l.delErr = ""
+	l.mu.Unlock()
+}
+
+// runDelete detaches every chosen paper, one service call each so one failure
+// never hides the others, and reloads the project table.
+func (l *Literature) runDelete(a *app.App, projectID string) {
+	api := l.Services.Literature
+	l.mu.Lock()
+	ids := append([]string(nil), l.delIDs...)
+	if l.delBusy || len(ids) == 0 {
+		l.mu.Unlock()
+		return
+	}
+	l.delBusy = true
+	l.delErr = ""
+	l.mu.Unlock()
+
+	a.RunTask(i18n.T("pages.literature.task_delete"), func(ctx context.Context, t *app.Task) error {
+		t.Stage(i18n.T("pages.literature.stage_delete"))
+		var removed, detached int
+		var problems []string
+		for i, id := range ids {
+			if err := ctx.Err(); err != nil {
+				break
+			}
+			t.Progress(i, len(ids))
+			result, err := api.Unlink(ctx, projectID, id, ports.ActorUser)
+			if err != nil {
+				problems = append(problems, errtext.Text(err))
+				continue
+			}
+			removed++
+			detached += len(result.DetachedNotes)
+		}
+		t.Progress(len(ids), len(ids))
+
+		papers, papersErr := api.ProjectPapers(ctx, projectID)
+		if papersErr != nil {
+			problems = append(problems, errtext.Text(papersErr))
+		}
+
+		l.mu.Lock()
+		l.delBusy = false
+		l.mu.Unlock()
+		if papersErr == nil {
+			l.setPapers(papers)
+		} else {
+			l.dropPapers(ids)
+		}
+		l.paperSel.Clear()
+		if len(problems) > 0 {
+			l.mu.Lock()
+			l.delErr = problems[0]
+			l.mu.Unlock()
+		}
+		if removed > 0 {
+			l.closeDelete()
+			if l.shared != nil {
+				l.shared.bump()
+			}
+		}
+		if l.Services.App != nil {
+			l.Services.App.Notify()
+		}
+		switch {
+		case removed == 0:
+			a.Toast(app.LevelDanger, i18n.T("pages.literature.toast_delete_fail"), strings.Join(problems, "\n"))
+		case len(problems) > 0:
+			a.Toast(app.LevelWarning, i18n.Tf("pages.literature.toast_delete_partial", map[string]string{
+				"failed": strconv.Itoa(len(problems)),
+			}), strings.Join(problems, "\n"))
+		default:
+			message := ""
+			if detached > 0 {
+				message = i18n.Tf("pages.literature.toast_notes_kept", map[string]string{
+					"count": strconv.Itoa(detached),
+				})
+			}
+			a.Toast(app.LevelSuccess, i18n.Tf("pages.literature.toast_deleted", map[string]string{
+				"count": strconv.Itoa(removed),
+			}), message)
+		}
+		return nil
+	})
+}
+
+// hasPaperID reports whether ids holds id.
+func hasPaperID(ids []string, id string) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
+// dropPapers removes the detached papers from the cached table when the reload
+// after a delete failed: rows that are gone must not stay clickable.
+func (l *Literature) dropPapers(ids []string) {
+	l.mu.Lock()
+	kept := make([]literature.ProjectPaper, 0, len(l.state.papers))
+	for _, p := range l.state.papers {
+		if !hasPaperID(ids, p.Paper.ID) {
+			kept = append(kept, p)
+		}
+	}
+	l.mu.Unlock()
+	l.setPapers(kept)
 }
 
 // dialog previews the import read-only and then runs it. The preview never
@@ -467,27 +844,29 @@ func (l *Literature) dialog(v *components.UI, a *app.App, projectID string) {
 	l.mu.Lock()
 	preview, loading := append([]literature.ImportPreviewEntry(nil), l.state.preview...), l.loading
 	previewErrs := append([]literature.ImportError(nil), l.state.previewErrs...)
+	linked := make(map[string]bool, len(l.state.linked))
+	for key, in := range l.state.linked {
+		linked[key] = in
+	}
 	l.mu.Unlock()
 
 	v.Dialog(&l.previewOpen, components.DialogOptions{
 		Title:       i18n.T("pages.literature.dialog_title"),
 		Description: i18n.T("pages.literature.dialog_desc"),
-		Width:       760,
+		Width:       820,
 		Actions: func() {
 			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
 				l.previewOpen = false
 			}
-			confirm := v.Button(i18n.T("pages.literature.btn_import"), components.ButtonOptions{
+			if v.Button(i18n.Tf("pages.literature.btn_import_count", map[string]string{
+				"count": strconv.Itoa(len(preview)),
+			}), components.ButtonOptions{
 				Variant:  components.VariantPrimary,
 				Disabled: loading || len(preview) == 0,
-			})
-			if confirm.Clicked() {
+				Loading:  loading,
+			}).Clicked() {
 				l.previewOpen = false
-				keys := make([]string, 0, len(preview))
-				for _, entry := range preview {
-					keys = append(keys, entry.ZoteroKey)
-				}
-				l.startImport(a, projectID, keys)
+				l.startImport(a, projectID)
 			}
 		},
 	}, func() {
@@ -508,9 +887,10 @@ func (l *Literature) dialog(v *components.UI, a *app.App, projectID string) {
 		table := v.Table(components.TableOptions{
 			Columns: []components.Column{
 				{Title: i18n.T("pages.literature.col_title")},
-				{Title: i18n.T("pages.literature.col_year"), Width: 70},
-				{Title: i18n.T("pages.literature.col_pdf"), Width: 90, Align: ui.End},
-				{Title: i18n.T("pages.literature.col_state"), Width: 150},
+				{Title: i18n.T("pages.literature.col_creators"), Width: 180},
+				{Title: i18n.T("pages.literature.col_year"), Width: 60, Align: ui.End},
+				{Title: i18n.T("pages.literature.col_pdf"), Width: 60, Align: ui.End},
+				{Title: i18n.T("pages.literature.col_state"), Width: 220},
 			},
 			Rows:  len(preview),
 			State: state,
@@ -521,12 +901,19 @@ func (l *Literature) dialog(v *components.UI, a *app.App, projectID string) {
 				case 0:
 					ui.Text(v.C, e.Title).SingleLine()
 				case 1:
-					ui.Text(v.C, strconv.Itoa(e.Year)).FontFeatures("tnum")
+					ui.Text(v.C, creatorsText(e.Creators)).SingleLine()
 				case 2:
-					ui.Text(v.C, strconv.Itoa(e.PDFCount)).FontFeatures("tnum")
+					ui.Text(v.C, strconv.Itoa(e.Year)).FontFeatures("tnum")
 				case 3:
-					tone, label := entryState(e)
-					v.Badge(label, tone)
+					ui.Text(v.C, strconv.Itoa(e.PDFCount)).FontFeatures("tnum")
+				case 4:
+					ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
+						tone, label := entryState(linked[e.ZoteroKey], e)
+						v.Badge(label, tone)
+						for _, warning := range e.Warnings {
+							v.Badge(warningText(warning), components.Warning)
+						}
+					})
 				}
 			},
 		})
@@ -561,10 +948,19 @@ func (l *Literature) attachmentChoices(v *components.UI, preview []literature.Im
 	for key, list := range l.state.choices {
 		choices[key] = list
 	}
+	linked := make(map[string]bool, len(l.state.linked))
+	for key, in := range l.state.linked {
+		linked[key] = in
+	}
 	l.mu.Unlock()
 
 	var ambiguous []literature.ImportPreviewEntry
 	for _, e := range preview {
+		// An entry the project already holds is linked, not copied, so no PDF
+		// has to be chosen for it.
+		if linked[e.ZoteroKey] {
+			continue
+		}
 		if e.PDFCount > 1 && len(choices[e.ZoteroKey]) > 1 {
 			ambiguous = append(ambiguous, e)
 		}
@@ -646,6 +1042,8 @@ func (l *Literature) reload(a *app.App, projectID string) {
 		l.state.offset = 0
 		l.state.preview = nil
 		l.state.previewErrs = nil
+		l.state.titles = nil
+		l.pending = literature.ImportSelection{}
 	}
 	withBrowser := l.importOpen && !l.zloading
 	if withBrowser {
@@ -654,6 +1052,9 @@ func (l *Literature) reload(a *app.App, projectID string) {
 	l.mu.Unlock()
 	if first && l.sel != nil {
 		l.sel.Clear()
+	}
+	if first && l.paperSel != nil {
+		l.paperSel.Clear()
 	}
 	gen := 0
 	if l.shared != nil {
@@ -802,8 +1203,8 @@ func (l *Literature) setPapers(papers []literature.ProjectPaper) {
 	l.mu.Unlock()
 }
 
-// openPreview takes the selected item keys and previews them without writing.
-// The dialog belongs to the expanded panel, so a folded page can never open it.
+// openPreview previews the checked items. The dialog belongs to the expanded
+// panel, so a folded page can never open it.
 func (l *Literature) openPreview(a *app.App) {
 	if !l.importShown() {
 		return
@@ -812,27 +1213,55 @@ func (l *Literature) openPreview(a *app.App) {
 	if len(keys) == 0 {
 		return
 	}
-	l.previewOpen = true
-	api := l.Services.Literature
+	l.startPreview(a, literature.ImportSelection{ItemKeys: keys})
+}
+
+// openCollectionPreview previews every item of the chosen collection: the
+// service expands it, so a collection with more items than the browser page
+// imports whole.
+func (l *Literature) openCollectionPreview(a *app.App) {
 	l.mu.Lock()
+	key, sub := l.collection, l.includeSub
+	l.mu.Unlock()
+	if !l.importShown() || key == "" {
+		return
+	}
+	l.startPreview(a, literature.ImportSelection{
+		CollectionKeys:        []string{key},
+		IncludeSubcollections: sub,
+	})
+}
+
+// startPreview reads what the selection would do without writing, then leaves
+// the confirmation to the dialog.
+func (l *Literature) startPreview(a *app.App, sel literature.ImportSelection) {
+	api := l.Services.Literature
+	l.previewOpen = true
+	l.mu.Lock()
+	sel.ProjectID = l.project
+	l.pending = sel
 	l.loading = true
 	l.state.preview = nil
 	l.state.previewErrs = nil
 	l.state.choices = map[string][]literature.ZoteroAttachment{}
+	l.state.titles = map[string]string{}
 	l.state.result = nil
 	l.mu.Unlock()
 
 	a.RunTask(i18n.T("pages.literature.task_preview"), func(ctx context.Context, t *app.Task) error {
 		t.Stage(i18n.T("pages.literature.stage_preview"))
-		sel := l.selection(ctx, api, keys)
 		preview, err := api.Preview(ctx, sel)
 		l.record(err)
 		if err != nil {
 			l.finish(false)
 			return nil
 		}
+		// An item with several PDFs needs a choice; the service never guesses
+		// (SPEC-04 §5.4), so the dialog asks with the real filenames.
 		choices := map[string][]literature.ZoteroAttachment{}
+		titles := make(map[string]string, len(preview.Entries))
 		for _, entry := range preview.Entries {
+			titles[entry.ZoteroKey] = entry.Title
 			if entry.PDFCount <= 1 {
 				continue
 			}
@@ -855,56 +1284,44 @@ func (l *Literature) openPreview(a *app.App) {
 		l.state.preview = preview.Entries
 		l.state.previewErrs = preview.Errors
 		l.state.choices = choices
+		l.state.titles = titles
 		l.mu.Unlock()
 		l.finish(true)
 		return nil
 	})
 }
 
-// selection builds the import selection from the chosen keys, honouring the
-// per-item PDF choices the dialog collected.
-func (l *Literature) selection(ctx context.Context, api LiteratureAPI, keys []string) literature.ImportSelection {
-	l.mu.Lock()
-	chosen := make(map[string]string, len(l.state.chosen))
-	for key, attachment := range l.state.chosen {
-		chosen[key] = attachment
-	}
-	l.mu.Unlock()
-	return literature.ImportSelection{
-		ProjectID:         l.project,
-		LibraryID:         "",
-		ItemKeys:          keys,
-		AttachmentChoices: chosen,
-	}
-}
-
-// startImport runs the pipeline on the given item keys, with or without a
-// preceding preview: duplicates of existing papers are deduplicated by the
-// service (linked or skipped), never copied twice. Progress reaches the task,
-// so the shell draws it in the task strip while the import copies PDFs.
-func (l *Literature) startImport(a *app.App, projectID string, keys []string) {
+// startImport runs the pending selection, with or without a preceding preview:
+// duplicates of existing papers are deduplicated by the service (linked or
+// skipped), never copied twice. Progress reaches the task, so the shell draws
+// the entry being written in the task strip while the import copies PDFs.
+func (l *Literature) startImport(a *app.App, projectID string) {
 	api := l.Services.Literature
 	l.mu.Lock()
-	chosen := make(map[string]string, len(l.state.chosen))
-	for key, attachment := range l.state.chosen {
-		chosen[key] = attachment
+	sel := l.pending
+	sel.ProjectID = projectID
+	titles := make(map[string]string, len(l.state.titles))
+	for key, title := range l.state.titles {
+		titles[key] = title
 	}
 	l.loading = true
 	l.state.result = nil
 	l.mu.Unlock()
-	if len(keys) == 0 {
+	if len(sel.ItemKeys) == 0 && len(sel.CollectionKeys) == 0 {
 		l.finish(true)
 		return
 	}
 
-	sel := literature.ImportSelection{
-		ProjectID:         projectID,
-		ItemKeys:          keys,
-		AttachmentChoices: chosen,
-	}
 	a.RunTask(i18n.T("pages.literature.task_import"), func(ctx context.Context, t *app.Task) error {
+		t.Stage(i18n.T("pages.literature.stage_import"))
 		result, err := api.Import(ctx, sel, func(p literature.ImportProgress) {
-			t.Progress(p.Index, p.Total)
+			if p.Total > 0 {
+				t.Progress(p.Index, p.Total)
+			}
+			t.Stage(i18n.Tf("pages.literature.import_stage", map[string]string{
+				"title": entryTitle(titles, p.ItemKey),
+				"state": importStatusLabel(p.Status),
+			}))
 		})
 		l.record(err)
 		l.mu.Lock()
@@ -923,6 +1340,7 @@ func (l *Literature) startImport(a *app.App, projectID string, keys []string) {
 			}
 			l.mu.Lock()
 			l.state.preview = nil
+			l.resultOpen = true
 			l.mu.Unlock()
 			l.sel.Clear()
 		}
@@ -932,6 +1350,148 @@ func (l *Literature) startImport(a *app.App, projectID string, keys []string) {
 		}
 		return nil
 	})
+}
+
+// resultDialog shows the receipt of the last import: every entry with the
+// status the service reported, so a batch is verifiable item by item.
+func (l *Literature) resultDialog(v *components.UI) {
+	if !l.resultOpen {
+		return
+	}
+	l.mu.Lock()
+	result := l.state.result
+	titles := make(map[string]string, len(l.state.titles))
+	for key, title := range l.state.titles {
+		titles[key] = title
+	}
+	l.mu.Unlock()
+	if result == nil {
+		l.resultOpen = false
+		return
+	}
+	outcomes := result.Outcomes
+	v.Dialog(&l.resultOpen, components.DialogOptions{
+		Title: i18n.T("pages.literature.result_title"),
+		Description: i18n.Tf("pages.literature.result_counts", map[string]string{
+			"imported": strconv.Itoa(result.Imported),
+			"linked":   strconv.Itoa(result.Linked),
+			"skipped":  strconv.Itoa(result.Skipped),
+			"failed":   strconv.Itoa(result.Failed),
+		}),
+		Width: 760,
+		Actions: func() {
+			if v.Button(i18n.T("pages.literature.btn_close"), components.ButtonOptions{}).Clicked() {
+				l.resultOpen = false
+			}
+		},
+	}, func() {
+		if len(outcomes) == 0 {
+			v.EmptyState(components.EmptyStateOptions{
+				Icon:   icons.FileText,
+				Title:  i18n.T("pages.literature.preview_empty_title"),
+				Reason: i18n.T("pages.literature.preview_empty_reason"),
+			})
+			return
+		}
+		state := components.NewTableState()
+		state.Key = func(i int) any { return outcomes[i].ZoteroKey }
+		table := v.Table(components.TableOptions{
+			Columns: []components.Column{
+				{Title: i18n.T("pages.literature.col_title")},
+				{Title: i18n.T("pages.literature.col_state"), Width: 150},
+				{Title: i18n.T("pages.literature.col_detail"), Width: 300},
+			},
+			Rows:  len(outcomes),
+			State: state,
+			Key:   func(i int) any { return outcomes[i].ZoteroKey },
+			Cell: func(row, col int) {
+				outcome := outcomes[row]
+				switch col {
+				case 0:
+					ui.Text(v.C, entryTitle(titles, outcome.ZoteroKey)).SingleLine()
+				case 1:
+					tone, label := outcomeState(outcome)
+					v.Badge(label, tone)
+				case 2:
+					ui.Text(v.C, outcomeDetail(outcome)).SingleLine()
+				}
+			},
+		})
+		table.Height(visibleTableHeight(len(outcomes)))
+	})
+}
+
+// entryTitle names a Zotero key by the title the preview read, and falls back
+// to the key when the preview never saw it.
+func entryTitle(titles map[string]string, key string) string {
+	if title := titles[key]; title != "" {
+		return title
+	}
+	return key
+}
+
+// outcomeState labels one import outcome.
+func outcomeState(outcome literature.ImportOutcome) (components.Tone, string) {
+	switch outcome.Status {
+	case literature.ImportCreated:
+		return components.Success, i18n.T("pages.literature.status_imported")
+	case literature.ImportLinkedExisting:
+		return components.Success, i18n.T("pages.literature.status_linked")
+	case literature.ImportSkippedNoPDF:
+		return components.Warning, i18n.T("pages.literature.status_skipped_no_pdf")
+	case literature.ImportNeedsAttachment:
+		return components.Warning, i18n.T("pages.literature.status_needs_choice")
+	case literature.ImportSkippedDuplicate:
+		return components.Neutral, i18n.T("pages.literature.status_already_linked")
+	default:
+		return components.Danger, i18n.T("pages.literature.status_failed")
+	}
+}
+
+// outcomeDetail is the error or the warnings of one outcome, in the order that
+// matters: a failure explains itself before any warning does.
+func outcomeDetail(outcome literature.ImportOutcome) string {
+	if outcome.Error != "" {
+		return outcome.Error
+	}
+	labels := make([]string, 0, len(outcome.Warnings))
+	for _, warning := range outcome.Warnings {
+		labels = append(labels, warningText(warning))
+	}
+	return strings.Join(labels, "，")
+}
+
+// importStatusLabel is the status text the task strip shows for the entry being
+// written.
+func importStatusLabel(status literature.ImportStatus) string {
+	switch status {
+	case literature.ImportCreated:
+		return i18n.T("pages.literature.status_imported")
+	case literature.ImportLinkedExisting:
+		return i18n.T("pages.literature.status_linked")
+	case literature.ImportSkippedNoPDF:
+		return i18n.T("pages.literature.status_skipped_no_pdf")
+	case literature.ImportNeedsAttachment:
+		return i18n.T("pages.literature.status_needs_choice")
+	case literature.ImportSkippedDuplicate:
+		return i18n.T("pages.literature.status_already_linked")
+	case literature.ImportFailed:
+		return i18n.T("pages.literature.status_failed")
+	default:
+		return ""
+	}
+}
+
+// warningText names one service warning code.
+func warningText(warning string) string {
+	switch warning {
+	case "local_file_missing":
+		return i18n.T("pages.literature.warning_file_missing")
+	case "source_hash_differs":
+		return i18n.T("pages.literature.warning_hash_differs")
+	default:
+		return warning
+	}
 }
 
 // movePage shifts the browser by one page and reloads the rows.
@@ -988,27 +1548,21 @@ func (l *Literature) selectedKeys() []string {
 	return keys
 }
 
-// previewChosen reports whether any PDF choice was made, so the browser can
-// hint that the choices carry over into the next preview.
-func (l *Literature) previewChosen() map[string]string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.state.chosen
-}
-
 func (l *Literature) chosenKey(itemKey string) string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.state.chosen[itemKey]
+	return l.pending.AttachmentChoices[itemKey]
 }
 
+// setChosen records the PDF the user picked for one item: the pending selection
+// carries it into Import, so the service sees the same choice the dialog showed.
 func (l *Literature) setChosen(itemKey, attachmentKey string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.state.chosen == nil {
-		l.state.chosen = map[string]string{}
+	if l.pending.AttachmentChoices == nil {
+		l.pending.AttachmentChoices = map[string]string{}
 	}
-	l.state.chosen[itemKey] = attachmentKey
+	l.pending.AttachmentChoices[itemKey] = attachmentKey
 }
 
 // collectionLabels pairs the picker entries with their keys; the first entry is
@@ -1062,10 +1616,38 @@ func itemDisplayTitle(item literature.ZoteroItem) string {
 	return item.ItemType
 }
 
+// creatorsText joins the creators of one entry, authors first, so a preview row
+// names who wrote the paper.
+func creatorsText(creators []literature.ZoteroCreator) string {
+	names := make([]string, 0, len(creators))
+	for _, creator := range creators {
+		if creator.CreatorType != "" && creator.CreatorType != "author" {
+			continue
+		}
+		name := creator.Name
+		if name == "" {
+			name = strings.TrimSpace(creator.LastName + " " + creator.FirstName)
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	const shown = 3
+	if len(names) > shown {
+		return strings.Join(names[:shown], ", ") + " et al."
+	}
+	return strings.Join(names, ", ")
+}
+
 // entryState labels what the import would do with one preview entry, so the
-// user sees reuse and missing-PDF cases before confirming.
-func entryState(entry literature.ImportPreviewEntry) (components.Tone, string) {
+// user sees reuse, duplicate and missing-PDF cases before confirming.
+func entryState(linked bool, entry literature.ImportPreviewEntry) (components.Tone, string) {
 	switch {
+	case linked:
+		return components.Neutral, i18n.T("pages.literature.state_already_linked")
 	case !entry.PDFAvailable:
 		return components.Warning, i18n.T("pages.literature.state_no_pdf")
 	case entry.PDFCount > 1 && entry.AttachmentKey == "":

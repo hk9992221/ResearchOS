@@ -327,13 +327,18 @@ func newLiteratureProvider(d Deps, ready func(context.Context) error) mcp.ToolPr
 			}),
 
 		tool(mod, mcp.CategoryJob, "paper_import", "导入文献",
-			"从 Zotero 导入文献到项目（按 zotero_key 去重，固定复制 PDF）。返回 job_id。",
+			"从 Zotero 批量导入文献到项目（按 zotero_key 去重，固定复制 PDF）。条目与分类可同时给出，合并去重。返回 job_id。",
 			sObj(map[string]any{
-				"project_id":      sStr("项目 ID"),
-				"library_id":      sStr("Zotero 文库 ID，默认 0"),
-				"collection_keys": sArr("分类 key", sStr("分类 key")),
-				"item_keys":       sArr("条目 key", sStr("条目 key")),
-				"copy_pdfs":       sBool("是否复制 PDF（仅允许 true）"),
+				"project_id":             sStr("项目 ID"),
+				"library_id":             sStr("Zotero 文库 ID，默认 0"),
+				"collection_keys":        sArr("分类 key；与 item_keys 合并去重", sStr("分类 key")),
+				"include_subcollections": sBool("分类导入是否包含子分类，默认 false"),
+				"item_keys":              sArr("条目 key", sStr("条目 key")),
+				"attachment_choices": sArr("多 PDF 条目的附件选择（不选则返回 needs_attachment_choice，不猜测）", sObjMap("一个条目的附件选择", map[string]any{
+					"item_key":       sStr("Zotero 条目 key"),
+					"attachment_key": sStr("Zotero 附件 key"),
+				}, "item_key", "attachment_key")),
+				"copy_pdfs": sBool("是否复制 PDF（仅允许 true）"),
 			}, "project_id"), annJob(false),
 			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
 				projectID, err := requireID(a, "project_id")
@@ -352,8 +357,20 @@ func newLiteratureProvider(d Deps, ready func(context.Context) error) mcp.ToolPr
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
+				choices, err := literatureAttachmentChoices(a)
+				if err != nil {
+					return mcp.ToolOutcome{}, err
+				}
+				includeSub := a.BoolDefault("include_subcollections", false)
 				svc := d.libraryService()
-				params, _ := json.Marshal(map[string]any{"project_id": projectID, "library_id": libraryID, "item_keys": itemKeys})
+				params, _ := json.Marshal(map[string]any{
+					"project_id":             projectID,
+					"library_id":             libraryID,
+					"collection_keys":        collections,
+					"include_subcollections": includeSub,
+					"item_keys":              itemKeys,
+					"attachment_choices":     choices,
+				})
 				job, err := d.Jobs.Submit(ctx, p, mcp.JobRequest{
 					Tool:      "paper_import",
 					ProjectID: projectID,
@@ -363,10 +380,12 @@ func newLiteratureProvider(d Deps, ready func(context.Context) error) mcp.ToolPr
 					Run: func(jctx context.Context, progress mcp.ProgressFunc) (any, error) {
 						progress(5, "读取 Zotero 元数据")
 						sel := literature.ImportSelection{
-							ProjectID:      projectID,
-							LibraryID:      libraryID,
-							CollectionKeys: collections,
-							ItemKeys:       itemKeys,
+							ProjectID:             projectID,
+							LibraryID:             libraryID,
+							CollectionKeys:        collections,
+							IncludeSubcollections: includeSub,
+							ItemKeys:              itemKeys,
+							AttachmentChoices:     choices,
 						}
 						res, err := svc.Import(jctx, sel, literature.ActorMCP, func(ip literature.ImportProgress) {
 							if ip.Total > 0 {
@@ -376,7 +395,9 @@ func newLiteratureProvider(d Deps, ready func(context.Context) error) mcp.ToolPr
 						if err != nil {
 							return nil, mapLiteratureError(err)
 						}
-						buckets := map[string][]any{"imported": {}, "reused": {}, "skipped": {}, "failed": {}}
+						buckets := map[string][]any{
+							"imported": {}, "reused": {}, "skipped": {}, "needs_attachment_choice": {}, "failed": {},
+						}
 						for _, outcome := range res.Outcomes {
 							entry := map[string]any{
 								"key":      outcome.ZoteroKey,
@@ -384,23 +405,33 @@ func newLiteratureProvider(d Deps, ready func(context.Context) error) mcp.ToolPr
 								"status":   string(outcome.Status),
 								"warnings": outcome.Warnings,
 							}
-							switch {
-							case outcome.Error != "":
+							switch outcome.Status {
+							case literature.ImportFailed:
 								entry["error"] = outcome.Error
 								buckets["failed"] = append(buckets["failed"], entry)
-							case string(outcome.Status) == "skipped":
+							case literature.ImportNeedsAttachment:
+								buckets["needs_attachment_choice"] = append(buckets["needs_attachment_choice"], entry)
+							case literature.ImportSkippedNoPDF, literature.ImportSkippedDuplicate:
 								buckets["skipped"] = append(buckets["skipped"], entry)
-							case string(outcome.Status) == "linked" || string(outcome.Status) == "reused":
-								buckets["reused"] = append(buckets["reused"], entry)
-							default:
+							case literature.ImportLinkedExisting, literature.ImportCreated:
+								if outcome.Error != "" {
+									entry["error"] = outcome.Error
+									buckets["failed"] = append(buckets["failed"], entry)
+									continue
+								}
+								if outcome.Status == literature.ImportLinkedExisting {
+									buckets["reused"] = append(buckets["reused"], entry)
+									continue
+								}
 								buckets["imported"] = append(buckets["imported"], entry)
 							}
 						}
 						return map[string]any{
-							"imported": buckets["imported"],
-							"reused":   buckets["reused"],
-							"skipped":  buckets["skipped"],
-							"failed":   buckets["failed"],
+							"imported":    buckets["imported"],
+							"reused":      buckets["reused"],
+							"skipped":     buckets["skipped"],
+							"unsatisfied": buckets["needs_attachment_choice"],
+							"failed":      buckets["failed"],
 							"counts": map[string]any{
 								"imported": res.Imported,
 								"linked":   res.Linked,
@@ -842,6 +873,26 @@ func shortHash(h string) string {
 		return h[:12]
 	}
 	return h
+}
+
+// literatureAttachmentChoices reads the per-item PDF choices of an import.
+// The service never guesses between several PDFs (§5.4), so a batch that needs
+// a choice reports needs_attachment_choice until the client names one.
+func literatureAttachmentChoices(a *mcp.Arguments) (map[string]string, error) {
+	entries, ok, err := a.Objects("attachment_choices")
+	if err != nil || !ok {
+		return nil, err
+	}
+	out := make(map[string]string, len(entries))
+	for i, entry := range entries {
+		itemKey, _ := entry["item_key"].(string)
+		attachmentKey, _ := entry["attachment_key"].(string)
+		if itemKey == "" || attachmentKey == "" {
+			return nil, invalidf("参数 attachment_choices[%d] 需要 item_key 与 attachment_key", i)
+		}
+		out[itemKey] = attachmentKey
+	}
+	return out, nil
 }
 
 func literatureYear(date string) int {

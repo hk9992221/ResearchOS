@@ -240,6 +240,10 @@ type LiteratureAPI interface {
 	Preview(ctx context.Context, sel literature.ImportSelection) (literature.ImportPreview, error)
 	Import(ctx context.Context, sel literature.ImportSelection, progress literature.ProgressFunc) (literature.ImportResult, error)
 	ProjectPapers(ctx context.Context, projectID string) ([]literature.ProjectPaper, error)
+	// Unlink detaches one paper from the project. The global copy, the PDF
+	// and the Paper Notes stay: the page says so before it asks (SPEC-04
+	// §5.5), and reports the detached notes after.
+	Unlink(ctx context.Context, projectID, paperID string, actor ports.Actor) (literature.UnlinkResult, error)
 }
 
 // PaperRelatedNote is one note whose Markdown body links the paper.

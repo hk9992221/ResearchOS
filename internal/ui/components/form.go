@@ -147,24 +147,39 @@ type ToggleOptions struct {
 	Disabled bool
 }
 
-// Checkbox builds a check box with its own label text.
+// Checkbox builds a check box with its own label text. The element is the
+// control itself, not the wrapper around it: MyGo reports Changed on the
+// widget, so a caller that reads it needs the control back.
 func (u *UI) Checkbox(checked *bool, text string, o ToggleOptions) ui.Element {
-	return u.toggle(o, func() {
-		ui.Checkbox(u.C, checked, text).Disabled(o.Disabled)
-	})
+	var ctrl ui.Element
+	build := func() { ctrl = ui.Checkbox(u.C, checked, text).Disabled(o.Disabled) }
+	if o.Description == "" && o.Error == "" {
+		build()
+		return ctrl
+	}
+	u.toggle(o, build)
+	return ctrl
 }
 
-// Switch builds an on/off switch, used for settings that apply at once.
+// Switch builds an on/off switch, used for settings that apply at once. It
+// returns the control, as Checkbox does, so Changed is readable.
 func (u *UI) Switch(on *bool, label string, o ToggleOptions) ui.Element {
-	return u.toggle(o, func() {
+	var ctrl ui.Element
+	build := func() {
 		if label != "" {
-			ui.Field(u.C, label, func() {
-				ui.Switch(u.C, on).Disabled(o.Disabled)
+			ctrl = ui.Field(u.C, label, func() {
+				ctrl = ui.Switch(u.C, on).Disabled(o.Disabled)
 			})
 			return
 		}
-		ui.Switch(u.C, on).Disabled(o.Disabled)
-	})
+		ctrl = ui.Switch(u.C, on).Disabled(o.Disabled)
+	}
+	if o.Description == "" && o.Error == "" {
+		build()
+		return ctrl
+	}
+	u.toggle(o, build)
+	return ctrl
 }
 
 // RadioOption is one choice of a radio group.

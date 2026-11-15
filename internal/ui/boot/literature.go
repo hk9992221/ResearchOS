@@ -15,6 +15,7 @@ import (
 	"researchos/internal/literature"
 	"researchos/internal/literature/library"
 	"researchos/internal/literature/zotero"
+	"researchos/internal/ports"
 	"researchos/internal/search"
 	"researchos/internal/ui/pages"
 )
@@ -227,6 +228,22 @@ func (m *literatureModule) ProjectPapers(ctx context.Context, projectID string) 
 		return nil, err
 	}
 	return page.Items, nil
+}
+
+// Unlink detaches a paper from the project as the in-app user. The project
+// file, the global copy and the Paper Notes stay (§5.5): the result names the
+// notes so the page can say they were kept.
+func (m *literatureModule) Unlink(ctx context.Context, projectID, paperID string, actor ports.Actor) (literature.UnlinkResult, error) {
+	if err := m.ensure(ctx); err != nil {
+		return literature.UnlinkResult{}, err
+	}
+	m.mu.Lock()
+	lib := m.lib
+	m.mu.Unlock()
+	if lib == nil {
+		return literature.UnlinkResult{}, literature.ErrZoteroNotConfigured
+	}
+	return lib.Unlink(ctx, projectID, paperID, literature.Actor(actor))
 }
 
 // literatureItemsPerPage is the browser page size; the Zotero reader accepts at

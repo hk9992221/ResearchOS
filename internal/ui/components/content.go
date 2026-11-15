@@ -194,6 +194,10 @@ type TableOptions struct {
 	// Selection enables multi-select. Create one with SelectionKeys and
 	// keep it in the page's state.
 	Selection ui.Selector
+	// HeaderCell builds the content of column col in the header row, after
+	// its title: the check box that chooses every row of the page belongs
+	// there, so a batch table explains itself without a second control.
+	HeaderCell func(col int)
 	// RowTint optionally paints a row's cells to show a row state, such as
 	// a deleted or damaged row. Text or a StatusIndicator must say the
 	// state too; color alone is never enough.
@@ -244,6 +248,11 @@ func (u *UI) Table(o TableOptions) ui.Element {
 		}
 		if sortable && state.Sort == nil {
 			state.Sort = &ui.SortOrder{}
+		}
+		if o.HeaderCell != nil {
+			state.HeaderCell = func(cell ui.Element, col int) { o.HeaderCell(col) }
+		} else {
+			state.HeaderCell = nil
 		}
 	}
 	// A table's rows are at least 44px: the cell padding of 6px above and
