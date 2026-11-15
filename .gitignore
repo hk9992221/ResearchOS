@@ -1,2 +1,12 @@
 docs/功能说明.md
 docs/specs/
+AGENTS.md
+
+# build output
+bin/
+
+# local docs snapshots (never committed, see AGENTS.md)
+docs/
+
+# scratch binaries
+tmp_kanban_repro.exe
