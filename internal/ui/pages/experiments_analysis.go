@@ -57,26 +57,96 @@ func (d *ExperimentDetail) outlineTab(v *components.UI, a *app.App, projectID st
 }
 
 // resultsTab renders the deterministic metrics, the comparison table and the
-// AI interpretation of one target.
+// AI interpretation of one target. The generate and context-preview actions
+// live in the card header, next to the rest of the tab's controls; the empty
+// state offers the same generate action once, centered.
 func (d *ExperimentDetail) resultsTab(v *components.UI, a *app.App, projectID string, exp *experiments.ExperimentDetail, run *experiments.RunDetail, readOnly bool) {
 	d.mu.Lock()
 	snap, meta := d.results, d.resultsMeta
+	busy := d.busy["gen-"+string(experiments.AnalysisResults)]
+	confirming := d.confirmingSnap != ""
 	d.mu.Unlock()
-	if snap == nil {
-		v.EmptyState(components.EmptyStateOptions{
-			Icon:        icons.Experiments,
-			Title:       i18n.T("pages.experiments.results_empty_title"),
-			Reason:      i18n.T("pages.experiments.results_empty_reason"),
-			ActionLabel: expGenerateLabel(false, readOnly),
-			OnAction:    func() { d.generate(a, projectID, exp, run, experiments.AnalysisResults) },
-		})
-		d.generationFooter(v, a, projectID, exp, run, experiments.AnalysisResults, nil, meta, readOnly)
-		return
+	available := d.API.AIAvailable()
+	confirmed := meta != nil && strings.EqualFold(strings.TrimSpace(meta.AIStatus), "confirmed")
+	tooltip := expReadOnlyTooltip(readOnly)
+	if !available && !readOnly {
+		tooltip = i18n.T("pages.experiments.err_ai_unavailable")
 	}
 	ui.Column(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
-		d.snapshotHeader(v, snap, meta)
-		ui.Text(v.C, i18n.T("pages.experiments.results_split_note")).
-			FontSize(tokens.Typography.Secondary.Size).TextColor(mygo.Color(v.T.Palette.TextSecondary))
+		v.Card(components.CardOptions{
+			Title:       i18n.T("pages.experiments.results_card_title"),
+			Description: i18n.T("pages.experiments.results_split_note"),
+			Actions: func() {
+				if v.Button(expGenerateLabel(snap != nil, readOnly), components.ButtonOptions{
+					Variant:  components.VariantPrimary,
+					Size:     components.SizeSmall,
+					Icon:     icons.Refresh,
+					Loading:  busy,
+					Disabled: busy || readOnly || !available,
+					Tooltip:  tooltip,
+				}).Clicked() {
+					d.generate(a, projectID, exp, run, experiments.AnalysisResults)
+				}
+				if !available {
+					// The SPEC-07 AC-15 hint: the entry stays visible, disabled,
+					// and points at the only place a provider can be assigned.
+					v.Button(i18n.T("pages.experiments.btn_settings"), components.ButtonOptions{
+						Variant: components.VariantGhost,
+						Size:    components.SizeSmall,
+						Icon:    icons.Settings,
+						OnClick: func() {
+							a.Navigate(ports.Route{Kind: ports.RouteSettings, Params: map[string]string{"tab": "ai"}})
+						},
+					})
+				}
+				if v.Button(i18n.T("pages.experiments.btn_context_preview"), components.ButtonOptions{
+					Variant: components.VariantSecondary,
+					Size:    components.SizeSmall,
+					Icon:    icons.Scan,
+				}).Clicked() {
+					d.contextPre = true
+				}
+				if snap != nil && !readOnly {
+					if v.Button(i18n.T("pages.experiments.btn_edit_output"), components.ButtonOptions{
+						Variant: components.VariantGhost,
+						Size:    components.SizeSmall,
+					}).Clicked() {
+						d.editing = true
+						d.editFor = snap.ID
+						d.editText = expSnapshotText(snap)
+					}
+				}
+				if snap != nil && !readOnly && !confirmed {
+					if v.Button(i18n.T("pages.experiments.btn_confirm"), components.ButtonOptions{
+						Variant:  components.VariantPrimary,
+						Size:     components.SizeSmall,
+						Loading:  confirming,
+						Disabled: confirming,
+					}).Clicked() {
+						d.openConfirmSnapshot(snap.ID)
+					}
+				}
+				if confirmed {
+					v.Badge(i18n.T("pages.experiments.ai_confirmed"), components.Success)
+				}
+			},
+		}, func() {
+			if snap == nil {
+				v.EmptyState(components.EmptyStateOptions{
+					Icon:        icons.Experiments,
+					Title:       i18n.T("pages.experiments.results_empty_title"),
+					Reason:      i18n.T("pages.experiments.results_empty_reason"),
+					ActionLabel: expGenerateLabel(false, readOnly),
+					OnAction:    func() { d.generate(a, projectID, exp, run, experiments.AnalysisResults) },
+				})
+				return
+			}
+			d.snapshotHeader(v, snap, meta)
+			d.runResults(v, a, projectID, exp)
+		})
+		if snap == nil {
+			return
+		}
 		v.Card(components.CardOptions{
 			Title:       i18n.T("pages.experiments.metrics_title"),
 			Description: i18n.T("pages.experiments.metrics_desc"),
@@ -90,8 +160,84 @@ func (d *ExperimentDetail) resultsTab(v *components.UI, a *app.App, projectID st
 		} else {
 			d.snapshotView(v, a, projectID, snap, meta, readOnly)
 		}
-		d.generationFooter(v, a, projectID, exp, run, experiments.AnalysisResults, snap, meta, readOnly)
 	})
+}
+
+// runResults renders the correspondence the Results tab exists for: every run
+// with all of its parameters, and below them the metrics of that run's newest
+// results snapshot. Both sides come from the service read-models (§5.2, §5.7);
+// no AI text is involved, so a parameter and its outcome stay linked even when
+// the model changes its interpretation.
+func (d *ExperimentDetail) runResults(v *components.UI, a *app.App, projectID string, exp *experiments.ExperimentDetail) {
+	d.ensureComparison(a, projectID, exp.Experiment.ID)
+	d.mu.Lock()
+	comparison := d.comparison
+	busy := d.busy["compare"]
+	d.mu.Unlock()
+	if comparison == nil {
+		if busy {
+			v.Skeleton(components.SkeletonOptions{Lines: 3})
+		}
+		return
+	}
+	byRun := make(map[string][]experiments.Metric, len(comparison.Runs))
+	for _, row := range comparison.Rows {
+		for runID, metric := range row.Values {
+			byRun[runID] = append(byRun[runID], metric)
+		}
+	}
+	shown := 0
+	for i := range exp.Runs {
+		item := exp.Runs[i]
+		metrics := byRun[item.ID]
+		if len(metrics) == 0 && len(item.Params) == 0 {
+			continue
+		}
+		if shown > 0 {
+			v.Divider()
+		}
+		shown++
+		ui.Column(v.C).FillWidth().Gap(tokens.Space1).Children(func() {
+			ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
+				ui.Text(v.C, expRunTitle(item.Title, item.DisplayName)).
+					FontSize(tokens.Typography.Body.Size).
+					Grow(1)
+				v.Badge(expRunStatusLabel(item.Status), expRunTone(item.Status))
+			})
+			expParamValues(v, item.Params)
+			if len(metrics) == 0 {
+				ui.Text(v.C, i18n.T("pages.experiments.results_run_empty")).
+					FontSize(tokens.Typography.Caption.Size).
+					TextColor(mygo.Color(v.T.Palette.TextMuted))
+				return
+			}
+			for _, metric := range metrics {
+				ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
+					label := metric.Label
+					if strings.TrimSpace(label) == "" {
+						label = metric.Key
+					}
+					ui.Text(v.C, label).
+						FontSize(tokens.Typography.Caption.Size).
+						TextColor(mygo.Color(v.T.Palette.TextSecondary)).
+						Grow(1)
+					ui.Text(v.C, expMetricValue(metric)).
+						FontSize(tokens.Typography.Caption.Size).
+						FontFeatures("tnum")
+					if metric.Unit != nil {
+						ui.Text(v.C, *metric.Unit).
+							FontSize(tokens.Typography.Caption.Size).
+							TextColor(mygo.Color(v.T.Palette.TextMuted))
+					}
+				})
+			}
+		})
+	}
+	if shown == 0 {
+		ui.Text(v.C, i18n.T("pages.experiments.results_run_empty")).
+			FontSize(tokens.Typography.Secondary.Size).
+			TextColor(mygo.Color(v.T.Palette.TextMuted))
+	}
 }
 
 // expGenerateLabel names the generate button.
@@ -453,6 +599,9 @@ func (d *ExperimentDetail) generate(a *app.App, projectID string, exp *experimen
 				d.results = snap
 				d.resultsMeta = meta
 				d.metrics = &snap.Metrics
+				// The per-run correspondence is derived from the snapshots, so
+				// a fresh analysis must be reflected by a fresh comparison.
+				d.comparison = nil
 			}
 		}
 		d.mu.Unlock()

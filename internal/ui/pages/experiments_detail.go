@@ -7,6 +7,7 @@ package pages
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -765,11 +766,11 @@ func (d *ExperimentDetail) sidebar(v *components.UI, a *app.App, projectID strin
 	})
 }
 
-// runRow renders one run: display name, params summary, status badge and the
-// manual status menu.
+// runRow renders one run: its title, every parameter in full, status badge and
+// the manual status menu.
 func (d *ExperimentDetail) runRow(v *components.UI, a *app.App, projectID string, exp *experiments.ExperimentDetail, item experiments.RunSummary, current *experiments.RunDetail, readOnly bool) {
 	selected := current != nil && current.Run.ID == item.ID
-	row := ui.Column(v.C).FillWidth().Padding(tokens.Space2).Radius(tokens.RadiusMD)
+	row := ui.Column(v.C).FillWidth().Gap(tokens.Space1).Padding(tokens.Space2).Radius(tokens.RadiusMD)
 	if selected {
 		row.Background(mygo.Color(v.T.Palette.AccentSubtle))
 	} else if row.Hovered() {
@@ -777,32 +778,69 @@ func (d *ExperimentDetail) runRow(v *components.UI, a *app.App, projectID string
 	}
 	row.Children(func() {
 		ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
-			name := item.DisplayName
-			if strings.TrimSpace(name) == "" {
-				name = i18n.T("pages.experiments.run_unnamed")
-			}
-			if ui.Text(v.C, name).FontSize(tokens.Typography.Body.Size).Grow(1).SingleLine().RowClicked() {
+			if ui.Text(v.C, expRunTitle(item.Title, item.DisplayName)).FontSize(tokens.Typography.Body.Size).Grow(1).RowClicked() {
 				a.Navigate(ports.Route{Kind: ports.RouteRun, ProjectID: projectID, EntityID: item.ID})
 			}
 			v.Badge(expRunStatusLabel(item.Status), expRunTone(item.Status))
-		})
-		ui.Text(v.C, expParamSummary(item.Params)).
-			FontSize(tokens.Typography.Caption.Size).
-			TextColor(mygo.Color(v.T.Palette.TextMuted)).
-			SingleLine()
-		if !readOnly {
-			ui.MenuButton(v.C, i18n.T("pages.experiments.btn_set_status"), func(m *ui.Menu) {
-				for _, status := range []experiments.RunStatus{
-					experiments.RunUnknown, experiments.RunRunning,
-					experiments.RunFinished, experiments.RunFailed,
-				} {
-					if m.Item(expRunStatusLabel(status)).Checked(item.Status == status).Chosen() {
-						d.setRunStatus(a, projectID, item.ID, status)
+			if !readOnly {
+				ui.MenuButton(v.C, i18n.T("pages.experiments.btn_set_status"), func(m *ui.Menu) {
+					for _, status := range []experiments.RunStatus{
+						experiments.RunUnknown, experiments.RunRunning,
+						experiments.RunFinished, experiments.RunFailed,
+					} {
+						if m.Item(expRunStatusLabel(status)).Checked(item.Status == status).Chosen() {
+							d.setRunStatus(a, projectID, item.ID, status)
+						}
 					}
-				}
-			})
-		}
+				})
+			}
+		})
+		expParamValues(v, item.Params)
 	})
+}
+
+// expRunTitle is the heading of one run: the stored title, else the projected
+// display name, else the unnamed marker.
+func expRunTitle(title, displayName string) string {
+	if text := strings.TrimSpace(title); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(displayName); text != "" {
+		return text
+	}
+	return i18n.T("pages.experiments.run_unnamed")
+}
+
+// expParamValues renders every parameter of one run as a wrapping key/value
+// list. Nothing is truncated: a long value takes the lines it needs, which is
+// why the list is never a SingleLine summary.
+func expParamValues(v *components.UI, params map[string]experiments.ParamValue) {
+	if len(params) == 0 {
+		ui.Text(v.C, i18n.T("pages.experiments.params_none")).
+			FontSize(tokens.Typography.Caption.Size).
+			TextColor(mygo.Color(v.T.Palette.TextMuted))
+		return
+	}
+	keys := make([]string, 0, len(params))
+	for key := range params {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := strings.TrimSpace(params[key].Value)
+		if value == "" {
+			value = i18n.T("pages.experiments.value_none")
+		}
+		ui.Row(v.C).FillWidth().Gap(tokens.Space1).AlignItems(ui.Start).Children(func() {
+			ui.Text(v.C, key+"=").
+				FontSize(tokens.Typography.Caption.Size).
+				TextColor(mygo.Color(v.T.Palette.TextMuted))
+			ui.Text(v.C, value).
+				FontSize(tokens.Typography.Caption.Size).
+				TextColor(mygo.Color(v.T.Palette.TextSecondary)).
+				Grow(1)
+		})
+	}
 }
 
 // main renders the tab bar and the chosen tab.
@@ -1058,6 +1096,9 @@ func (d *ExperimentDetail) retrySave(projectID, aiOutputID string) {
 func expRunName(run *experiments.RunDetail) string {
 	if run == nil {
 		return ""
+	}
+	if title := strings.TrimSpace(run.Run.Title); title != "" {
+		return title
 	}
 	if len(run.Run.Params) > 0 {
 		return expParamSummary(run.Run.Params)
