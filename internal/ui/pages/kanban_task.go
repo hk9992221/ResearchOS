@@ -385,13 +385,11 @@ func (d *taskDetail) detailTab(v *components.UI, a *app.App, k *Kanban, projectI
 
 	ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).Wrap().AlignItems(ui.End).Children(func() {
 		// The control keeps its written options; the dot beside it carries
-		// the same color the board shows, and its own name for assistive
-		// technology.
-		if p := priorityFromLabel(d.priority); p != kanban.PriorityNone {
-			ui.Row(v.C).Height(tokens.Space8).AlignItems(ui.Center).Children(func() {
-				priorityDot(v, p)
-			})
-		}
+		// the same color the board shows — blue while the select reads "none"
+		// — and its own name for assistive technology.
+		ui.Row(v.C).Height(tokens.Space8).AlignItems(ui.Center).Children(func() {
+			priorityDot(v, priorityFromLabel(d.priority))
+		})
 		if v.Select(&d.priority, components.SelectOptions{
 			Label: i18n.T("pages.kanban.field_priority"),
 			Options: []string{
@@ -552,9 +550,7 @@ func (d *taskDetail) subtasksList(v *components.UI, a *app.App, k *Kanban, proje
 					k.openTask(a, projectID, sub.ID)
 				}
 				v.Badge(sub.Column, components.Neutral)
-				if sub.Priority != kanban.PriorityNone && sub.Priority != "" {
-					priorityDot(v, sub.Priority)
-				}
+				priorityDot(v, sub.Priority)
 				if sub.Deadline != nil && *sub.Deadline != "" {
 					text := ui.Text(v.C, *sub.Deadline).FontSize(tokens.Typography.Caption.Size)
 					if kanbanOverdue(*sub.Deadline) {

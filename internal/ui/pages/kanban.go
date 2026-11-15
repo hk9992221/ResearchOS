@@ -750,17 +750,15 @@ func (k *Kanban) card(v *components.UI, a *app.App, projectID string, col kanban
 	})
 
 	card.Children(func() {
-		hasPriority := task.Priority != kanban.PriorityNone && task.Priority != ""
 		// The priority bar: the color, never alone — the dot in the meta row
 		// carries the same color and its name in a tooltip and an accessible
-		// label (ui_plan.md §2.3).
-		if hasPriority {
-			ui.Box(v.C).
-				FillWidth().
-				Height(3).
-				Radius(tokens.RadiusSM).
-				Background(mygo.Color(priorityColor(v, task.Priority)))
-		}
+		// label (ui_plan.md §2.3). An unset priority paints blue, so every
+		// card carries the bar and the bar's color means one thing only.
+		ui.Box(v.C).
+			FillWidth().
+			Height(3).
+			Radius(tokens.RadiusSM).
+			Background(mygo.Color(priorityColor(v, task.Priority)))
 		ui.Row(v.C).FillWidth().Gap(tokens.Space1).AlignItems(ui.Start).Children(func() {
 			ui.Text(v.C, kanbanTitle(task.Title)).
 				Grow(1).
@@ -773,37 +771,36 @@ func (k *Kanban) card(v *components.UI, a *app.App, projectID string, col kanban
 			}
 		})
 		hasDeadline := task.Deadline != nil && *task.Deadline != ""
-		if hasPriority || hasDeadline || task.SubtaskTotal > 0 || task.ChecklistTotal > 0 {
-			ui.Row(v.C).FillWidth().Gap(tokens.Space2).AlignItems(ui.Center).Children(func() {
-				if hasPriority {
-					priorityDot(v, task.Priority)
-				}
-				if hasDeadline {
-					overdue := kanbanOverdue(*task.Deadline)
-					ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
-						v.Icon(icons.Clock, icons.SizeDefault)
-						text := ui.Text(v.C, *task.Deadline).
-							FontSize(tokens.Typography.Caption.Size).
-							FontFeatures("tnum")
-						if overdue {
-							text.TextColor(mygo.Color(p.StatusDanger))
-						}
-					})
-				}
-				if task.SubtaskTotal > 0 {
-					ui.Text(v.C, i18n.Tf("pages.kanban.card_subtasks", map[string]string{
-						"done":  strconv.Itoa(task.SubtaskDone),
-						"total": strconv.Itoa(task.SubtaskTotal),
-					})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
-				}
-				if task.ChecklistTotal > 0 {
-					ui.Text(v.C, i18n.Tf("pages.kanban.card_checklist", map[string]string{
-						"done":  strconv.Itoa(task.ChecklistDone),
-						"total": strconv.Itoa(task.ChecklistTotal),
-					})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
-				}
-			})
-		}
+		// The dot is always there: an unset priority shows blue rather than
+		// nothing, so "no priority" is a state the board states rather than
+		// an absence the reader has to infer.
+		ui.Row(v.C).FillWidth().Gap(tokens.Space2).AlignItems(ui.Center).Children(func() {
+			priorityDot(v, task.Priority)
+			if hasDeadline {
+				overdue := kanbanOverdue(*task.Deadline)
+				ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
+					v.Icon(icons.Clock, icons.SizeDefault)
+					text := ui.Text(v.C, *task.Deadline).
+						FontSize(tokens.Typography.Caption.Size).
+						FontFeatures("tnum")
+					if overdue {
+						text.TextColor(mygo.Color(p.StatusDanger))
+					}
+				})
+			}
+			if task.SubtaskTotal > 0 {
+				ui.Text(v.C, i18n.Tf("pages.kanban.card_subtasks", map[string]string{
+					"done":  strconv.Itoa(task.SubtaskDone),
+					"total": strconv.Itoa(task.SubtaskTotal),
+				})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
+			}
+			if task.ChecklistTotal > 0 {
+				ui.Text(v.C, i18n.Tf("pages.kanban.card_checklist", map[string]string{
+					"done":  strconv.Itoa(task.ChecklistDone),
+					"total": strconv.Itoa(task.ChecklistTotal),
+				})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
+			}
+		})
 		if len(task.Labels) > 0 {
 			ui.Row(v.C).FillWidth().Gap(tokens.Space1).Wrap().Children(func() {
 				for _, label := range task.Labels {
@@ -1478,10 +1475,8 @@ func (k *Kanban) taskTable(v *components.UI, a *app.App, projectID string, rows 
 					open(task)
 				}
 			case 2:
-				if task.Priority == kanban.PriorityNone || task.Priority == "" {
-					v.Badge(i18n.T("pages.kanban.priority_none"), components.Neutral)
-					return
-				}
+				// One dot for every task, blue when the priority is unset, so
+				// the column keeps one shape and the color keeps one meaning.
 				cell := ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center)
 				cell.Children(func() { priorityDot(v, task.Priority) })
 				if cell.RowClicked() {
@@ -1783,17 +1778,10 @@ func priorityFromLabel(label string) kanban.Priority {
 
 // priorityColor is the card bar and the dot color: the theme resolves one step
 // per appearance, so a priority reads on the light surface and on the dark one
-// without the page carrying a color of its own (ui_plan.md §2.3).
+// without the page carrying a color of its own (ui_plan.md §2.3). An unset
+// priority is blue; a value the theme does not know is the secondary color.
 func priorityColor(v *components.UI, p kanban.Priority) tokens.Color {
-	switch p {
-	case kanban.PriorityHigh:
-		return v.T.Priority(tokens.PriorityHigh)
-	case kanban.PriorityMedium:
-		return v.T.Priority(tokens.PriorityMedium)
-	case kanban.PriorityLow:
-		return v.T.Priority(tokens.PriorityLow)
-	}
-	return v.T.Palette.TextMuted
+	return v.T.Priority(string(p))
 }
 
 // priorityDot paints a priority as a small colored dot. The name is the dot's
