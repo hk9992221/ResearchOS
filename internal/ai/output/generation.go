@@ -242,6 +242,12 @@ func (g *generator) emitAnalysis(ctx context.Context, out AIOutput) {
 // CompleteStructured forces JSON output, validates it (parse + optional
 // strict validator), retries with one repair prompt on failure and persists
 // a draft ONLY when validation finally passes (§5.9 rule 9).
+//
+// The call goes through the streaming path with a discarded delta sink: a
+// structured reply can take minutes, and the gateway's unary ceiling is total
+// wall time (TimeoutChat × attempts), while ChatStream bounds silence instead.
+// The answer, the repair rounds and the persisted draft are identical either
+// way; a runner without the streaming surface falls back to one unary call.
 func (g *generator) CompleteStructured(ctx context.Context, req StructuredRequest) (StructuredResponse, error) {
 	if len(req.JSONSchema) == 0 {
 		return StructuredResponse{}, ErrSchemaRequired
@@ -276,12 +282,12 @@ func (g *generator) CompleteStructured(ctx context.Context, req StructuredReques
 	totalAttempts := 0
 	var lastErr error
 	for round := 0; ; round++ {
-		resp, summary, err := g.gopts.Runner.Chat(ctx, role.RoleChatMain, gateway.ChatRequest{
+		resp, summary, err := g.chat(ctx, gateway.ChatRequest{
 			Messages:        messages,
 			Temperature:     req.Temperature,
 			MaxOutputTokens: req.MaxOutputTokens,
 			ResponseFormat:  format,
-		})
+		}, func(string) {})
 		if err != nil {
 			return StructuredResponse{}, err
 		}
