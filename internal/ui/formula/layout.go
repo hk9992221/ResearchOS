@@ -25,7 +25,7 @@ type style struct {
 var styleSizes = [3]float32{1, 0.7, 0.5}
 
 func newStyle(size float32, display bool) style {
-	return style{base: size, size: size, display: display, italic: true}
+	return style{base: size, size: size, display: display, italic: true, weight: int(tokens.WeightRegular)}
 }
 
 // script is the style of a superscript or subscript.
@@ -166,9 +166,16 @@ func runMetrics(text string, size float32) (h, d float32) {
 }
 
 // shape shapes a string at a style's size, in the math face: TeX set in the
-// interface sans reads as broken.
+// interface sans reads as broken. STIX Two Math ships one face, so a run
+// that asks for italics or a weight it has no font for shapes in STIX Two
+// Text, the same design, which falls back to the math font for the symbols
+// it does not carry.
 func shape(text string, s style, italic bool) ([]ui.Glyph, float32) {
-	g := ui.Shape(text, ui.Font{Family: tokens.SystemFonts.Math, Size: s.size, Italic: italic, Weight: s.weight})
+	family := tokens.SystemFonts.Math
+	if italic || s.weight != int(tokens.WeightRegular) {
+		family = tokens.SystemFonts.MathText
+	}
+	g := ui.Shape(text, ui.Font{Family: family, Size: s.size, Italic: italic, Weight: s.weight})
 	if len(g) == 0 {
 		return nil, 0.5 * s.size
 	}

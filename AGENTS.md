@@ -33,3 +33,7 @@ go test ./... -count=1
 ## 4. 合并规则
 
 所有 `test` 文件，例如 `clocl_test.go` 均不得合并到主分支。
+
+## 5. 前端 ui 规则
+
+避免非必要的辅助标签与说明。让布局本身发挥解释作用。(Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.)

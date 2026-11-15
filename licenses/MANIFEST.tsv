@@ -1,0 +1,28 @@
+module	version	licence files
+github.com/BurntSushi/toml	v1.6.0	licenses/toml__COPYING.txt
+github.com/dustin/go-humanize	v1.1.0	licenses/humanize__LICENSE.txt
+github.com/ebitengine/purego	v0.11.1	licenses/purego__LICENSE.txt
+github.com/egoist/mygo	v0.9.0	licenses/mygo__LICENSE.txt
+github.com/go-text/typesetting	v0.3.5	licenses/typesetting__LICENSE.txt
+github.com/ledongthuc/pdf	v0.0.0-20261020125853-5e46805f718e	licenses/pdf__LICENSE.txt
+github.com/mattn/go-isatty	v0.0.24	licenses/isatty__LICENSE.txt
+github.com/ncruces/go-strftime	v1.1.0	licenses/go-strftime__LICENSE.txt
+github.com/remyoudompheng/bigfft	v0.0.0-20230129092748-24d4a6f8daec	licenses/bigfft__LICENSE.txt
+golang.org/x/image	v0.46.0	licenses/x-image__LICENSE.txt
+golang.org/x/net	v0.59.0	licenses/x-net__LICENSE.txt
+golang.org/x/sys	v0.49.0	licenses/x-sys__LICENSE.txt
+golang.org/x/text	v0.44.0	licenses/x-text__LICENSE.txt
+gopkg.in/yaml.v3	v3.0.1	licenses/yaml.v3__LICENSE.txt
+gopkg.in/yaml.v3	v3.0.1	licenses/yaml.v3__NOTICE.txt
+modernc.org/libc	v1.80.1	licenses/libc__LICENSE.txt
+modernc.org/libc	v1.80.1	licenses/libc__LICENSE-3RD-PARTY.txt
+modernc.org/mathutil	v1.7.1	licenses/mathutil__LICENSE.txt
+modernc.org/memory	v1.12.1	licenses/memory__LICENSE.txt
+modernc.org/memory	v1.12.1	licenses/memory__LICENSE-GO.txt
+modernc.org/memory	v1.12.1	licenses/memory__LICENSE-LOGO.txt
+modernc.org/memory	v1.12.1	licenses/memory__LICENSE-MMAP-GO.txt
+modernc.org/sqlite	v1.62.0	licenses/sqlite__LICENSE.txt
+modernc.org/sqlite	v1.62.0	licenses/sqlite__LICENSE-3RD-PARTY.txt
+modernc.org/sqlite	v1.62.0	licenses/sqlite__LICENSE-SQLITE.txt
+modernc.org/sqlite	v1.62.0	licenses/sqlite__LICENSE-SQLITE_VEC.txt
+go runtime and stdlib	go1.27.4	licenses/go-runtime__LICENSE.txt
