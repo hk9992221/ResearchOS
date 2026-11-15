@@ -58,6 +58,14 @@ type UI struct {
 	// callbacks use, such as issuing a confirmation token. Nil means
 	// context.Background.
 	Ctx context.Context
+	// ContentWidth is the width of the shell's main work area in DIPs: the
+	// page area with the sidebar, its separator and the inspector already
+	// taken out, before the page's own padding. The shell sets it every
+	// frame, so a page that divides its width over its content — the kanban
+	// board over its columns — fits the room it really has. Zero means
+	// nothing set it (a page rendered on its own), and the page falls back
+	// to the window size.
+	ContentWidth float32
 }
 
 // New returns the component context of a frame.

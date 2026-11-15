@@ -120,10 +120,16 @@ func (s *Shell) View(c *ui.Context) {
 			// inspector's body would grow past the window, which clips the
 			// last controls instead of scrolling them into view.
 			ui.Column(v.C).FillWidth().Grow(1).Clip().Children(func() {
+				// The page area is the window without the sidebar and the
+				// separator, and without the inspector when it shows. Pages
+				// that divide their width over their content (the kanban
+				// board) read it from v.ContentWidth rather than counting
+				// the whole window as their own.
+				area := width - sidebarWidth - 1
 				if showInspector {
-					s.splitArea(v, width-sidebarWidth, inspector)
+					s.splitArea(v, area, inspector)
 				} else {
-					s.content(v)
+					s.content(v, area)
 				}
 			})
 		})
@@ -352,7 +358,8 @@ func (s *Shell) topBar(v *components.UI, narrow bool) {
 
 // content renders the current page inside the main area (§6.5). The shell
 // keeps the frame; only this area changes on navigation.
-func (s *Shell) content(v *components.UI) {
+func (s *Shell) content(v *components.UI, width float32) {
+	v.ContentWidth = width
 	route := s.route()
 	page, ok := s.pages[route.Kind]
 	if !ok {
@@ -372,7 +379,7 @@ func (s *Shell) splitArea(v *components.UI, total float32, insp app.Inspector) {
 	if total < inspectorWidth(insp)+tokens.Space12*6 {
 		// Not enough room for both panes: keep the main work area, as the
 		// design says the inspector must not squeeze it.
-		s.content(v)
+		s.content(v, total)
 		return
 	}
 	targetMain := total - inspectorWidth(insp)
@@ -398,7 +405,7 @@ func (s *Shell) splitArea(v *components.UI, total float32, insp app.Inspector) {
 
 	size := s.mainSize
 	ui.Split(v.C, &size, func() {
-		s.content(v)
+		s.content(v, s.mainSize)
 	}, func() {
 		s.inspector(v, insp)
 	}).Fill()

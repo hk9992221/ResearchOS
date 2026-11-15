@@ -79,28 +79,35 @@ const (
 	kanbanBlockedView
 )
 
-// Board geometry from SPEC-08 §6.2: columns shrink to fit the window, and
-// only fall back to horizontal scrolling below kanbanColumnMinWidth.
+// Board geometry from SPEC-08 §6.2: the columns divide the board's width, so
+// a normal window shows every column without scrolling. They stop shrinking at
+// kanbanColumnMinWidth, beyond which the board scrolls horizontally, and stop
+// growing at kanbanColumnMaxWidth, so a wide window does not stretch cards
+// past a readable measure and leaves the surplus to the end of the board.
 const (
-	kanbanColumnWidth    float32 = 300
-	kanbanColumnMinWidth float32 = 200
+	kanbanColumnMinWidth float32 = 220
+	kanbanColumnMaxWidth float32 = 340
 	kanbanColumnRows             = 10
 )
 
-// kanbanBoardColumnWidth divides the board's width over its columns, keeping
-// the preferred 300 and never going under 200.
-func kanbanBoardColumnWidth(available float32, columns int) float32 {
-	if columns <= 0 || available <= 0 {
-		return kanbanColumnWidth
+// kanbanBoardColumnWidth divides the board's width over its columns and
+// reports whether they overflow it. The width is the board's own room, one
+// gap short of the columns it counts.
+func kanbanBoardColumnWidth(available float32, columns int) (width float32, scroll bool) {
+	if columns <= 0 {
+		return kanbanColumnMinWidth, false
 	}
-	width := (available - tokens.SectionGap*float32(columns-1)) / float32(columns)
-	if width > kanbanColumnWidth {
-		return kanbanColumnWidth
+	if available <= 0 {
+		return kanbanColumnMinWidth, true
 	}
+	width = (available - tokens.SectionGap*float32(columns-1)) / float32(columns)
 	if width < kanbanColumnMinWidth {
-		return kanbanColumnMinWidth
+		return kanbanColumnMinWidth, true
 	}
-	return width
+	if width > kanbanColumnMaxWidth {
+		return kanbanColumnMaxWidth, false
+	}
+	return width, false
 }
 
 // kanbanTaskLimit is how many rows the list and archive views hold: one page
@@ -550,27 +557,59 @@ func (k *Kanban) boardView(v *components.UI, a *app.App, projectID string) {
 	// An empty board needs no banner above the columns: each column states
 	// that it holds no card and offers its own add action, and the page
 	// header already carries the create button.
-	width, height := v.C.Size()
-	// v.C.Size() is the page area before the container's own margin.
+	//
+	// v.C.Size() is the window, which counts the sidebar and the inspector as
+	// board; the shell's frame carries the room the page really has.
+	_, height := v.C.Size()
+	width := v.ContentWidth
+	if width <= 0 {
+		w, _ := v.C.Size()
+		width = w - components.SidebarWidth - 1
+	}
 	width -= 2 * tokens.PagePadding
-	colWidth := kanbanBoardColumnWidth(width, len(board.Columns))
+	if width < 1 {
+		width = 1
+	}
+	colWidth, scroll := kanbanBoardColumnWidth(width, len(board.Columns))
 	boardHeight := height - 260
 	if boardHeight < 320 {
 		boardHeight = 320
 	}
-	// Columns shrink to fit; when five of them still need more room than the
-	// window has, the bar stays visible so the off-screen columns are
-	// discoverable without hovering.
-	ui.ScrollHorizontal(v.C).FillWidth().Height(boardHeight).
+	// The board owns exactly its width, so the scroll container measures its
+	// own overflow: filled, it would take the width of its columns instead
+	// and the surplus would only be clipped by the page. When the columns no
+	// longer fit, the bar stays visible, in a style that reads on the board's
+	// own background, so the off-screen columns are discoverable without
+	// hovering.
+	boardEl := ui.ScrollHorizontal(v.C).
+		Width(width).
+		Height(boardHeight).
 		Gap(tokens.SectionGap).
 		AlignItems(ui.Start).
 		ScrollbarAxes(true, false).
-		KeepScrollbars(true).
-		Children(func() {
-			for _, col := range board.Columns {
-				k.column(v, a, projectID, col, colWidth, archived)
-			}
-		})
+		KeepScrollbars(scroll)
+	if scroll {
+		boardEl = boardEl.ScrollbarStyle(kanbanBoardScrollbar(v))
+	}
+	boardEl.Children(func() {
+		for _, col := range board.Columns {
+			k.column(v, a, projectID, col, colWidth, archived)
+		}
+	})
+}
+
+// kanbanBoardScrollbar styles the board's horizontal bar: the app's own
+// scroll bars are overlay thumbnails that a user has to hover to find, which
+// leaves a clipped column looking like the end of the board.
+func kanbanBoardScrollbar(v *components.UI) ui.ScrollbarStyle {
+	p := v.T.Palette
+	return ui.ScrollbarStyle{
+		ThumbWidth: 8,
+		Thumb:      mygo.Color(p.TextMuted),
+		Hover:      mygo.Color(p.TextSecondary),
+		Active:     mygo.Color(p.TextPrimary),
+		Track:      mygo.Color(p.BgSubtle),
+	}
 }
 
 // column renders one board column: header, cards, quick add.
@@ -615,11 +654,6 @@ func (k *Kanban) column(v *components.UI, a *app.App, projectID string, col kanb
 				Disabled: archived,
 			}).Menu(func(m *ui.Menu) { k.columnMenu(m, col.Column) })
 		})
-		if col.Column.IsDone {
-			ui.Text(v.C, i18n.T("pages.kanban.col_done")).
-				FontSize(tokens.Typography.Caption.Size).
-				TextColor(mygo.Color(p.StatusSuccess))
-		}
 		if len(col.Tasks) == 0 {
 			ui.Text(v.C, i18n.T("pages.kanban.col_empty")).
 				Padding(tokens.Space2).
@@ -716,8 +750,11 @@ func (k *Kanban) card(v *components.UI, a *app.App, projectID string, col kanban
 	})
 
 	card.Children(func() {
-		// The priority bar: color plus the written priority, never color alone.
-		if task.Priority != kanban.PriorityNone && task.Priority != "" {
+		hasPriority := task.Priority != kanban.PriorityNone && task.Priority != ""
+		// The priority bar: the color, never alone — the dot in the meta row
+		// carries the same color and its name in a tooltip and an accessible
+		// label (ui_plan.md §2.3).
+		if hasPriority {
 			ui.Box(v.C).
 				FillWidth().
 				Height(3).
@@ -735,34 +772,37 @@ func (k *Kanban) card(v *components.UI, a *app.App, projectID string, col kanban
 				v.Icon(icons.Warning, icons.SizeDefault).TextColor(mygo.Color(p.StatusDanger))
 			}
 		})
-		if task.Priority != kanban.PriorityNone && task.Priority != "" {
-			ui.Text(v.C, priorityLabel(task.Priority)).
-				FontSize(tokens.Typography.Caption.Size).
-				TextColor(mygo.Color(priorityColor(v, task.Priority)))
-		}
-		if task.Deadline != nil && *task.Deadline != "" {
-			overdue := kanbanOverdue(*task.Deadline)
-			ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
-				v.Icon(icons.Clock, icons.SizeDefault)
-				text := ui.Text(v.C, *task.Deadline).
-					FontSize(tokens.Typography.Caption.Size).
-					FontFeatures("tnum")
-				if overdue {
-					text.TextColor(mygo.Color(p.StatusDanger))
+		hasDeadline := task.Deadline != nil && *task.Deadline != ""
+		if hasPriority || hasDeadline || task.SubtaskTotal > 0 || task.ChecklistTotal > 0 {
+			ui.Row(v.C).FillWidth().Gap(tokens.Space2).AlignItems(ui.Center).Children(func() {
+				if hasPriority {
+					priorityDot(v, task.Priority)
+				}
+				if hasDeadline {
+					overdue := kanbanOverdue(*task.Deadline)
+					ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center).Children(func() {
+						v.Icon(icons.Clock, icons.SizeDefault)
+						text := ui.Text(v.C, *task.Deadline).
+							FontSize(tokens.Typography.Caption.Size).
+							FontFeatures("tnum")
+						if overdue {
+							text.TextColor(mygo.Color(p.StatusDanger))
+						}
+					})
+				}
+				if task.SubtaskTotal > 0 {
+					ui.Text(v.C, i18n.Tf("pages.kanban.card_subtasks", map[string]string{
+						"done":  strconv.Itoa(task.SubtaskDone),
+						"total": strconv.Itoa(task.SubtaskTotal),
+					})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
+				}
+				if task.ChecklistTotal > 0 {
+					ui.Text(v.C, i18n.Tf("pages.kanban.card_checklist", map[string]string{
+						"done":  strconv.Itoa(task.ChecklistDone),
+						"total": strconv.Itoa(task.ChecklistTotal),
+					})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
 				}
 			})
-		}
-		if task.SubtaskTotal > 0 {
-			ui.Text(v.C, i18n.Tf("pages.kanban.card_subtasks", map[string]string{
-				"done":  strconv.Itoa(task.SubtaskDone),
-				"total": strconv.Itoa(task.SubtaskTotal),
-			})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
-		}
-		if task.ChecklistTotal > 0 {
-			ui.Text(v.C, i18n.Tf("pages.kanban.card_checklist", map[string]string{
-				"done":  strconv.Itoa(task.ChecklistDone),
-				"total": strconv.Itoa(task.ChecklistTotal),
-			})).FontSize(tokens.Typography.Caption.Size).TextColor(mygo.Color(p.TextSecondary))
 		}
 		if len(task.Labels) > 0 {
 			ui.Row(v.C).FillWidth().Gap(tokens.Space1).Wrap().Children(func() {
@@ -1442,7 +1482,9 @@ func (k *Kanban) taskTable(v *components.UI, a *app.App, projectID string, rows 
 					v.Badge(i18n.T("pages.kanban.priority_none"), components.Neutral)
 					return
 				}
-				if v.Badge(priorityLabel(task.Priority), priorityTone(task.Priority)).RowClicked() {
+				cell := ui.Row(v.C).Gap(tokens.Space1).AlignItems(ui.Center)
+				cell.Children(func() { priorityDot(v, task.Priority) })
+				if cell.RowClicked() {
 					open(task)
 				}
 			case 3:
@@ -1739,32 +1781,33 @@ func priorityFromLabel(label string) kanban.Priority {
 	return kanban.PriorityNone
 }
 
-// priorityTone picks the semantic tone of a priority for badges.
-func priorityTone(p kanban.Priority) components.Tone {
+// priorityColor is the card bar and the dot color: the theme resolves one step
+// per appearance, so a priority reads on the light surface and on the dark one
+// without the page carrying a color of its own (ui_plan.md §2.3).
+func priorityColor(v *components.UI, p kanban.Priority) tokens.Color {
 	switch p {
 	case kanban.PriorityHigh:
-		return components.Danger
+		return v.T.Priority(tokens.PriorityHigh)
 	case kanban.PriorityMedium:
-		return components.Warning
+		return v.T.Priority(tokens.PriorityMedium)
 	case kanban.PriorityLow:
-		return components.Info
+		return v.T.Priority(tokens.PriorityLow)
 	}
-	return components.Neutral
+	return v.T.Palette.TextMuted
 }
 
-// priorityColor is the card bar color; the written priority always accompanies
-// it (ui_plan.md §2.3).
-func priorityColor(v *components.UI, p kanban.Priority) tokens.Color {
-	pal := v.T.Palette
-	switch p {
-	case kanban.PriorityHigh:
-		return pal.StatusDanger
-	case kanban.PriorityMedium:
-		return pal.StatusWarning
-	case kanban.PriorityLow:
-		return pal.StatusInfo
-	}
-	return pal.TextMuted
+// priorityDot paints a priority as a small colored dot. The name is the dot's
+// tooltip and its accessible label, so the meaning is never carried by color
+// alone (ui_plan.md §2.3).
+func priorityDot(v *components.UI, p kanban.Priority) ui.Element {
+	name := priorityLabel(p)
+	dot := ui.Box(v.C).
+		Size(tokens.Space2, tokens.Space2).
+		Radius(tokens.Space1).
+		Background(mygo.Color(priorityColor(v, p))).
+		Role(ui.RoleImage).
+		Label(name)
+	return v.Tooltip(dot, name)
 }
 
 // kanbanTitle truncates by runes, then lets the layout cut the second line.
