@@ -1,7 +1,7 @@
 package tokens
 
 // The task board's priorities (SPEC-08 §4.3). A priority is not a status: the
-// board's red, amber and blue must not be the ones a failure, a warning or a
+// board's red, green and blue must not be the ones a failure, a warning or a
 // link carries, so they get steps of their own.
 //
 // Each appearance resolves its own steps. The Light ones are darker and more
@@ -15,16 +15,27 @@ const (
 )
 
 var (
-	// priorityLight: #C11515, #B45309 and #1D4ED8, at 6.20:1, 5.02:1 and
+	// priorityLight: #C11515, #197B0A and #1D4ED8, at 6.20:1, 5.41:1 and
 	// 6.70:1 against White.
-	priorityLightHigh   = Hex("#C11515")
-	priorityLightMedium = Hex("#B45309")
-	priorityLightLow    = Hex("#1D4ED8")
-	// priorityDark: #FDA29B, #FDBA74 and #84CAFF, at 8.88:1, 10.22:1 and
+	//
+	// The hues are 0°, 112° and 224°, so the nearest pair is 112° apart — the
+	// widest a fixed red and blue allow. Red and blue are unmoved; the green
+	// sits at the midpoint of the larger arc between them, which is what
+	// maximises the smallest of the three pairwise gaps. Amber sat 26° from
+	// the red and read as the same hue at dot size.
+	priorityLightHigh   = Hex("#C11515") // H 0°,  S 80%, L 42%
+	priorityLightMedium = Hex("#197B0A") // H 112°, S 85%, L 26%
+	priorityLightLow    = Hex("#1D4ED8") // H 224°, S 76%, L 48%
+	// priorityDark: #FDA29B, #A9F391 and #84CAFF, at 8.88:1, 13.06:1 and
 	// 9.74:1 against the dark surface.
-	priorityDarkHigh   = Hex("#FDA29B")
-	priorityDarkMedium = Hex("#FDBA74")
-	priorityDarkLow    = Hex("#84CAFF")
+	//
+	// The same hues, as pastels: 4°, 105° and 206°, nearest pair 101°. Green
+	// is the brightest hue at equal lightness, so it carries more contrast
+	// than its neighbours; it is kept at their lightness (76% against 80% and
+	// 76%) so the three dots weigh the same on the card.
+	priorityDarkHigh   = Hex("#FDA29B") // H 4°,   S 96%, L 80%
+	priorityDarkMedium = Hex("#A9F391") // H 105°, S 80%, L 76%
+	priorityDarkLow    = Hex("#84CAFF") // H 206°, S 100%, L 76%
 )
 
 // Priority returns the color of the priority kind — PriorityHigh,
