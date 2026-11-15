@@ -381,7 +381,7 @@ func (s *service) skillRequest(idea *Idea, inputs []skillSource, instruction str
 		Purpose:         skillName,
 		System:          "你是科研证据规范化助手，只从给定来源文本中抽取可支持或反对研究假设的事实性陈述。",
 		Prompt:          b.String(),
-		JSONSchema:      `{"type":"object","properties":{"items":{"type":"array","maxItems":` + fmt.Sprint(maxDrafts) + `,"items":{"type":"object","required":["direction","content","source_index","rationale"],"properties":{"direction":{"enum":["support","oppose"]},"content":{"type":"string","minLength":20,"maxLength":1000},"source_index":{"type":"integer","minimum":1},"rationale":{"type":"string","maxLength":300}}}},"required":["items"]}`,
+		JSONSchema:      `{"type":"object","properties":{"items":{"type":"array","maxItems":` + fmt.Sprint(maxDrafts) + `,"items":{"type":"object","required":["direction","content","source_index","rationale"],"properties":{"direction":{"enum":["support","oppose"]},"content":{"type":"string","minLength":20,"maxLength":1000},"source_index":{"type":"integer","minimum":1},"rationale":{"type":"string","maxLength":300}}}}},"required":["items"]}`,
 		MaxOutputTokens: 2048,
 	}
 }
