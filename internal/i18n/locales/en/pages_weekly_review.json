@@ -273,6 +273,7 @@
   "pages.weekly_review.toast_generate_fail": "The report was not generated",
   "pages.weekly_review.toast_generated": "Report generated",
   "pages.weekly_review.toast_generated_skeleton": "The skeleton draft was stored",
+  "pages.weekly_review.toast_open_fail": "The file could not be opened",
   "pages.weekly_review.toast_period_invalid": "Pick a valid period",
   "pages.weekly_review.toast_regen_fail": "The report was not regenerated",
   "pages.weekly_review.toast_regenerated": "Report regenerated",

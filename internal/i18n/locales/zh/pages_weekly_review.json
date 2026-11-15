@@ -273,6 +273,7 @@
   "pages.weekly_review.toast_generate_fail": "周报未生成",
   "pages.weekly_review.toast_generated": "周报已生成",
   "pages.weekly_review.toast_generated_skeleton": "已写入骨架草稿",
+  "pages.weekly_review.toast_open_fail": "无法打开文件",
   "pages.weekly_review.toast_period_invalid": "请选择有效周期",
   "pages.weekly_review.toast_regen_fail": "周报未重新生成",
   "pages.weekly_review.toast_regenerated": "周报已重新生成",

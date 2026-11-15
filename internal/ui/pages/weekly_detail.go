@@ -1992,7 +1992,20 @@ func (d *WeeklyReportView) export(a *app.App, projectID string, report *weeklyre
 		if err != nil {
 			a.Toast(app.LevelDanger, i18n.T("pages.weekly_review.toast_export_fail"), weeklyError(err))
 		} else if result != nil {
-			a.Toast(app.LevelSuccess, i18n.T("pages.weekly_review.toast_exported"), result.Path)
+			// The path the export just wrote is the link itself: one press
+			// opens the report in the reader the OS associates with .md or
+			// .html. Only this produced path is passed, never typed input.
+			path := result.Path
+			a.ToastWithAction(app.LevelSuccess, i18n.T("pages.weekly_review.toast_exported"), "", &app.ToastAction{
+				Label: path,
+				OnClick: func() {
+					go func() {
+						if err := api.OpenFile(path); err != nil {
+							a.Toast(app.LevelDanger, i18n.T("pages.weekly_review.toast_open_fail"), weeklyError(err))
+						}
+					}()
+				},
+			})
 		}
 		a.Notify()
 		return nil

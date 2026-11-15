@@ -23,10 +23,18 @@ func (s *Shell) toasts(v *components.UI) {
 		Children(func() {
 			for _, t := range list {
 				t := t
+				var action *components.ToastAction
+				if t.Action != nil {
+					action = &components.ToastAction{
+						Label:   t.Action.Label,
+						OnClick: t.Action.OnClick,
+					}
+				}
 				v.ToastCard(components.ToastOptions{
 					Tone:    toastTone(t.Level),
 					Title:   t.Title,
 					Message: t.Message,
+					Action:  action,
 					OnDismiss: func() {
 						s.app.DismissToast(t.ID)
 					},

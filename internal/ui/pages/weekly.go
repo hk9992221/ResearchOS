@@ -67,9 +67,10 @@ func (s *weeklyShared) version() int {
 // writes the deterministic seven-section skeleton and the dialog points at
 // Settings.
 //
-// RevealFolder opens a directory in the operating system's file manager. It
-// lives here because shell.revealFolder is package-private; the boot adapter
-// carries the same fifteen lines (SPEC-09 §6.4 打开所在文件夹).
+// RevealFolder opens a directory in the operating system's file manager, and
+// OpenFile opens one exported file with its default application. They live
+// here because shell.revealFolder is package-private; the boot adapter carries
+// the same lines (SPEC-09 §6.4 打开所在文件夹, §6.5 the export toast's link).
 type WeeklyAPI interface {
 	DefaultPeriod(ctx context.Context, projectID string) (weeklyreview.Period, error)
 	List(ctx context.Context, projectID string, in weeklyreview.ListReportsInput) (weeklyreview.ReportPage, error)
@@ -89,6 +90,7 @@ type WeeklyAPI interface {
 	SetDefaultSkill(ctx context.Context, projectID, skillID string) (weeklyreview.SkillSet, error)
 	AIEnabled(projectID string) bool
 	RevealFolder(dir string) error
+	OpenFile(path string) error
 }
 
 // Weekly renders the report history and the generation dialog.

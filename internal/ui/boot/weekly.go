@@ -241,3 +241,27 @@ func (m *weeklyModule) RevealFolder(dir string) error {
 	}
 	return cmd.Start()
 }
+
+// OpenFile opens one file with the OS default application. It is the target of
+// the export toast's link: the page hands over the path its own export wrote,
+// never one typed by the user. As with RevealFolder the command is only
+// started: the viewer outlives the click and the call returns at once.
+func (m *weeklyModule) OpenFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("weekly review: %s 不是文件", path)
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
+	case "darwin":
+		cmd = exec.Command("open", path)
+	default:
+		cmd = exec.Command("xdg-open", path)
+	}
+	return cmd.Start()
+}

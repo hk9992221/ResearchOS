@@ -53,6 +53,17 @@ const (
 	LevelDanger
 )
 
+// ToastAction is the one optional control a toast offers, such as opening the
+// file an export just wrote. The shell draws the label as a link under the
+// message; the caller that produced the path supplies the click, so the UI
+// never opens anything it was not handed.
+type ToastAction struct {
+	// Label is the visible text of the link, normally the path itself.
+	Label string
+	// OnClick runs when the link is clicked, or activated from the keyboard.
+	OnClick func()
+}
+
 // Toast is one global feedback message. It shows until it expires or the user
 // dismisses it; failures stay longer than successes.
 type Toast struct {
@@ -60,6 +71,8 @@ type Toast struct {
 	Level   Level
 	Title   string
 	Message string
+	// Action is nil for a plain message.
+	Action *ToastAction
 	// Expires is when the toast disappears by itself.
 	Expires time.Time
 }
@@ -530,6 +543,21 @@ func (a *App) SetSearch(s string) {
 // Toast adds a feedback message and returns its id. Oldest messages are
 // dropped beyond four, so a burst cannot cover the window.
 func (a *App) Toast(level Level, title, message string) int64 {
+	return a.ToastWithAction(level, title, message, nil)
+}
+
+// ToastWithAction adds a feedback message that carries one optional control,
+// as the link that opens a file an export just wrote. A nil or empty action
+// is a plain message. The action is copied, so the caller keeps ownership of
+// the path it closed over.
+func (a *App) ToastWithAction(level Level, title, message string, action *ToastAction) int64 {
+	if action != nil && (action.Label == "" || action.OnClick == nil) {
+		action = nil
+	}
+	if action != nil {
+		cp := *action
+		action = &cp
+	}
 	a.mu.Lock()
 	a.toastSeq++
 	t := Toast{
@@ -537,6 +565,7 @@ func (a *App) Toast(level Level, title, message string) int64 {
 		Level:   level,
 		Title:   title,
 		Message: message,
+		Action:  action,
 		Expires: a.clock.Now().Add(toastTTL(level)),
 	}
 	a.toasts = append(a.toasts, t)

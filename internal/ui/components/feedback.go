@@ -255,11 +255,25 @@ func (u *UI) Spinner(size float32) ui.Element {
 	return ui.Spinner(u.C).Size(size, size)
 }
 
+// ToastAction is the one optional control a toast offers beneath its message,
+// drawn as a link: an accent-colored, hoverable line the whole of which is the
+// press target. It carries no frame of its own, so it reads as part of the
+// message rather than as a second action bar.
+type ToastAction struct {
+	// Label is the visible text, normally a path the caller may open.
+	Label string
+	// OnClick runs on click or on Enter and Space.
+	OnClick func()
+}
+
 // ToastOptions configures one global feedback message.
 type ToastOptions struct {
 	Tone    Tone
 	Title   string
 	Message string
+	// Action is drawn under the message when set; nil leaves the toast as a
+	// plain message.
+	Action *ToastAction
 	// OnDismiss closes the toast.
 	OnDismiss func()
 }
@@ -293,6 +307,9 @@ func (u *UI) ToastCard(o ToastOptions) ui.Element {
 					FontSize(tokens.Typography.Secondary.Size).
 					TextColor(mygo.Color(p.TextSecondary))
 			}
+			if o.Action != nil && o.Action.Label != "" && o.Action.OnClick != nil {
+				u.toastAction(o.Action)
+			}
 		})
 		if o.OnDismiss != nil {
 			u.IconButton(icons.Close, i18n.T("components.toast.dismiss"), IconButtonOptions{
@@ -303,4 +320,38 @@ func (u *UI) ToastCard(o ToastOptions) ui.Element {
 		}
 	})
 	return row
+}
+
+// toastAction draws the toast's optional link. The accent color, the hover
+// tint and the underline while hovered carry the affordance; the icon says the
+// click leaves the window. It is a button, so Enter and Space activate it as a
+// click does, and its accessible name is the label itself.
+func (u *UI) toastAction(a *ToastAction) {
+	p := u.T.Palette
+	link := ui.ButtonBase(u.C).
+		FillWidth().
+		Padding(tokens.Space1, tokens.Space1).
+		Radius(tokens.RadiusSM).
+		Gap(tokens.Space1).
+		AlignItems(ui.Center).
+		Cursor(ui.CursorPointer).
+		TextColor(mygo.Color(p.AccentDefault)).
+		Label(a.Label)
+	hovered := link.Hovered()
+	if hovered {
+		link.Background(mygo.Color(p.AccentSubtle))
+	}
+	link.OnClick(a.OnClick)
+	link.Children(func() {
+		u.Icon(icons.ExternalLink, tokens.Typography.Secondary.Size)
+		label := ui.Text(u.C, a.Label).
+			Font(tokens.SystemFonts.Mono).
+			FontSize(tokens.Typography.Secondary.Size).
+			Grow(1).
+			SingleLine().
+			TruncateMiddle()
+		if hovered {
+			label.Underline()
+		}
+	})
 }
