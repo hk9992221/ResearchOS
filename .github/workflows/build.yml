@@ -1,0 +1,79 @@
+name: build
+
+# Runs only when main advances (a merge lands on main) or when a v* tag is pushed.
+# Pull requests and feature branches do not trigger this workflow.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt reported unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./... -count=1
+
+      - name: build executables
+        run: |
+          go build -trimpath -o bin/researchos.exe ./cmd/researchos
+          go build -trimpath -o bin/researchos-mcp.exe ./cmd/researchos-mcp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: researchos-windows
+          path: bin/*.exe
+          if-no-files-found: error
+
+  release:
+    name: release (tag)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: researchos-windows
+          path: bin
+
+      - name: create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$env:GITHUB_REF_NAME"
+          bin/researchos.exe bin/researchos-mcp.exe
+          --title "$env:GITHUB_REF_NAME"
+          --generate-notes
