@@ -75,6 +75,9 @@ type Service interface {
 	CollectActivities(ctx context.Context, in CollectInput) (*ActivityDigest, error)
 	GenerateDraft(ctx context.Context, in GenerateInput) (*GenerateOutcome, error)
 	GenerateForPeriod(ctx context.Context, in GeneratePeriodInput) (*GenerateOutcome, error)
+	// RegenerateSection rewrites one section with temporary instructions
+	// (see revision.go); the rest of the draft stays untouched.
+	RegenerateSection(ctx context.Context, in SectionRevisionInput) (*SectionRevisionOutcome, error)
 	UpdateContent(ctx context.Context, in UpdateContentInput) (*WeeklyReport, error)
 	Confirm(ctx context.Context, in ConfirmInput) (*WeeklyReport, error)
 	RevertToDraft(ctx context.Context, in RevertInput) (*WeeklyReport, error)

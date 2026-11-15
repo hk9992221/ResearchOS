@@ -130,6 +130,14 @@ func (m *weeklyModule) GenerateDraft(ctx context.Context, projectID string, in w
 	return svc.GenerateDraft(ctx, in)
 }
 
+func (m *weeklyModule) RegenerateSection(ctx context.Context, projectID string, in weeklyreview.SectionRevisionInput) (*weeklyreview.SectionRevisionOutcome, error) {
+	svc, err := m.service(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return svc.RegenerateSection(ctx, in)
+}
+
 func (m *weeklyModule) UpdateContent(ctx context.Context, projectID string, in weeklyreview.UpdateContentInput) (*weeklyreview.WeeklyReport, error) {
 	svc, err := m.service(ctx, projectID)
 	if err != nil {

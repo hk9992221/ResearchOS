@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"researchos/internal/i18n"
+	"researchos/internal/ui/components"
 )
 
 // TaskState is where a long-running operation stands.
@@ -25,6 +26,21 @@ const (
 	TaskCanceled
 )
 
+// TaskPhase is what a long-running operation is doing inside its current
+// step, where a progress display distinguishes waiting on a model from
+// receiving its answer. It is a code, not a label: the UI localizes it.
+type TaskPhase int
+
+const (
+	// TaskPhaseNone is a task without a streaming phase.
+	TaskPhaseNone TaskPhase = iota
+	// TaskPhaseThinking is a task waiting on a model with nothing written
+	// yet.
+	TaskPhaseThinking
+	// TaskPhaseWriting is a task receiving streamed text.
+	TaskPhaseWriting
+)
+
 // TaskSnapshot is the state of one long-running operation, as the UI shows it:
 // its name, stage, progress, message, failure and cancel state.
 type TaskSnapshot struct {
@@ -40,6 +56,73 @@ type TaskSnapshot struct {
 	Canceling bool
 	Finished  bool
 	Started   time.Time
+	// Phase, StepDone, StepTotal and StepLabel describe a staged operation
+	// whose progress bar alone is too coarse: the section of a weekly
+	// report being written, its index and the phase inside it.
+	Phase     TaskPhase
+	StepDone  int
+	StepTotal int
+	StepLabel string
+}
+
+// GenProgress is the presence panel's state for this snapshot: the phase of
+// the stream, the percent bar and the section ticks. The callers add the
+// title and the companion size they have room for.
+func (s TaskSnapshot) GenProgress() components.GenProgressOptions {
+	phase := components.GenPhasePreparing
+	switch s.Phase {
+	case TaskPhaseThinking:
+		phase = components.GenPhaseThinking
+	case TaskPhaseWriting:
+		phase = components.GenPhaseWriting
+	}
+	if s.Finished {
+		if s.State == TaskFailed {
+			phase = components.GenPhaseFailed
+		} else {
+			phase = components.GenPhaseDone
+		}
+	}
+	percent := -1.0
+	switch {
+	case s.Total > 0 && s.Done >= s.Total:
+		percent = 1
+	case s.Finished && s.State != TaskFailed:
+		percent = 1
+	case s.Total > 0 && s.Phase != TaskPhaseThinking:
+		// Writing, or a step with no stream (the store): the counter is
+		// what there is, and it is honest.
+		percent = float64(s.Done) / float64(s.Total)
+	}
+	var steps []components.GenStep
+	index := 0
+	if s.StepTotal > 0 {
+		steps = make([]components.GenStep, 0, s.StepTotal)
+		for i := range s.StepTotal {
+			state := components.GenStepPending
+			switch {
+			case i < s.StepDone:
+				state = components.GenStepDone
+			case i == s.StepDone:
+				state = components.GenStepActive
+			}
+			steps = append(steps, components.GenStep{State: state})
+		}
+		index = min(s.StepDone+1, s.StepTotal)
+	}
+	elapsed := time.Duration(0)
+	if !s.Started.IsZero() {
+		elapsed = time.Since(s.Started)
+	}
+	return components.GenProgressOptions{
+		Phase:   phase,
+		Percent: percent,
+		Steps:   steps,
+		Index:   index,
+		Total:   s.StepTotal,
+		Current: s.StepLabel,
+		Elapsed: elapsed,
+	}
 }
 
 // Task is the UI state of a long-running operation. The operation updates it
@@ -62,6 +145,10 @@ type Task struct {
 	finished  bool
 	started   time.Time
 	cancel    func()
+	phase     TaskPhase
+	stepDone  int
+	stepTotal int
+	stepLabel string
 }
 
 // NewTask returns a queued task. The default stages are translated when they
@@ -122,6 +209,21 @@ func (t *Task) Stage(stage string) {
 func (t *Task) Progress(done, total int) {
 	t.mu.Lock()
 	t.done, t.total = done, total
+	t.mu.Unlock()
+}
+
+// SetPhase records what the operation is doing inside its current step.
+func (t *Task) SetPhase(p TaskPhase) {
+	t.mu.Lock()
+	t.phase = p
+	t.mu.Unlock()
+}
+
+// Steps records where a staged operation stands among its steps, as "3 of 7"
+// with the step's name, for a progress display that shows the whole list.
+func (t *Task) Steps(done, total int, label string) {
+	t.mu.Lock()
+	t.stepDone, t.stepTotal, t.stepLabel = done, total, label
 	t.mu.Unlock()
 }
 
@@ -190,6 +292,10 @@ func (t *Task) Snapshot() TaskSnapshot {
 		Canceling: t.canceling,
 		Finished:  t.finished,
 		Started:   t.started,
+		Phase:     t.phase,
+		StepDone:  t.stepDone,
+		StepTotal: t.stepTotal,
+		StepLabel: t.stepLabel,
 	}
 }
 

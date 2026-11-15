@@ -78,6 +78,9 @@ type WeeklyAPI interface {
 	CollectActivities(ctx context.Context, projectID string, in weeklyreview.CollectInput) (*weeklyreview.ActivityDigest, error)
 	GenerateForPeriod(ctx context.Context, projectID string, in weeklyreview.GeneratePeriodInput) (*weeklyreview.GenerateOutcome, error)
 	GenerateDraft(ctx context.Context, projectID string, in weeklyreview.GenerateInput) (*weeklyreview.GenerateOutcome, error)
+	// RegenerateSection rewrites one section with temporary instructions and
+	// stores the draft with only that section replaced.
+	RegenerateSection(ctx context.Context, projectID string, in weeklyreview.SectionRevisionInput) (*weeklyreview.SectionRevisionOutcome, error)
 	UpdateContent(ctx context.Context, projectID string, in weeklyreview.UpdateContentInput) (*weeklyreview.WeeklyReport, error)
 	Confirm(ctx context.Context, projectID string, in weeklyreview.ConfirmInput) (*weeklyreview.WeeklyReport, error)
 	RevertToDraft(ctx context.Context, projectID string, in weeklyreview.RevertInput) (*weeklyreview.WeeklyReport, error)
@@ -1243,25 +1246,31 @@ func visibleWeeklyRows(n int) float32 {
 // streamed text arrives. It fills from 10% to 85%, leaving the tail for
 // validation and the draft write.
 type weeklyGeneration struct {
-	t     *app.Task
-	done  int
-	total int
-	runes int
+	t       *app.Task
+	done    int
+	total   int
+	runes   int
+	writing bool
 }
 
 func newWeeklyGeneration(t *app.Task) *weeklyGeneration {
 	return &weeklyGeneration{t: t}
 }
 
-// Progress reports a section transition.
+// Progress reports a section transition. The section index and name go to the
+// task's steps as well as its stage, so the strip can draw the ticks and the
+// phase while the call is still waiting for its first text.
 func (g *weeklyGeneration) Progress(done, total int, section weeklyreview.SectionKey) {
 	g.done, g.total, g.runes = done, total, 0
+	g.writing = false
 	if total <= 0 {
 		return
 	}
 	if section == "" {
 		g.t.Stage(i18n.T("pages.weekly_review.stage_store"))
 		g.t.Progress(90, 100)
+		g.t.Steps(total, total, "")
+		g.t.SetPhase(app.TaskPhaseNone)
 		return
 	}
 	g.t.Stage(i18n.Tf("pages.weekly_review.stage_section", map[string]string{
@@ -1270,6 +1279,8 @@ func (g *weeklyGeneration) Progress(done, total int, section weeklyreview.Sectio
 		"title": weeklyreview.SectionTitle(section),
 	}))
 	g.t.Progress(g.percent(), 100)
+	g.t.Steps(done, total, weeklyreview.SectionTitle(section))
+	g.t.SetPhase(app.TaskPhaseThinking)
 }
 
 // Delta advances the bar within the current section. The section's exact
@@ -1281,6 +1292,10 @@ func (g *weeklyGeneration) Delta(_ weeklyreview.SectionKey, text string) {
 	}
 	g.runes += utf8.RuneCountInString(text)
 	g.t.Progress(g.percent(), 100)
+	if !g.writing {
+		g.writing = true
+		g.t.SetPhase(app.TaskPhaseWriting)
+	}
 }
 
 func (g *weeklyGeneration) percent() int {

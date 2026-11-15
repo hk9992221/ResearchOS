@@ -77,6 +77,7 @@ type WeeklyReportView struct {
 	regenerating bool
 	regenErr     string
 	regenOld     string
+	regenTask    *app.Task
 
 	confirming bool
 	confirmErr string
@@ -90,28 +91,30 @@ type WeeklyReportView struct {
 	// Frame-only state: the tab, the editor, the dialogs and the local ack
 	// set. Locally acknowledged fingerprints are sent with Confirm, which is
 	// the only call that persists acks (SPEC-09 §5.3 Confirm).
-	tab            int
-	ed             *editor.State
-	edFor          string
-	mode           int
-	lastVersion    uint64
-	lastChange     time.Time
-	composing      bool
-	wasFocused     bool
-	savedPending   bool
-	showOutline    bool
-	outlineOpen    bool
-	splitSize      *float32
-	provOpen       bool
-	anchor         string
-	anchorVer      uint64
-	acks           map[string]bool
-	ackNotes       map[string]string
-	ackFor         string
-	ackNoteInput   string
-	confirmOpen    bool
-	revertOpen     bool
-	regenOpen      bool
+	tab          int
+	ed           *editor.State
+	edFor        string
+	mode         int
+	lastVersion  uint64
+	lastChange   time.Time
+	composing    bool
+	wasFocused   bool
+	savedPending bool
+	showOutline  bool
+	outlineOpen  bool
+	splitSize    *float32
+	provOpen     bool
+	anchor       string
+	anchorVer    uint64
+	acks         map[string]bool
+	ackNotes     map[string]string
+	ackFor       string
+	ackNoteInput string
+	confirmOpen  bool
+	revertOpen   bool
+	regenOpen    bool
+	// revision is the section-revision dialog (see weekly_revision.go).
+	revision       weeklyRevision
 	diffOpen       bool
 	diffState      *editor.DiffState
 	insertOpen     bool
@@ -235,6 +238,7 @@ func (d *WeeklyReportView) Page(v *components.UI, r ports.Route) {
 		d.confirmDialog(v, a, project.ID)
 		d.revertDialog(v, a, project.ID)
 		d.regenDialog(v, a, project.ID)
+		d.revisionDialog(v, a, project.ID)
 		d.diffDialog(v, a, project.ID)
 		d.insertRefDialog(v)
 		d.exportDialog(v, a, project.ID, report)
@@ -412,6 +416,7 @@ func (d *WeeklyReportView) reportTab(v *components.UI, a *app.App, projectID str
 				Loading:  d.regenerating,
 			}).Clicked() {
 				d.regenOpen = true
+				d.regenTask = nil
 				d.mu.Lock()
 				d.regenErr = ""
 				d.regenSkillID, d.regenSkillLabel = "", ""
@@ -425,6 +430,19 @@ func (d *WeeklyReportView) reportTab(v *components.UI, a *app.App, projectID str
 				Variant: components.VariantGhost,
 			}).Clicked() {
 				d.insertOpen = true
+			}
+			// A selection is the precise way into a section rewrite: the
+			// button only exists while text is selected, and the dialog
+			// opens on the section that text belongs to.
+			if excerpt := d.weeklySelectionExcerpt(); excerpt != "" {
+				if section, ok := weeklySectionAt(report.ContentMD, d.weeklySelectionStart()); ok {
+					if v.Button(i18n.T("pages.weekly_review.btn_revise_selection"), components.ButtonOptions{
+						Variant: components.VariantGhost,
+						Icon:    icons.Edit,
+					}).Clicked() {
+						d.openRevision(section, excerpt)
+					}
+				}
 			}
 			ui.Spacer(v.C)
 			if v.Button(i18n.T("pages.weekly_review.btn_outline"), components.ButtonOptions{
@@ -468,15 +486,30 @@ func (d *WeeklyReportView) reportTab(v *components.UI, a *app.App, projectID str
 			First: func() {
 				ui.Collapsible(v.C, i18n.T("pages.weekly_review.outline_title"), &d.outlineOpen, func() {
 					for _, heading := range headings {
-						if v.Button(heading, components.ButtonOptions{
-							Variant: components.VariantGhost,
-							Size:    components.SizeSmall,
-							Icon:    icons.ChevronRight,
-						}).Clicked() {
-							d.anchor = markdown.Slug(heading)
-							d.anchorVer++
-							d.tab = 0
-						}
+						ui.Row(v.C).FillWidth().Gap(tokens.Space1).AlignItems(ui.Center).
+							Padding(0, 0, 0, tokens.Space2).Children(func() {
+							if v.Button(heading, components.ButtonOptions{
+								Variant: components.VariantGhost,
+								Size:    components.SizeSmall,
+								Icon:    icons.ChevronRight,
+							}).Clicked() {
+								d.anchor = markdown.Slug(heading)
+								d.anchorVer++
+								d.tab = 0
+							}
+							ui.Spacer(v.C)
+							// Every canonical section carries its own rewrite
+							// entry, so the feature does not depend on
+							// selecting text first.
+							if key, ok := weeklySectionKeyOf(heading); ok && report.Status == weeklyreview.StatusDraft && writable {
+								if v.IconButton(icons.Edit, i18n.T("pages.weekly_review.btn_revise"), components.IconButtonOptions{
+									Variant: components.VariantGhost,
+									Size:    components.SizeSmall,
+								}).Clicked() {
+									d.openRevision(key, "")
+								}
+							}
+						})
 					}
 				})
 			},
@@ -1581,11 +1614,19 @@ func (d *WeeklyReportView) regenDialog(v *components.UI, a *app.App, projectID s
 			}
 		},
 	}, func() {
-		ui.Text(v.C, i18n.T("pages.weekly_review.regen_note")).
-			FontSize(tokens.Typography.Secondary.Size).
-			TextColor(mygo.Color(v.T.Palette.TextSecondary))
-		if d.Services.Weekly.AIEnabled(projectID) {
-			weeklySkillPicker(v, a, d.Services, projectID, d.skillSetSnapshot(), &d.regenSkillLabel, &d.regenSkillID, &d.skillEditor)
+		if regenerating && d.regenTask != nil {
+			// The dialog shows the same presence as the strip: phase, percent,
+			// ticks and the companion, so the wait says something.
+			opts := d.regenTask.Snapshot().GenProgress()
+			opts.CompanionSize = 88
+			v.GenProgress(opts)
+		} else {
+			ui.Text(v.C, i18n.T("pages.weekly_review.regen_note")).
+				FontSize(tokens.Typography.Secondary.Size).
+				TextColor(mygo.Color(v.T.Palette.TextSecondary))
+			if d.Services.Weekly.AIEnabled(projectID) {
+				weeklySkillPicker(v, a, d.Services, projectID, d.skillSetSnapshot(), &d.regenSkillLabel, &d.regenSkillID, &d.skillEditor)
+			}
 		}
 		if errText != "" {
 			ui.Text(v.C, errText).
@@ -1621,7 +1662,7 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 	d.mu.Unlock()
 
 	api := d.Services.Weekly
-	a.RunTask(i18n.T("pages.weekly_review.task_regenerate"), func(ctx context.Context, t *app.Task) error {
+	task := a.RunTask(i18n.T("pages.weekly_review.task_regenerate"), func(ctx context.Context, t *app.Task) error {
 		t.Stage(i18n.T("pages.weekly_review.stage_save"))
 		if buffer != old {
 			updated, err := api.UpdateContent(ctx, projectID, weeklyreview.UpdateContentInput{
@@ -1693,6 +1734,7 @@ func (d *WeeklyReportView) regenerate(a *app.App, projectID string) {
 		a.Notify()
 		return nil
 	})
+	d.regenTask = task
 }
 
 // diffDialog shows the replaced body against the previous one and offers the
