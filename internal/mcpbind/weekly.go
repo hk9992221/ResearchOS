@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"researchos/internal/mcp"
 	"researchos/internal/weeklyreview"
@@ -164,17 +165,17 @@ func newWeeklyProvider(d Deps, ready func(context.Context) error) mcp.ToolProvid
 					TraceID:   mcp.TraceIDFrom(ctx),
 					Run: func(jctx context.Context, progress mcp.ProgressFunc) (any, error) {
 						progress(10, "汇总活动")
+						gen := &weeklyJobProgress{progress: progress}
 						out, err := svc.GenerateDraft(jctx, weeklyreview.GenerateInput{
 							ReportID: reportID,
 							Replace:  replace,
 							Actor:    weeklyreview.ActorMCP,
 							SkillID:  skillID,
-							Progress: func(done, total int, section weeklyreview.SectionKey) {
-								if section == "" || total <= 0 {
-									return
-								}
-								progress(10+done*80/total, "生成分区 "+weeklyreview.SectionTitle(section))
-							},
+							Progress: gen.Section,
+							// Delta is what makes the gateway stream: without it
+							// every section is one unary call that reports nothing
+							// until it returns.
+							Delta: gen.Delta,
 						})
 						if err != nil {
 							return nil, mapWeeklyError(err)
@@ -400,6 +401,59 @@ func reportSummaryView(r weeklyreview.ReportSummary) map[string]any {
 		"confirmed_at": tsp(r.ConfirmedAt),
 		"deleted_at":   tsp(r.DeletedAt),
 	}
+}
+
+// weeklyJobProgress folds the section callbacks into one job progress bar: it
+// fills 10%..85% across the seven sections, creeping inside each section as its
+// streamed text arrives, and the draft write closes the tail. The store clamps
+// regressions, but the bar is kept monotonic here so a delta that does not
+// advance the percent costs no write.
+type weeklyJobProgress struct {
+	progress mcp.ProgressFunc
+	section  weeklyreview.SectionKey
+	done     int
+	total    int
+	runes    int
+	last     int
+}
+
+// Section reports a section transition.
+func (w *weeklyJobProgress) Section(done, total int, section weeklyreview.SectionKey) {
+	w.done, w.total, w.runes, w.section = done, total, 0, section
+	if total <= 0 {
+		return
+	}
+	if section == "" {
+		w.report(90, "写入草稿")
+		return
+	}
+	w.report(w.percent(), "生成分区 "+weeklyreview.SectionTitle(section))
+}
+
+// Delta advances the bar within the current section. A section's exact length
+// is unknowable up front, so 600 streamed runes fill 90% of its slice.
+func (w *weeklyJobProgress) Delta(_ weeklyreview.SectionKey, text string) {
+	if w.total <= 0 {
+		return
+	}
+	w.runes += utf8.RuneCountInString(text)
+	w.report(w.percent(), "书写分区 "+weeklyreview.SectionTitle(w.section))
+}
+
+func (w *weeklyJobProgress) report(percent int, stage string) {
+	if percent <= w.last {
+		return
+	}
+	w.last = percent
+	w.progress(percent, stage)
+}
+
+func (w *weeklyJobProgress) percent() int {
+	if w.total <= 0 {
+		return 10
+	}
+	frac := min(float64(w.runes)/600, 0.9)
+	return 10 + int((float64(w.done)+frac)*75/float64(w.total))
 }
 
 // mapWeeklyError maps SPEC-09 ErrorCodes to MCP codes.

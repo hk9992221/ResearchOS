@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"researchos/internal/foundation/events"
+	"researchos/internal/foundation/notefile"
 	"researchos/internal/foundation/schema"
 )
 
@@ -236,6 +237,11 @@ func digestItem(ev events.Activity, briefs map[EntityRef]EntityBrief, loc *time.
 	}
 	if summary == "" {
 		summary = defaultSummary(ev)
+	}
+	if ev.Type == schema.EventNoteUpdated && summary == "更新笔记" && brief.Title != "" {
+		// The note's name is the only thing that tells five note saves of one
+		// week apart; the emitter's generic summary carries none.
+		summary = "更新笔记：" + brief.Title
 	}
 	if summary == "" {
 		summary = brief.Title
@@ -811,24 +817,27 @@ func (s *service) resolveBriefs(ctx context.Context, refs []EntityRef) (map[Enti
 		switch schema.EntityType(typ) {
 		case schema.EntityNote:
 			q, args := queryIN(`SELECT id, title, kind, deleted_at FROM notes WHERE id`, ids)
+			kinds := make(map[string]string, len(ids))
 			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
 				var id, title, kind string
 				var deleted sql.NullString
 				if err := rows.Scan(&id, &title, &kind, &deleted); err != nil {
 					return "", "", "", false, false, err
 				}
+				kinds[id] = kind
 				return id, title, "", deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
+			// A note's substance is its body, not its title: without a bounded
+			// excerpt a theory note reaches the model as a name and the section
+			// comes out empty (SPEC-09 §5.3).
 			for _, id := range ids {
-				var kind string
-				if err := db.QueryRowContext(ctx, `SELECT kind FROM notes WHERE id = ?`, id).Scan(&kind); err == nil {
-					ref := EntityRef{Type: typ, ID: id}
-					b := out[ref]
-					b.NoteKind = kind
-					out[ref] = b
-				}
+				ref := EntityRef{Type: typ, ID: id}
+				b := out[ref]
+				b.NoteKind = kinds[id]
+				b.Abstract = s.noteExcerpt(ctx, db, id)
+				out[ref] = b
 			}
 		case schema.EntityDBRecord:
 			q, args := queryIN(`SELECT id, title, deleted_at FROM db_records WHERE id`, ids)
@@ -891,14 +900,17 @@ func (s *service) resolveBriefs(ctx context.Context, refs []EntityRef) (map[Enti
 				return nil, err
 			}
 		case schema.EntityRun:
-			q, args := queryIN(`SELECT id, id, deleted_at FROM runs WHERE id`, ids)
+			// A run must read as a named run with a status: the skill requires
+			// the report to tell run status from the experiment conclusion, and
+			// a bare id says neither (§5.3 EntityRun).
+			q, args := queryIN(`SELECT id, COALESCE(NULLIF(TRIM(title), ''), 'Run ' || substr(id, 1, 8)), status, deleted_at FROM runs WHERE id`, ids)
 			if err := collectBriefs(ctx, db, typ, q, args, out, func(rows *sql.Rows) (string, string, string, bool, bool, error) {
-				var id, title string
+				var id, title, status string
 				var deleted sql.NullString
-				if err := rows.Scan(&id, &title, &deleted); err != nil {
+				if err := rows.Scan(&id, &title, &status, &deleted); err != nil {
 					return "", "", "", false, false, err
 				}
-				return id, title, "", deleted.Valid, false, nil
+				return id, title, "运行状态：" + status, deleted.Valid, false, nil
 			}); err != nil {
 				return nil, err
 			}
@@ -969,6 +981,36 @@ func (s *service) resolveBriefs(ctx context.Context, refs []EntityRef) (map[Enti
 		out[ref] = brief
 	}
 	return out, nil
+}
+
+// noteExcerpt returns a bounded, frontmatter-free preview of a note's body.
+// The body lives in the workspace note file, not in the row, so this is the one
+// place the digest reads the filesystem; an unreadable or missing body yields
+// "" and never fails the digest (the title and the event still describe the
+// week).
+func (s *service) noteExcerpt(ctx context.Context, db *sql.DB, noteID string) string {
+	store := notefile.New(s.projectID, db, s.ws.Paths(), nil, s.clock)
+	data, _, err := store.Read(ctx, noteID)
+	if err != nil {
+		return ""
+	}
+	_, body := notefile.Split(data)
+	return compactExcerpt(string(body), maxBriefRunes)
+}
+
+// compactExcerpt drops blank lines and collapses runs of spaces so the excerpt
+// spends its rune budget on words instead of layout.
+func compactExcerpt(text string, limit int) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(line), " ")
+		if line == "" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return truncateRunes(strings.Join(kept, " / "), limit)
 }
 
 // fillIdeaEvidence appends the evidence balance to each idea's abstract: the
