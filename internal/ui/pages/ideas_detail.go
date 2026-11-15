@@ -152,6 +152,8 @@ type IdeaPage struct {
 	linkOpen   bool
 	linkKind   int
 	linkQuery  string
+	linkPick   string
+	linkBusy   bool
 	frameC     *ui.Context
 }
 
@@ -231,6 +233,7 @@ func (e *IdeaPage) Page(v *components.UI, r ports.Route) {
 		e.deriveDialog(v, a, project.ID, detail, readOnly)
 		e.deleteDialog(v, a, project.ID, detail, readOnly)
 		e.addEvidenceDialog(v, a, project.ID, detail, readOnly)
+		e.linkDialog(v, a, project.ID, detail, readOnly)
 		e.aiDialog(v, a, project.ID, detail, readOnly)
 	}})
 }
@@ -458,6 +461,7 @@ func (e *IdeaPage) header(v *components.UI, a *app.App, projectID string, detail
 			v.Button(i18n.T("pages.ideas.btn_derive"), components.ButtonOptions{
 				Variant:  components.VariantSecondary,
 				Icon:     icons.Plus,
+				Align:    ui.Center,
 				Disabled: readOnly,
 				Tooltip:  readOnlyTooltip(readOnly),
 				OnClick: func() {
@@ -1014,10 +1018,11 @@ func timeRow(v *components.UI, label, value string) {
 // Relations
 // ---------------------------------------------------------------------------
 
-// relationsTab shows the four relation groups and the link picker (§6.7).
+// relationsTab shows the four relation groups and the add-relation entry.
 func (e *IdeaPage) relationsTab(v *components.UI, a *app.App, projectID string, detail *ideas.IdeaDetail, readOnly bool) {
 	relations := detail.Relations
 	ui.Column(v.C).FillWidth().Gap(tokens.SectionGap).Children(func() {
+		e.linkOpener(v, readOnly)
 		e.relationSection(v, a, projectID, i18n.T("pages.ideas.rel_papers"), relations.Papers, ideas.TargetPaper, readOnly)
 		e.relationSection(v, a, projectID, i18n.T("pages.ideas.rel_notes"), relations.Notes, ideas.TargetNote, readOnly)
 		e.relationSection(v, a, projectID, i18n.T("pages.ideas.rel_experiments"), relations.Experiments, ideas.TargetExperiment, readOnly)
@@ -1057,7 +1062,6 @@ func (e *IdeaPage) relationsTab(v *components.UI, a *app.App, projectID string, 
 				})
 			})
 		})
-		e.linkPicker(v, a, projectID, detail, readOnly)
 	})
 }
 
@@ -1151,37 +1155,63 @@ func (e *IdeaPage) currentID() string {
 	return e.detail.ID
 }
 
-// linkPicker links a paper, note or experiment to the Idea.
-func (e *IdeaPage) linkPicker(v *components.UI, a *app.App, projectID string, detail *ideas.IdeaDetail, readOnly bool) {
+// linkOpener is the button that opens the add-relation dialog.
+func (e *IdeaPage) linkOpener(v *components.UI, readOnly bool) {
 	if readOnly {
 		return
 	}
-	ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
-		v.Button(i18n.T("pages.ideas.btn_link"), components.ButtonOptions{
-			Variant: components.VariantSecondary,
-			Icon:    icons.Plus,
-			OnClick: func() { e.linkOpen = !e.linkOpen },
-		})
-		if !e.linkOpen {
-			return
-		}
+	v.Button(i18n.T("pages.ideas.btn_link"), components.ButtonOptions{
+		Variant: components.VariantSecondary,
+		Icon:    icons.Plus,
+		OnClick: func() {
+			e.linkOpen = true
+			e.linkQuery = ""
+			e.linkPick = ""
+		},
 	})
-	if !e.linkOpen {
+}
+
+// linkDialog links a paper, note or experiment to the Idea. It holds the
+// picker so the tab itself keeps the four relation cards only.
+func (e *IdeaPage) linkDialog(v *components.UI, a *app.App, projectID string, detail *ideas.IdeaDetail, readOnly bool) {
+	if !e.linkOpen || readOnly || detail == nil {
 		return
 	}
-	kind := ideaLinkKinds[e.linkKind%len(ideaLinkKinds)]
-	v.Card(components.CardOptions{Title: i18n.T("pages.ideas.link_title")}, func() {
-		ui.Row(v.C).FillWidth().Gap(tokens.SectionGap).AlignItems(ui.End).Wrap().Children(func() {
-			ui.Segmented(v.C, &e.linkKind,
-				i18n.T(ideaLinkKinds[0].label),
-				i18n.T(ideaLinkKinds[1].label),
-				i18n.T(ideaLinkKinds[2].label),
-			).Label(i18n.T("pages.ideas.link_kind"))
-			v.SearchInput(&e.linkQuery, components.SearchOptions{
-				Label:       i18n.T("pages.ideas.link_search"),
-				Placeholder: i18n.T("pages.ideas.link_search_hint"),
-			})
+	e.mu.Lock()
+	busy := e.linkBusy
+	e.mu.Unlock()
+
+	open := true
+	v.Dialog(&open, components.DialogOptions{
+		Title: i18n.T("pages.ideas.link_title"),
+		Width: tokens.Space12 * 12,
+		Actions: func() {
+			if v.Button(i18n.T("pages.ideas.link_close"), components.ButtonOptions{}).Clicked() {
+				e.closeLinkDialog()
+				return
+			}
+			kind := ideaLinkKinds[e.linkKind%len(ideaLinkKinds)]
+			prefix := kind.typ + "/"
+			valid := strings.HasPrefix(e.linkPick, prefix)
+			if v.Button(i18n.T("pages.ideas.link_confirm"), components.ButtonOptions{
+				Variant:  components.VariantPrimary,
+				Loading:  busy,
+				Disabled: busy || !valid,
+			}).Clicked() && valid {
+				e.link(a, projectID, kind.typ, strings.TrimPrefix(e.linkPick, prefix))
+			}
+		},
+	}, func() {
+		ui.Segmented(v.C, &e.linkKind,
+			i18n.T(ideaLinkKinds[0].label),
+			i18n.T(ideaLinkKinds[1].label),
+			i18n.T(ideaLinkKinds[2].label),
+		).Label(i18n.T("pages.ideas.link_kind"))
+		v.SearchInput(&e.linkQuery, components.SearchOptions{
+			Label:       i18n.T("pages.ideas.link_search"),
+			Placeholder: i18n.T("pages.ideas.link_search_hint"),
 		})
+		kind := ideaLinkKinds[e.linkKind%len(ideaLinkKinds)]
 		e.candidates.ensure(a, e.Services.Ideas, projectID, kind.typ, e.linkQuery)
 		loading, items, errText := e.candidates.snapshot()
 		if errText != "" {
@@ -1194,31 +1224,38 @@ func (e *IdeaPage) linkPicker(v *components.UI, a *app.App, projectID string, de
 			v.Skeleton(components.SkeletonOptions{Lines: 3})
 			return
 		}
-		if len(items) == 0 {
+		// A relation already on the page is not offered again: the cards
+		// above show it, with its own unlink action.
+		linked := linkedTargets(detail.Relations)
+		choices := make([]components.RadioOption[string], 0, len(items))
+		for _, ref := range items {
+			if linked[ref.Type+"/"+ref.ID] {
+				continue
+			}
+			choices = append(choices, components.RadioOption[string]{
+				Value: kind.typ + "/" + ref.ID,
+				Label: ref.Title,
+			})
+		}
+		if len(choices) == 0 {
 			ui.Text(v.C, i18n.T("pages.ideas.link_empty")).
 				FontSize(tokens.Typography.Secondary.Size).
 				TextColor(mygo.Color(v.T.Palette.TextMuted))
 			return
 		}
-		linked := linkedTargets(detail.Relations)
-		ui.Column(v.C).Gap(tokens.Space1).Children(func() {
-			for _, ref := range items {
-				already := linked[ref.Type+"/"+ref.ID]
-				ui.Row(v.C).FillWidth().Gap(tokens.ComponentGap).AlignItems(ui.Center).Children(func() {
-					ui.Text(v.C, ref.Title).
-						FontSize(tokens.Typography.Secondary.Size).
-						Grow(1).
-						SingleLine()
-					v.Button(i18n.T("pages.ideas.link_action"), components.ButtonOptions{
-						Variant:  components.VariantSecondary,
-						Size:     components.SizeSmall,
-						Disabled: already,
-						OnClick:  func() { e.link(a, projectID, kind.typ, ref.ID) },
-					})
-				})
-			}
-		})
+		v.RadioGroup(&e.linkPick, choices, components.RadioOptions{})
 	})
+	if !open && !busy {
+		e.closeLinkDialog()
+	}
+}
+
+// closeLinkDialog puts the picker away and forgets the query, so the next open
+// starts from the live candidate list.
+func (e *IdeaPage) closeLinkDialog() {
+	e.linkOpen = false
+	e.linkQuery = ""
+	e.linkPick = ""
 }
 
 // linkedTargets keys the relation set by target type and id.
@@ -1239,6 +1276,14 @@ func linkedTargets(relations ideas.RelationSet) map[string]bool {
 
 // link adds one relation.
 func (e *IdeaPage) link(a *app.App, projectID, targetType, targetID string) {
+	e.mu.Lock()
+	if e.linkBusy {
+		e.mu.Unlock()
+		return
+	}
+	e.linkBusy = true
+	e.mu.Unlock()
+
 	api := e.Services.Ideas
 	ideaID := e.currentID()
 	a.RunTask(i18n.T("pages.ideas.task_link"), func(ctx context.Context, t *app.Task) error {
@@ -1249,6 +1294,7 @@ func (e *IdeaPage) link(a *app.App, projectID, targetType, targetID string) {
 			Actor:      ports.ActorUser,
 		})
 		e.mu.Lock()
+		e.linkBusy = false
 		if err != nil {
 			e.action = ideaErrText(err)
 		}
@@ -1258,6 +1304,9 @@ func (e *IdeaPage) link(a *app.App, projectID, targetType, targetID string) {
 			a.Notify()
 			return nil
 		}
+		// The dialog closes on success, so the refreshed card above is what
+		// the user sees next, as the evidence form does.
+		e.closeLinkDialog()
 		e.shared.bump()
 		a.Toast(app.LevelSuccess, i18n.T("pages.ideas.toast_linked"), "")
 		a.Notify()

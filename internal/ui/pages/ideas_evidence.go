@@ -177,6 +177,7 @@ func (e *IdeaPage) aiEntry(v *components.UI, a *app.App, readOnly bool) {
 			Variant: components.VariantGhost,
 			Size:    components.SizeSmall,
 			Icon:    icons.Settings,
+			Align:   ui.Center,
 			OnClick: func() {
 				a.Navigate(ports.Route{Kind: ports.RouteSettings, Params: map[string]string{"tab": "ai"}})
 			},
