@@ -23,6 +23,7 @@ import (
 
 	"researchos/internal/ai/gateway"
 	aimigrations "researchos/internal/ai/migrations"
+	experimentsmigrations "researchos/internal/experiments/migrations"
 	"researchos/internal/export"
 	"researchos/internal/foundation/clock"
 	"researchos/internal/foundation/confirm"
@@ -61,6 +62,7 @@ func moduleMigrations() (map[storage.Kind][]storage.Migration, error) {
 		fn   func() (map[storage.Kind][]storage.Migration, error)
 	}{
 		{"ai", aimigrations.All},
+		{"experiments", experimentsmigrations.All},
 		{"ideas", ideasmigrations.All},
 		{"kanban", kanbanmigrations.All},
 		{"literature", literaturemigrations.All},

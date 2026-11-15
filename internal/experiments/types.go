@@ -142,10 +142,12 @@ type Experiment struct {
 	DeletedAt *time.Time
 }
 
-// Run is one runs row. DirRef nil means "inherit the experiment directory".
+// Run is one runs row. Title is the human name of the run (empty means
+// unnamed); DirRef nil means "inherit the experiment directory".
 type Run struct {
 	ID           string
 	ExperimentID string
+	Title        string
 	DirRef       *string
 	Params       map[string]ParamValue
 	GitInfo      GitInfo
@@ -158,6 +160,7 @@ type Run struct {
 // RunSummary is the sidebar projection of one run.
 type RunSummary struct {
 	ID           string
+	Title        string
 	DisplayName  string
 	DirRef       *string
 	Params       map[string]ParamValue
@@ -280,9 +283,16 @@ type ExperimentFilter struct {
 // CreateRunInput creates one run (§5.2).
 type CreateRunInput struct {
 	ExperimentID string
+	Title        string // required: the run must be identifiable
 	DirPath      string // optional: inherit the experiment directory
 	Params       map[string]ParamValue
 	Actor        events.Actor
+}
+
+// UpdateRunInput edits a run's title. Nil means unchanged.
+type UpdateRunInput struct {
+	ID    string
+	Title *string
 }
 
 // DirCandidate is one first-level subdirectory of an experiment (§5.2).
@@ -460,9 +470,10 @@ type ExperimentService interface {
 // RunService manages the optional second level.
 type RunService interface {
 	Create(ctx context.Context, in CreateRunInput) (*Run, error)
+	Update(ctx context.Context, in UpdateRunInput) (*Run, error)
 	UpdateParams(ctx context.Context, runID string, params map[string]ParamValue) error
 	SetDirectory(ctx context.Context, runID, absPath string) error
-	SetStatus(ctx context.Context, runID string, status RunStatus) error
+	SetStatus(ctx context.Context, runID string, status RunStatus, actor events.Actor) error
 	SoftDelete(ctx context.Context, runID string, actor events.Actor) error
 	Restore(ctx context.Context, runID string, actor events.Actor) error
 	Get(ctx context.Context, runID string) (*RunDetail, error)

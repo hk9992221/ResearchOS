@@ -170,8 +170,8 @@ func (m *experimentsModule) CreateRun(ctx context.Context, projectID string, in 
 	return m.wa(ctx, projectID).CreateRun(ctx, in)
 }
 
-func (m *experimentsModule) SetRunStatus(ctx context.Context, projectID, runID string, status experiments.RunStatus) error {
-	return m.wa(ctx, projectID).SetRunStatus(ctx, runID, status)
+func (m *experimentsModule) SetRunStatus(ctx context.Context, projectID, runID string, status experiments.RunStatus, actor ports.Actor) error {
+	return m.wa(ctx, projectID).SetRunStatus(ctx, runID, status, actor)
 }
 
 func (m *experimentsModule) GetRun(ctx context.Context, projectID, runID string) (*experiments.RunDetail, error) {

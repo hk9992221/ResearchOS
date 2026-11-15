@@ -29,7 +29,7 @@ type rowScanner interface {
 
 const experimentColumns = `id, title, purpose, dir_ref, scan_rules, created_at, updated_at, deleted_at`
 
-const runColumns = `id, experiment_id, dir_ref, params, git_info, status, created_at, updated_at, deleted_at`
+const runColumns = `id, experiment_id, title, dir_ref, params, git_info, status, created_at, updated_at, deleted_at`
 
 const snapshotColumns = `id, target_type, target_id, created_at, file_manifest, git_info, metrics, ai_analysis, model_info`
 
@@ -129,7 +129,7 @@ func scanRunRow(row rowScanner) (Run, error) {
 		updatedAt string
 		deletedAt sql.NullString
 	)
-	if err := row.Scan(&run.ID, &run.ExperimentID, &dirRef, &rawParams, &rawGit, &status, &createdAt, &updatedAt, &deletedAt); err != nil {
+	if err := row.Scan(&run.ID, &run.ExperimentID, &run.Title, &dirRef, &rawParams, &rawGit, &status, &createdAt, &updatedAt, &deletedAt); err != nil {
 		return Run{}, err
 	}
 	if dirRef.Valid {
@@ -273,9 +273,9 @@ func (s *Service) insertRun(ctx context.Context, tx *sql.Tx, run Run) error {
 		run.Status = RunUnknown
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO runs(id, experiment_id, dir_ref, params, git_info, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		run.ID, run.ExperimentID, nullableString(run.DirRef), string(params), string(gitInfo),
+		`INSERT INTO runs(id, experiment_id, title, dir_ref, params, git_info, status, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		run.ID, run.ExperimentID, run.Title, nullableString(run.DirRef), string(params), string(gitInfo),
 		string(run.Status), formatTime(run.CreatedAt), formatTime(run.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("experiments: insert run: %w", err)
@@ -296,6 +296,19 @@ func (s *Service) updateRunParams(ctx context.Context, tx *sql.Tx, id string, pa
 		string(encoded), formatTime(s.clock.Now()), id)
 	if err != nil {
 		return fmt.Errorf("experiments: update params: %w", err)
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return notFound("run %s", id)
+	}
+	return nil
+}
+
+// updateRunTitle writes runs.title.
+func (s *Service) updateRunTitle(ctx context.Context, tx *sql.Tx, id, title string) error {
+	res, err := tx.ExecContext(ctx, `UPDATE runs SET title = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		title, formatTime(s.clock.Now()), id)
+	if err != nil {
+		return fmt.Errorf("experiments: update run title: %w", err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return notFound("run %s", id)

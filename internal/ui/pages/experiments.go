@@ -53,7 +53,7 @@ type ExperimentsAPI interface {
 	SetScanRules(ctx context.Context, projectID, experimentID string, rules experiments.ScanRules) error
 
 	CreateRun(ctx context.Context, projectID string, in experiments.CreateRunInput) (*experiments.Run, error)
-	SetRunStatus(ctx context.Context, projectID, runID string, status experiments.RunStatus) error
+	SetRunStatus(ctx context.Context, projectID, runID string, status experiments.RunStatus, actor ports.Actor) error
 	GetRun(ctx context.Context, projectID, runID string) (*experiments.RunDetail, error)
 	ListRuns(ctx context.Context, projectID, experimentID string, includeDeleted bool) ([]experiments.RunSummary, error)
 	ListDirCandidates(ctx context.Context, projectID, experimentID string) ([]experiments.DirCandidate, error)

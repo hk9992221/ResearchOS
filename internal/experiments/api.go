@@ -78,14 +78,17 @@ type runAPI struct{ s *Service }
 func (a *runAPI) Create(ctx context.Context, in CreateRunInput) (*Run, error) {
 	return a.s.CreateRun(ctx, in)
 }
+func (a *runAPI) Update(ctx context.Context, in UpdateRunInput) (*Run, error) {
+	return a.s.UpdateRun(ctx, in)
+}
 func (a *runAPI) UpdateParams(ctx context.Context, runID string, params map[string]ParamValue) error {
 	return a.s.UpdateRunParams(ctx, runID, params)
 }
 func (a *runAPI) SetDirectory(ctx context.Context, runID, absPath string) error {
 	return a.s.SetRunDirectory(ctx, runID, absPath)
 }
-func (a *runAPI) SetStatus(ctx context.Context, runID string, status RunStatus) error {
-	return a.s.SetRunStatus(ctx, runID, status)
+func (a *runAPI) SetStatus(ctx context.Context, runID string, status RunStatus, actor events.Actor) error {
+	return a.s.SetRunStatus(ctx, runID, status, actor)
 }
 func (a *runAPI) SoftDelete(ctx context.Context, runID string, actor events.Actor) error {
 	return a.s.SoftDeleteRun(ctx, runID, actor)

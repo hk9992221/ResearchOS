@@ -18,9 +18,16 @@ import (
 	"researchos/internal/foundation/trash"
 )
 
+// maxRunTitleRunes bounds a run title; the MCP catalog advertises the same cap.
+const maxRunTitleRunes = 200
+
 // Create adds one run under an existing experiment (§5.2). The status starts at
 // unknown because completion detection is out of scope (O-02).
 func (s *Service) CreateRun(ctx context.Context, in CreateRunInput) (*Run, error) {
+	title, err := normalizeRunTitle(in.Title)
+	if err != nil {
+		return nil, err
+	}
 	handle, err := s.handle(ctx)
 	if err != nil {
 		return nil, err
@@ -46,6 +53,7 @@ func (s *Service) CreateRun(ctx context.Context, in CreateRunInput) (*Run, error
 	now := s.clock.Now()
 	run := Run{
 		ExperimentID: exp.ID,
+		Title:        title,
 		Params:       params,
 		GitInfo:      GitInfo{V: payloadVersion},
 		Status:       RunUnknown,
@@ -80,12 +88,25 @@ func (s *Service) CreateRun(ctx context.Context, in CreateRunInput) (*Run, error
 				return fmt.Errorf("experiments: register run directory: %w", err)
 			}
 		}
-		return handle.Events().Emit(ctx, tx, events.Event{
+		if err := handle.Events().Emit(ctx, tx, events.Event{
 			Type:       schema.EventEntityCreated,
 			EntityType: schema.EntityRun,
 			EntityID:   run.ID,
-			New:        &events.Object{"experiment_id": exp.ID},
-			Summary:    "创建 Run：" + exp.Title,
+			New:        &events.Object{"experiment_id": exp.ID, "title": title},
+			Summary:    "创建运行：" + title,
+			Actor:      actorOf(in.Actor),
+		}); err != nil {
+			return err
+		}
+		// entity.created is housekeeping for the weekly digest, so the run
+		// announces itself with its initial status too; otherwise a run that
+		// nobody re-statuses never reaches the report (SPEC-09 §5.3).
+		return handle.Events().Emit(ctx, tx, events.Event{
+			Type:       schema.EventStatusChanged,
+			EntityType: schema.EntityRun,
+			EntityID:   run.ID,
+			New:        &events.Object{"status": string(run.Status)},
+			Summary:    "创建运行：" + title,
 			Actor:      actorOf(in.Actor),
 		})
 	})
@@ -116,6 +137,39 @@ func (s *Service) UpdateRunParams(ctx context.Context, runID string, params map[
 	return handle.InTx(ctx, func(tx *sql.Tx) error {
 		return s.updateRunParams(ctx, tx, runID, normalized)
 	})
+}
+
+// UpdateRun edits the run title. The title is the only mutable identity field
+// of a run; parameters, status and directory keep their own entries.
+func (s *Service) UpdateRun(ctx context.Context, in UpdateRunInput) (*Run, error) {
+	if in.Title == nil {
+		return nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
+	}
+	title, err := normalizeRunTitle(*in.Title)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := s.handle(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertWritable(ctx); err != nil {
+		return nil, err
+	}
+	err = handle.InTx(ctx, func(tx *sql.Tx) error {
+		if _, err := s.loadRun(ctx, tx, in.ID, false); err != nil {
+			return err
+		}
+		return s.updateRunTitle(ctx, tx, in.ID, title)
+	})
+	if err != nil {
+		return nil, err
+	}
+	run, err := s.loadRun(ctx, handle.DB(), in.ID, false)
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
 }
 
 // SetDirectory binds or re-points a run directory. Clearing is unsupported in
@@ -153,9 +207,11 @@ func (s *Service) SetRunDirectory(ctx context.Context, runID, absPath string) er
 	})
 }
 
-// SetStatus updates runs.status. No status.changed event is emitted because the
-// SPEC-01 producer list does not include runs (§5.2, O-19).
-func (s *Service) SetRunStatus(ctx context.Context, runID string, status RunStatus) error {
+// SetStatus updates runs.status and emits status.changed with the {status}
+// shape SPEC-00 §6 defines for runs, so the weekly digest can tell a failed run
+// from an experiment conclusion. The same value stays a no-op: no write, no
+// event (§5.2).
+func (s *Service) SetRunStatus(ctx context.Context, runID string, status RunStatus, actor events.Actor) error {
 	if !status.Valid() {
 		return fmt.Errorf("%w: invalid run status %q", ErrInvalidInput, status)
 	}
@@ -167,8 +223,47 @@ func (s *Service) SetRunStatus(ctx context.Context, runID string, status RunStat
 		return err
 	}
 	return handle.InTx(ctx, func(tx *sql.Tx) error {
-		return s.setRunStatus(ctx, tx, runID, status)
+		run, err := s.loadRun(ctx, tx, runID, false)
+		if err != nil {
+			return err
+		}
+		if run.Status == status {
+			return nil
+		}
+		if err := s.setRunStatus(ctx, tx, runID, status); err != nil {
+			return err
+		}
+		return handle.Events().Emit(ctx, tx, events.Event{
+			Type:       schema.EventStatusChanged,
+			EntityType: schema.EntityRun,
+			EntityID:   runID,
+			Old:        &events.Object{"status": string(run.Status)},
+			New:        &events.Object{"status": string(status)},
+			Summary:    fmt.Sprintf("%s：%s → %s", runLabel(run), run.Status, status),
+			Actor:      actorOf(actor),
+		})
 	})
+}
+
+// normalizeRunTitle trims and validates a run title. A run without a name is
+// unidentifiable in the UI and in the weekly digest, so empty is rejected.
+func normalizeRunTitle(raw string) (string, error) {
+	title := strings.TrimSpace(raw)
+	if title == "" {
+		return "", fmt.Errorf("%w: run title must not be empty", ErrInvalidInput)
+	}
+	if len([]rune(title)) > maxRunTitleRunes {
+		return "", fmt.Errorf("%w: run title must be at most %d characters", ErrInvalidInput, maxRunTitleRunes)
+	}
+	return title, nil
+}
+
+// runLabel names a run for event summaries, falling back to its short id.
+func runLabel(run Run) string {
+	if strings.TrimSpace(run.Title) != "" {
+		return "运行「" + run.Title + "」"
+	}
+	return "运行 " + shortID(run.ID)
 }
 
 // SoftDelete moves one run into the trash. Its snapshots are kept.
@@ -234,7 +329,7 @@ func (s *Service) ListRuns(ctx context.Context, experimentID string, includeDele
 	if _, err := s.loadExperiment(ctx, handle.DB(), experimentID, true); err != nil {
 		return nil, err
 	}
-	query := `SELECT r.id, r.dir_ref, r.params, r.status, r.deleted_at,
+	query := `SELECT r.id, r.title, r.dir_ref, r.params, r.status, r.deleted_at,
 	                 (SELECT MAX(s.created_at) FROM snapshots s
 	                    WHERE s.target_type = 'run' AND s.target_id = r.id)
 	            FROM runs r WHERE r.experiment_id = ?`
@@ -257,7 +352,7 @@ func (s *Service) ListRuns(ctx context.Context, experimentID string, includeDele
 			deletedAt sql.NullString
 			lastAnaly sql.NullString
 		)
-		if err := rows.Scan(&item.ID, &dirRef, &rawParams, &status, &deletedAt, &lastAnaly); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &dirRef, &rawParams, &status, &deletedAt, &lastAnaly); err != nil {
 			return nil, fmt.Errorf("experiments: list runs: %w", err)
 		}
 		if dirRef.Valid {
@@ -288,9 +383,12 @@ func (s *Service) ListRuns(ctx context.Context, experimentID string, includeDele
 	return out, nil
 }
 
-// runDisplayName derives a display name from the directory or the parameters;
-// it is a projection, never a stored field (§5.2).
+// runDisplayName prefers the stored title, then falls back to the directory or
+// the parameters; the fallback is a projection, never a stored field (§5.2).
 func runDisplayName(item RunSummary) string {
+	if title := strings.TrimSpace(item.Title); title != "" {
+		return title
+	}
 	if item.DirRef != nil {
 		if base := filepath.Base(*item.DirRef); base != "." && base != string(filepath.Separator) {
 			return base

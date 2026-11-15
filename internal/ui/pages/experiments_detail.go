@@ -1000,7 +1000,7 @@ func (d *ExperimentDetail) tickDialogs() {
 func (d *ExperimentDetail) setRunStatus(a *app.App, projectID, runID string, status experiments.RunStatus) {
 	api := d.API
 	a.RunTask(i18n.T("pages.experiments.task_run_status"), func(ctx context.Context, t *app.Task) error {
-		if err := api.SetRunStatus(ctx, projectID, runID, status); err != nil {
+		if err := api.SetRunStatus(ctx, projectID, runID, status, ports.ActorUser); err != nil {
 			a.Toast(app.LevelDanger, i18n.T("pages.experiments.toast_status_failed"), expErrText(err))
 		} else {
 			a.Toast(app.LevelSuccess, i18n.T("pages.experiments.toast_status_saved"), "")

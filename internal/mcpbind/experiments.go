@@ -142,13 +142,14 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 			}),
 
 		tool(mod, mcp.CategoryWrite, "experiment_update", "更新实验",
-			"更新实验标题、目的或扫描规则。",
+			"更新实验标题、目的、扫描规则或目录。未绑定目录时 dir_ref 建立绑定，已绑定时重新指向新目录。",
 			sObj(map[string]any{
 				"project_id":    sStr("项目 ID"),
 				"experiment_id": sStr("实验 ID"),
 				"title":         sStr("标题"),
 				"purpose":       sStr("实验目的"),
 				"scan_rules":    sFreeObj("扫描规则"),
+				"dir_ref":       sStr("实验目录绝对路径（未绑定时建立，已绑定时重新定位）"),
 			}, "project_id", "experiment_id"), annWrite(),
 			func(ctx context.Context, p mcp.Principal, a *mcp.Arguments) (mcp.ToolOutcome, error) {
 				projectID, expID, err := projectAndID(a, "experiment_id")
@@ -158,8 +159,8 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				in := experiments.UpdateExperimentInput{ID: expID}
 				in.Title = optionalStringPtr(a, "title")
 				in.Purpose = optionalStringPtr(a, "purpose")
-				if in.Title == nil && in.Purpose == nil && !a.Has("scan_rules") {
-					return mcp.ToolOutcome{}, invalidf("至少提供 title、purpose 或 scan_rules")
+				if in.Title == nil && in.Purpose == nil && !a.Has("scan_rules") && !a.Has("dir_ref") {
+					return mcp.ToolOutcome{}, invalidf("至少提供 title、purpose、scan_rules 或 dir_ref")
 				}
 				svc, err := d.experimentService(ctx, projectID)
 				if err != nil {
@@ -181,6 +182,29 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 						if err := svc.SetScanRules(ctx, expID, *rules); err != nil {
 							return mcp.ToolOutcome{}, mapExperimentsError(err)
 						}
+					}
+				}
+				if a.Has("dir_ref") {
+					// A directory can be attached long after creation: bind when the
+					// experiment has no reference yet, re-point it otherwise. Without
+					// one, every analysis job fails with 目录不可用.
+					dir, err := requireString(a, "dir_ref")
+					if err != nil {
+						return mcp.ToolOutcome{}, err
+					}
+					if !filepath.IsAbs(dir) {
+						return mcp.ToolOutcome{}, invalidf("dir_ref 必须是绝对路径")
+					}
+					detail, err := svc.Experiments().Get(ctx, expID)
+					if err != nil {
+						return mcp.ToolOutcome{}, mapExperimentsError(err)
+					}
+					if len(detail.DirRefs) == 0 {
+						if _, err := svc.Experiments().BindDirectory(ctx, expID, dir, detail.Experiment.ScanRules); err != nil {
+							return mcp.ToolOutcome{}, mapExperimentsError(err)
+						}
+					} else if _, err := svc.Experiments().RelocateDirectory(ctx, expID, dir, eventActor()); err != nil {
+						return mcp.ToolOutcome{}, mapExperimentsError(err)
 					}
 				}
 				if exp == nil {
@@ -512,7 +536,11 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, mapExperimentsError(err)
 				}
-				return okOut(map[string]any{"runs": asJSON(runs)})
+				items := make([]any, 0, len(runs))
+				for i := range runs {
+					items = append(items, runSummaryView(&runs[i]))
+				}
+				return okOut(map[string]any{"runs": items})
 			}),
 
 		tool(mod, mcp.CategoryWrite, "run_create", "创建运行",
@@ -529,7 +557,8 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if _, err := requireString(a, "title"); err != nil {
+				title, err := requireString(a, "title")
+				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
 				params, err := paramMap(a)
@@ -543,6 +572,7 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				}
 				run, err := svc.Runs().Create(ctx, experiments.CreateRunInput{
 					ExperimentID: expID,
+					Title:        title,
 					DirPath:      dir,
 					Params:       params,
 					Actor:        eventActor(),
@@ -550,15 +580,15 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, mapExperimentsError(err)
 				}
-				out := map[string]any{"run": asJSON(run)}
-				return okOut(out)
+				return okOut(map[string]any{"run": runView(run)})
 			}),
 
 		tool(mod, mcp.CategoryWrite, "run_update", "更新运行",
-			"单次调用只允许一组变更（params、status 或 dir_ref 之一）。状态仅接受 SPEC-07 定义的合法值，不做完成推断。",
+			"单次调用只允许一组变更（title、params、status 或 dir_ref 之一）。状态仅接受 SPEC-07 定义的合法值，不做完成推断。",
 			sObj(map[string]any{
 				"project_id": sStr("项目 ID"),
 				"run_id":     sStr("运行 ID"),
+				"title":      sStrLen("运行标题", 1, 200),
 				"params":     sFreeObj("参数 {name: {value, source?, confirmed?}}"),
 				"status":     sEnum("运行状态", "unknown", "running", "finished", "failed"),
 				"dir_ref":    sStr("运行目录绝对路径"),
@@ -569,6 +599,10 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 					return mcp.ToolOutcome{}, err
 				}
 				groups := 0
+				title, hasTitle := a.String("title")
+				if hasTitle {
+					groups++
+				}
 				if a.Has("params") {
 					groups++
 				}
@@ -581,13 +615,17 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 					groups++
 				}
 				if groups != 1 {
-					return mcp.ToolOutcome{}, invalidf("params、status、dir_ref 每次只能提交一组")
+					return mcp.ToolOutcome{}, invalidf("title、params、status、dir_ref 每次只能提交一组")
 				}
 				svc, err := d.experimentService(ctx, projectID)
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
 				switch {
+				case hasTitle:
+					if _, err := svc.Runs().Update(ctx, experiments.UpdateRunInput{ID: runID, Title: &title}); err != nil {
+						return mcp.ToolOutcome{}, mapExperimentsError(err)
+					}
 				case a.Has("params"):
 					params, err := paramMap(a)
 					if err != nil {
@@ -597,7 +635,7 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 						return mcp.ToolOutcome{}, mapExperimentsError(err)
 					}
 				case hasStatus:
-					if err := svc.Runs().SetStatus(ctx, runID, experiments.RunStatus(status)); err != nil {
+					if err := svc.Runs().SetStatus(ctx, runID, experiments.RunStatus(status), eventActor()); err != nil {
 						return mcp.ToolOutcome{}, mapExperimentsError(err)
 					}
 				case hasDir:
@@ -612,7 +650,7 @@ func newExperimentsProvider(d Deps, ready func(context.Context) error) mcp.ToolP
 				if err != nil {
 					return mcp.ToolOutcome{}, mapExperimentsError(err)
 				}
-				return okOut(map[string]any{"run": asJSON(detail)})
+				return okOut(map[string]any{"run": runDetailView(detail)})
 			}),
 
 		tool(mod, mcp.CategoryWrite, "run_delete", "删除运行",
@@ -727,7 +765,7 @@ func experimentDetailView(d *experiments.ExperimentDetail) map[string]any {
 	}
 	runs := make([]any, 0, len(d.Runs))
 	for i := range d.Runs {
-		runs = append(runs, asJSON(d.Runs[i]))
+		runs = append(runs, runSummaryView(&d.Runs[i]))
 	}
 	return map[string]any{
 		"experiment":       experimentView(&d.Experiment),
@@ -755,6 +793,61 @@ func experimentSummaryView(e *experiments.ExperimentSummary) map[string]any {
 		"updated_at":       ts(e.UpdatedAt),
 		"deleted_at":       tsp(e.DeletedAt),
 	}
+}
+
+// runView projects one run row. The title is the identifying field, so it is
+// always present (empty means the run was never named).
+func runView(r *experiments.Run) map[string]any {
+	if r == nil {
+		return nil
+	}
+	out := map[string]any{
+		"run_id":        r.ID,
+		"experiment_id": r.ExperimentID,
+		"title":         r.Title,
+		"params":        asJSON(r.Params),
+		"status":        string(r.Status),
+		"created_at":    ts(r.CreatedAt),
+		"updated_at":    ts(r.UpdatedAt),
+		"deleted_at":    tsp(r.DeletedAt),
+	}
+	if r.DirRef != nil {
+		out["dir_ref"] = *r.DirRef
+	}
+	return out
+}
+
+func runDetailView(d *experiments.RunDetail) map[string]any {
+	if d == nil {
+		return nil
+	}
+	out := runView(&d.Run)
+	refs := make([]any, 0, len(d.DirRefs))
+	for _, ref := range d.DirRefs {
+		refs = append(refs, asJSON(ref))
+	}
+	out["dir_refs"] = refs
+	return out
+}
+
+func runSummaryView(s *experiments.RunSummary) map[string]any {
+	if s == nil {
+		return nil
+	}
+	out := map[string]any{
+		"run_id":           s.ID,
+		"title":            s.Title,
+		"display_name":     s.DisplayName,
+		"params":           asJSON(s.Params),
+		"param_count":      s.ParamCount,
+		"status":           string(s.Status),
+		"last_analyzed_at": tsp(s.LastAnalyzed),
+		"deleted_at":       tsp(s.DeletedAt),
+	}
+	if s.DirRef != nil {
+		out["dir_ref"] = *s.DirRef
+	}
+	return out
 }
 
 func snapshotContent(s *experiments.Snapshot) string {
