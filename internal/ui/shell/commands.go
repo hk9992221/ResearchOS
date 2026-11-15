@@ -46,8 +46,7 @@ func (s *Shell) commands() []command {
 
 	add(app.RouteHome, icons.Home, false)
 	add(app.RouteProjects, icons.Projects, false)
-	add(app.RouteInbox, icons.Inbox, false)
-	add(app.RoutePluginMarket, icons.PluginMarket, false)
+	// 暂时隐藏（用户要求），路由与页面保留：命令面板不提供收件箱与插件市场的跳转。
 	if p := s.app.Project(); p != nil {
 		add(ports.RouteOverview, icons.Overview, true)
 		add(app.RouteLiterature, icons.Literature, true)

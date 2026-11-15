@@ -182,10 +182,8 @@ func (s *Shell) sidebar(v *components.UI, collapsed bool, width float32) {
 					{app.RouteHome, icons.Home, false},
 				})
 				s.projectsGroup(v, collapsed)
-				s.navItems(v, collapsed, []navEntry{
-					{app.RouteInbox, icons.Inbox, false},
-					{app.RoutePluginMarket, icons.PluginMarket, false},
-				})
+				// 暂时隐藏（用户要求），路由与页面保留：收件箱与插件市场
+				// 不再出现在侧栏，但 route、页面与服务仍在。
 			})
 
 			v.Spacer()
