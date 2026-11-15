@@ -10,8 +10,10 @@ import (
 
 	"researchos/internal/foundation/errs"
 	"researchos/internal/foundation/events"
+	"researchos/internal/foundation/relations"
 	"researchos/internal/foundation/schema"
 	"researchos/internal/foundation/trash"
+	"researchos/internal/foundation/workspace"
 	"researchos/internal/mcp"
 	"researchos/internal/notes"
 	"researchos/internal/project"
@@ -158,18 +160,15 @@ func newMiscProvider(d Deps, ready func(context.Context) error) mcp.ToolProvider
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				relSvc, err := d.noteRelationService(ctx, projectID)
-				if err != nil {
-					return mcp.ToolOutcome{}, err
-				}
 				edge, err := relationEdgeFrom(a)
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if err := relSvc.Add(ctx, edge); err != nil {
+				id, err := d.linkRelation(ctx, projectID, edge)
+				if err != nil {
 					return mcp.ToolOutcome{}, mapNotesError(err)
 				}
-				return okOut(map[string]any{"added": true})
+				return okOut(map[string]any{"added": true, "relation_id": id})
 			}),
 
 		tool(mod, mcp.CategoryWrite, "relation_remove", "移除关系",
@@ -191,15 +190,11 @@ func newMiscProvider(d Deps, ready func(context.Context) error) mcp.ToolProvider
 				if _, err := requireString(a, "relation_id"); err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				relSvc, err := d.noteRelationService(ctx, projectID)
-				if err != nil {
-					return mcp.ToolOutcome{}, err
-				}
 				edge, err := relationEdgeFrom(a)
 				if err != nil {
 					return mcp.ToolOutcome{}, err
 				}
-				if err := relSvc.Remove(ctx, edge); err != nil {
+				if err := d.unlinkRelation(ctx, projectID, edge); err != nil {
 					return mcp.ToolOutcome{}, mapNotesError(err)
 				}
 				return okOut(map[string]any{"removed": true})
@@ -311,6 +306,71 @@ func (d *Deps) noteRelationService(ctx context.Context, projectID string) (notes
 		return nil, err
 	}
 	return notes.NewRelationService(d.Workspace, projectID, notes.ServiceOptions{Clock: d.clock(), Logger: d.Logger}), nil
+}
+
+// linkRelation writes one relation edge. The SPEC-01 §4.6 registry is the
+// authority here, so every advertised relation type and every legal direction
+// works, not only the note-source subset of SPEC-05. A db_record source is
+// still normalized to its backing note by the notes adapter, because a record
+// keeps its edges on that note (D-05-03) and the frozen registry has no
+// record-source edge.
+func (d *Deps) linkRelation(ctx context.Context, projectID string, edge notes.RelationEdge) (string, error) {
+	if edge.Src.Type == schema.EntityDBRecord {
+		svc, err := d.noteRelationService(ctx, projectID)
+		if err != nil {
+			return "", err
+		}
+		return "", svc.Add(ctx, edge)
+	}
+	h, err := d.handle(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	link := relationLinkOf(edge)
+	var id string
+	err = h.InTx(ctx, func(tx *sql.Tx) error {
+		var lerr error
+		id, lerr = d.relationService(h).Link(ctx, tx, link, eventActor())
+		return lerr
+	})
+	return id, err
+}
+
+// unlinkRelation removes one edge; a missing edge is a no-op.
+func (d *Deps) unlinkRelation(ctx context.Context, projectID string, edge notes.RelationEdge) error {
+	if edge.Src.Type == schema.EntityDBRecord {
+		svc, err := d.noteRelationService(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		return svc.Remove(ctx, edge)
+	}
+	h, err := d.handle(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	link := relationLinkOf(edge)
+	return h.InTx(ctx, func(tx *sql.Tx) error {
+		return d.relationService(h).Unlink(ctx, tx, link, eventActor())
+	})
+}
+
+// relationService binds the foundation relation service to one project handle.
+func (d *Deps) relationService(h *workspace.ProjectHandle) *relations.Service {
+	return relations.New(h.DB(), d.Workspace.Global().DB(), h.Events(), d.clock())
+}
+
+// relationLinkOf maps a tool edge to the foundation triple. Validation stays in
+// the service: registered relation types, the direction registry, self
+// relations, soft-deleted endpoints and the cross-database rule.
+func relationLinkOf(edge notes.RelationEdge) relations.Link {
+	return relations.Link{
+		SrcType:  edge.Src.Type,
+		SrcID:    edge.Src.ID,
+		Relation: edge.Relation,
+		DstType:  edge.Dst.Type,
+		DstID:    edge.Dst.ID,
+	}
 }
 
 func relationEdgeFrom(a *mcp.Arguments) (notes.RelationEdge, error) {
