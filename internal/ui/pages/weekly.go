@@ -138,6 +138,7 @@ type Weekly struct {
 	genErr         string
 	genNote        string
 	genDone        bool
+	genDoneAt      time.Time
 	genReportID    string
 	genTask        *app.Task
 
@@ -179,9 +180,12 @@ func (n *Weekly) Page(v *components.UI, r ports.Route) {
 	n.tickDialogs()
 	n.load(a, project.ID)
 	items := n.visible()
+	// One read of the load state: a reload that finishes mid-frame must not
+	// leave the header, the body and the table telling different stories.
+	blank := n.blank()
 	// An empty history shows its generate action in the empty state, so the
 	// header does not repeat the same primary button.
-	empty := len(items) == 0 && !n.blank()
+	empty := len(items) == 0 && !blank
 
 	v.PageContainer(components.PageContainerOptions{Children: func() {
 		v.PageHeader(components.PageHeaderOptions{
@@ -210,7 +214,7 @@ func (n *Weekly) Page(v *components.UI, r ports.Route) {
 		n.banners(v)
 		n.toolbar(v, project.ID)
 		switch {
-		case n.blank():
+		case blank:
 			v.Skeleton(components.SkeletonOptions{Lines: 6})
 		case empty:
 			v.EmptyState(components.EmptyStateOptions{
@@ -275,8 +279,8 @@ func (n *Weekly) prepare() {
 // frame-only field.
 func (n *Weekly) tickDialogs() {
 	n.mu.Lock()
-	deleted, restored, generated := n.delDone, n.restoreDone, n.genDone
-	reportID := n.genReportID
+	deleted, restored := n.delDone, n.restoreDone
+	generated, reportID := n.genDone, n.genReportID
 	if deleted {
 		n.delDone = false
 		n.delErr = ""
@@ -284,8 +288,13 @@ func (n *Weekly) tickDialogs() {
 	if restored {
 		n.restoreDone = false
 	}
-	if generated {
+	// A finished generation belongs to the dialog while it is open: it holds
+	// the completion frame, then opens the report itself. Only a dialog the
+	// user already closed hands the report back here.
+	handOver := generated && !n.genOpen
+	if handOver {
 		n.genDone = false
+		n.genDoneAt = time.Time{}
 		n.genReportID = ""
 	}
 	n.mu.Unlock()
@@ -293,12 +302,39 @@ func (n *Weekly) tickDialogs() {
 		n.delID = ""
 		n.delTitle = ""
 	}
-	if generated && reportID != "" {
-		n.genOpen = false
+	if handOver && reportID != "" {
 		n.Services.App.Navigate(ports.Route{
 			Kind: ports.RouteWeeklyReport, ProjectID: n.project, EntityID: reportID,
 		})
 	}
+}
+
+// cancelGenerate stops the running job. The dialog stays where it is: the
+// form comes back as soon as the task reports that it stopped.
+func (n *Weekly) cancelGenerate() {
+	n.mu.Lock()
+	task := n.genTask
+	n.mu.Unlock()
+	if task != nil {
+		task.Cancel()
+	}
+}
+
+// closeGenerated ends the completion frame: the dialog leaves and the stored
+// report opens, so the generated body is one click (or one hold) away.
+func (n *Weekly) closeGenerated(a *app.App, reportID string) {
+	n.mu.Lock()
+	n.genDone = false
+	n.genDoneAt = time.Time{}
+	n.genReportID = ""
+	n.mu.Unlock()
+	n.genOpen = false
+	if reportID == "" || a == nil {
+		return
+	}
+	a.Navigate(ports.Route{
+		Kind: ports.RouteWeeklyReport, ProjectID: n.project, EntityID: reportID,
+	})
 }
 
 func (n *Weekly) blank() bool {
@@ -695,16 +731,37 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 	n.adoptPeriod()
 	n.mu.Lock()
 	generating, errText, note := n.generating, n.genErr, n.genNote
+	doneAt, reportID, task := n.genDoneAt, n.genReportID, n.genTask
 	n.mu.Unlock()
 
-	// The quick chips: 本周 / 上周 / 自定义.
-	seg := ui.Segmented(v.C, &n.genQuick,
-		i18n.T("pages.weekly_review.period_current"),
-		i18n.T("pages.weekly_review.period_previous"),
-		i18n.T("pages.weekly_review.period_custom"),
-	).Label(i18n.T("pages.weekly_review.field_period"))
-	if seg.Changed() {
-		n.quickPeriod()
+	// One dialog, four faces: the configuration form, the live generation the
+	// task strip shows too, and its two endings. A successful generation
+	// keeps the dialog open for its completion frame, then opens the report.
+	state := weeklyGenConfiguring
+	switch {
+	case generating:
+		state = weeklyGenRunning
+	case !doneAt.IsZero():
+		state = weeklyGenDone
+	case errText != "":
+		state = weeklyGenFailed
+	}
+	if state == weeklyGenDone {
+		if left := weeklyGenDoneHold - time.Since(doneAt); left > 0 {
+			v.C.After(left)
+		} else {
+			n.closeGenerated(a, reportID)
+			return
+		}
+	}
+	var snap app.TaskSnapshot
+	if task != nil {
+		snap = task.Snapshot()
+	}
+	if state == weeklyGenRunning && snap.Finished {
+		// The new job has not reported yet: wait in the panel's preparing
+		// pose instead of showing the previous job's last frame.
+		snap = app.TaskSnapshot{}
 	}
 
 	period, periodErr := n.period()
@@ -712,30 +769,105 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 	n.needOverwrite = found && existing.Status == weeklyreview.StatusDraft && strings.TrimSpace(existing.Excerpt) != ""
 	n.periodBlocked = found && existing.Status == weeklyreview.StatusConfirmed
 
+	desc := ""
+	if state == weeklyGenConfiguring {
+		desc = i18n.T("pages.weekly_review.gen_desc")
+	}
 	v.Dialog(&n.genOpen, components.DialogOptions{
 		Title:       i18n.T("pages.weekly_review.gen_title"),
-		Description: i18n.T("pages.weekly_review.gen_desc"),
+		Description: desc,
 		Width:       560,
 		Actions: func() {
-			if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
-				if n.genTask != nil {
-					n.genTask.Cancel()
+			switch state {
+			case weeklyGenRunning:
+				// The job stays cancelable for as long as it runs, and
+				// stopping it brings the form back in place.
+				if v.Button(i18n.T("common.cancel"), components.ButtonOptions{
+					Loading:  snap.Canceling,
+					Disabled: snap.Canceling,
+				}).Clicked() {
+					n.cancelGenerate()
 				}
-				n.genOpen = false
-			}
-			if v.Button(i18n.T("pages.weekly_review.btn_generate_run"), components.ButtonOptions{
-				Variant:  components.VariantPrimary,
-				Icon:     icons.WeeklyReview,
-				Loading:  generating,
-				Disabled: generating || !writable || periodErr != nil || n.periodBlocked,
-			}).Clicked() {
-				n.generate(a, projectID)
+			case weeklyGenDone:
+				if v.Button(i18n.T("pages.weekly_review.gen_open"), components.ButtonOptions{
+					Variant: components.VariantPrimary,
+				}).Clicked() {
+					n.closeGenerated(a, reportID)
+				}
+			case weeklyGenFailed:
+				if v.Button(i18n.T("pages.weekly_review.gen_close"), components.ButtonOptions{}).Clicked() {
+					n.genOpen = false
+				}
+				if v.Button(i18n.T("pages.weekly_review.gen_retry"), components.ButtonOptions{
+					Variant: components.VariantPrimary,
+					Icon:    icons.WeeklyReview,
+				}).Clicked() {
+					n.generate(a, projectID)
+				}
+			default:
+				if v.Button(i18n.T("common.cancel"), components.ButtonOptions{}).Clicked() {
+					n.genOpen = false
+				}
+				if v.Button(i18n.T("pages.weekly_review.btn_generate_run"), components.ButtonOptions{
+					Variant:  components.VariantPrimary,
+					Icon:     icons.WeeklyReview,
+					Disabled: !writable || periodErr != nil || n.periodBlocked,
+				}).Clicked() {
+					n.generate(a, projectID)
+				}
 			}
 		},
 	}, func() {
+		if state != weeklyGenConfiguring {
+			// The job's own snapshot is the panel: the same phase, percent,
+			// ticks and elapsed time the task strip draws, so the dialog
+			// never tells a second story while the wait is real.
+			opts := snap.GenProgress()
+			opts.CompanionSize = weeklyGenCompanionSize
+			if state == weeklyGenDone {
+				// The task may still be reporting its last stage: the
+				// completion frame is the dialog's to show.
+				opts.Phase = components.GenPhaseDone
+				opts.Percent = 1
+				if !snap.Started.IsZero() {
+					opts.Elapsed = doneAt.Sub(snap.Started)
+				}
+			}
+			if state == weeklyGenFailed {
+				opts.Phase = components.GenPhaseFailed
+			}
+			v.GenProgress(opts)
+			if state == weeklyGenFailed {
+				v.Banner(components.BannerOptions{
+					Tone:    components.Danger,
+					Title:   i18n.T("pages.weekly_review.gen_failed_title"),
+					Message: errText,
+				})
+			} else if note != "" {
+				// A stored skeleton after a model failure still leaves a
+				// report; say why the body is the fallback.
+				v.Banner(components.BannerOptions{
+					Tone:    components.Warning,
+					Title:   i18n.T("pages.weekly_review.gen_note_title"),
+					Message: note,
+				})
+			}
+			return
+		}
 		if !n.genLoaded {
 			v.Skeleton(components.SkeletonOptions{Lines: 2})
 			return
+		}
+		// The quick chips: 本周 / 上周 / 自定义, inside the dialog with the
+		// rest of the form: a period choice behind the scrim would be a
+		// control the user can see and cannot reach.
+		seg := ui.Segmented(v.C, &n.genQuick,
+			i18n.T("pages.weekly_review.period_current"),
+			i18n.T("pages.weekly_review.period_previous"),
+			i18n.T("pages.weekly_review.period_custom"),
+		).Label(i18n.T("pages.weekly_review.field_period"))
+		if seg.Changed() {
+			n.quickPeriod()
 		}
 		if n.genAI {
 			set := n.skillSetSnapshot()
@@ -798,23 +930,6 @@ func (n *Weekly) generateDialog(v *components.UI, a *app.App, projectID string, 
 					FontSize(tokens.Typography.Caption.Size).
 					TextColor(mygo.Color(v.T.Palette.TextMuted))
 			})
-		}
-		if note != "" {
-			v.Banner(components.BannerOptions{
-				Tone:    components.Warning,
-				Title:   i18n.T("pages.weekly_review.gen_note_title"),
-				Message: note,
-			})
-		}
-		if errText != "" {
-			v.Banner(components.BannerOptions{
-				Tone:    components.Danger,
-				Title:   i18n.T("pages.weekly_review.gen_failed_title"),
-				Message: errText,
-			})
-		}
-		if generating {
-			v.Progress(components.ProgressOptions{Value: -1, Label: i18n.T("pages.weekly_review.gen_running")})
 		}
 	})
 }
@@ -911,6 +1026,9 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 	n.generating = true
 	n.genErr = ""
 	n.genNote = ""
+	n.genDone = false
+	n.genDoneAt = time.Time{}
+	n.genReportID = ""
 	n.mu.Unlock()
 
 	api := n.Services.Weekly
@@ -958,6 +1076,7 @@ func (n *Weekly) generate(a *app.App, projectID string) {
 			n.mu.Lock()
 			n.generating = false
 			n.genDone = true
+			n.genDoneAt = time.Now()
 			n.genReportID = report.ID
 			if degraded {
 				n.genNote = weeklyError(genErr)
@@ -1240,6 +1359,32 @@ func visibleWeeklyRows(n int) float32 {
 	}
 	return float32(visible)*44 + 40
 }
+
+// weeklyGenState is the face the generation dialog shows: the form while
+// nothing runs, the live panel while the job streams, and the outcome it
+// holds for a moment before the report opens.
+type weeklyGenState int
+
+const (
+	// weeklyGenConfiguring is the form: period, skill, preview, overwrite.
+	weeklyGenConfiguring weeklyGenState = iota
+	// weeklyGenRunning is a job in flight, shown as the presence panel.
+	weeklyGenRunning
+	// weeklyGenDone is a stored report and the completion frame.
+	weeklyGenDone
+	// weeklyGenFailed is a job that stopped with an error, awaiting a retry.
+	weeklyGenFailed
+)
+
+const (
+	// weeklyGenCompanionSize is the companion in the dialog: big enough to
+	// carry the wait, small enough to leave room for the panel beside it.
+	weeklyGenCompanionSize float32 = 88
+	// weeklyGenDoneHold is how long the completion frame stays on screen
+	// before the dialog opens the report; the revision dialog uses the same
+	// rhythm for its done state.
+	weeklyGenDoneHold = 1400 * time.Millisecond
+)
 
 // weeklyGeneration renders section-by-section generation in the task strip:
 // "3/7 · 理论研究进展", with the bar creeping inside each section as its
