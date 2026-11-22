@@ -1,6 +1,6 @@
 {
   "name": "@researchos/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "ResearchOS Node library: database, migrations, workspace, services, AI gateway, MCP policy",
   "main": "./dist/index.js",

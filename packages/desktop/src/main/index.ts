@@ -76,7 +76,9 @@ function sendSystemPreferences(window: BrowserWindow): void {
 }
 
 function registerDispatcher(): void {
-  for (const channel of COMMAND_CHANNELS) {
+  // Deduplicate: ipcMain.handle throws on a repeated channel and would abort
+  // registration for every channel after it.
+  for (const channel of new Set(COMMAND_CHANNELS)) {
     ipcMain.handle(channel, (event, payload: unknown) => router.invoke(channel, payload, senderContext(event)))
   }
 }
