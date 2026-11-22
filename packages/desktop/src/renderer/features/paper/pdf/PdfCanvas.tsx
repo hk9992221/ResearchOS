@@ -121,6 +121,13 @@ export default function PdfCanvas({
   }, [])
 
   useEffect(() => {
+    const element = containerRef.current
+    if (element === null) return
+    element.scrollTop = 0
+    element.scrollLeft = 0
+  }, [pageNo])
+
+  useEffect(() => {
     if (doc === null) return
     let cancelled = false
     onRendering(true)

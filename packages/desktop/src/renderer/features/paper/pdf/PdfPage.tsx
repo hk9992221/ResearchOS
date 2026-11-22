@@ -84,6 +84,7 @@ export default function PdfPage({
   const [evidenceError, setEvidenceError] = useState<string | null>(null)
 
   const consumedPageHints = useRef(new Set<string>())
+  const viewerRef = useRef<HTMLElement>(null)
 
   const paperQuery = useQuery({
     queryKey: queryKeys.literature.paper(resolvedProjectId ?? 'none', paperId),
@@ -136,6 +137,47 @@ export default function PdfPage({
     next.delete('page')
     setSearchParams(next, { replace: true })
   }, [paperId, pageCount, searchParams, setPageNo, setSearchParams])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'BUTTON' ||
+          target.tagName === 'A')
+      ) {
+        return
+      }
+      const viewer = viewerRef.current
+      if (
+        viewer !== null &&
+        target instanceof Node &&
+        target !== document.body &&
+        !viewer.contains(target)
+      ) {
+        return
+      }
+      const selected = window.getSelection()
+      if (selected !== null && selected.type === 'Range') return
+      let next: number
+      if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+        next = pageNo + 1
+      } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+        next = pageNo - 1
+      } else {
+        return
+      }
+      event.preventDefault()
+      jumpToPage(next)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [jumpToPage, pageNo])
 
   const onPageCount = useCallback((count: number) => setPageCount(count), [])
   const onScale = useCallback((next: number) => setScale(next), [])
@@ -370,7 +412,11 @@ export default function PdfPage({
         />
       ) : (
         <div className={styles.pdfShell}>
-          <section className={styles.viewerCard} aria-label={t('pages.pdf.reader')}>
+          <section
+            ref={viewerRef}
+            className={styles.viewerCard}
+            aria-label={t('pages.pdf.reader')}
+          >
             <div className={styles.toolbar}>
               <IconButton
                 icon={iconFor('chevronLeft')}
@@ -400,6 +446,13 @@ export default function PdfPage({
               <span className={styles.pageTotal}>
                 / {pageCount === 0 ? '—' : pageCount}
               </span>
+              <IconButton
+                icon={iconFor('chevronRight')}
+                label={t('pages.pdf.next_page')}
+                size="sm"
+                disabled={pageCount === 0 || pageNo >= pageCount}
+                onClick={() => jumpToPage(pageNo + 1)}
+              />
               <span className={styles.toolbarSpacer} />
               <Button
                 variant="ghost"
