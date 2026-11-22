@@ -3,11 +3,6 @@ name: ResearchOS - Manual Release
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Existing immutable source tag (e.g. 1.0.0)'
-        required: true
-        default: '1.0.0'
-        type: string
       mode:
         description: 'Build only, or create a GitHub Release draft'
         required: true
@@ -21,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: researchos-release-${{ inputs.tag }}
+  group: researchos-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +24,7 @@ jobs:
     name: Verify tag and release permissions
     runs-on: ubuntu-22.04
     outputs:
+      tag: ${{ steps.inspect.outputs.tag }}
       version: ${{ steps.inspect.outputs.version }}
       commit: ${{ steps.inspect.outputs.commit }}
     steps:
@@ -38,38 +34,48 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Inspect immutable release tag
+      - name: Resolve version from main and check release tag
         id: inspect
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_MODE: ${{ inputs.mode }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_TAG" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo 'Invalid release tag'; exit 1
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Releases must be dispatched from main'; exit 1
           fi
-          if [[ "$RELEASE_MODE" == draft && "$GITHUB_REF" != refs/heads/main ]]; then
-            echo 'Draft releases must be dispatched from main'; exit 1
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "$SOURCE_SHA" != "$GITHUB_SHA" ]]; then
+            echo 'Checkout SHA differs from workflow commit'; exit 1
           fi
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG" || { echo 'Tag does not exist'; exit 1; }
-          SOURCE_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="$(node -p 'require("./package.json").version')"
+          RELEASE_TAG="$VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version in main package.json: $VERSION"; exit 1
+          fi
           for manifest in package.json packages/desktop/package.json packages/core/package.json packages/shared/package.json; do
-            SOURCE_VERSION="$(git show "$RELEASE_TAG:$manifest" | node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>console.log(JSON.parse(s).version))")"
+            SOURCE_VERSION="$(node -p "require('./$manifest').version")"
             if [[ "$SOURCE_VERSION" != "$VERSION" ]]; then
-              echo "Version mismatch in $manifest: tag $VERSION, manifest $SOURCE_VERSION"; exit 1
+              echo "Version mismatch in $manifest: $SOURCE_VERSION (expected $VERSION)"; exit 1
             fi
           done
-          if [[ "$RELEASE_MODE" == draft ]]; then
-            if gh release view "$RELEASE_TAG" --json tagName >/dev/null 2>&1; then
-              echo 'A release already exists for this tag. Refusing to overwrite it.'; exit 1
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+            if [[ "$TAG_SHA" != "$SOURCE_SHA" ]]; then
+              echo "Existing $RELEASE_TAG tag points to $TAG_SHA, not $SOURCE_SHA; refusing to move it"; exit 1
             fi
           fi
+          if [[ "$RELEASE_MODE" == draft ]]; then
+            test -s "release-notes/$RELEASE_TAG.md" || { echo "Missing handwritten highlights for $RELEASE_TAG"; exit 1; }
+            if gh release view "$RELEASE_TAG" --json tagName >/dev/null 2>&1; then
+              echo "A release already exists for $RELEASE_TAG; refusing to overwrite"; exit 1
+            fi
+          fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "commit=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "Pinned source commit: $SOURCE_SHA"
+          echo "Pinned main commit: $SOURCE_SHA, release tag: $RELEASE_TAG"
 
   build:
     name: Build ${{ matrix.platform }} / ${{ matrix.arch }}
@@ -100,10 +106,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: tooling
-      - name: Checkout immutable application source tag
+      - name: Checkout pinned application source commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.preflight.outputs.commit }}
           path: source
       - name: Verify source commit
         env:
@@ -225,18 +231,28 @@ jobs:
         shell: bash
         run: |
           (cd release-assets && sha256sum --check SHA256SUMS.txt)
-      - name: Verify tag still points at the pinned commit
+      - name: Create tag from pinned main commit if missing
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
           SOURCE_SHA: ${{ needs.preflight.outputs.commit }}
         run: |
-          git -C tooling show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          test "$(git -C tooling rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"
+          set -euo pipefail
+          git -C tooling fetch --tags origin
+          if git -C tooling show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            test "$(git -C tooling rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA" || {
+              echo 'Tag exists on a different commit; refusing to move it'; exit 1;
+            }
+          else
+            git -C tooling -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$RELEASE_TAG" "$SOURCE_SHA" -m "ResearchOS $RELEASE_TAG"
+            git -C tooling push origin "refs/tags/$RELEASE_TAG"
+          fi
       - name: Combine handwritten highlights and GitHub-generated changes
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -254,7 +270,7 @@ jobs:
       - name: Create unpublished draft with checked release assets
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
