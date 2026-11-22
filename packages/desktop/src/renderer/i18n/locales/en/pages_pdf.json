@@ -26,6 +26,7 @@
   "pages.pdf.link_evidence": "Idea",
   "pages.pdf.link_note": "Paper Note",
   "pages.pdf.load_fail": "The PDF could not be read",
+  "pages.pdf.next_page": "Next page",
   "pages.pdf.page_label": "Page",
   "pages.pdf.page_marker": "PDF page {page}",
   "pages.pdf.prev_page": "Previous page",
