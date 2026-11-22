@@ -80,7 +80,15 @@ export default function PdfCanvas({
     let cancelled = false
     setDoc(null)
     setPage(null)
-    const task = getDocument({ url })
+    const task = getDocument({
+      url,
+      // pdf.js 6 ships its JBIG2/OpenJPEG decoders and CMaps as separate static
+      // files (served/copied by the pdfjsAssets Vite plugin). Both URLs must end
+      // with "/" because pdf.js appends the file name verbatim.
+      wasmUrl: new URL('pdfjs/wasm/', document.baseURI).href,
+      cMapUrl: new URL('pdfjs/cmaps/', document.baseURI).href,
+      cMapPacked: true
+    })
     task.promise
       .then((loaded) => {
         if (cancelled) return

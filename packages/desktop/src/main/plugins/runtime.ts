@@ -89,12 +89,13 @@ export interface PluginRuntimeBundle {
 /** Pass to `protocol.registerSchemesAsPrivileged` before `app.whenReady()`. */
 export function pluginSchemePrivileges(): Array<{
   scheme: string
-  privileges: { standard: true; secure: true; supportFetchAPI: true; stream: true }
+  privileges: { standard: true; secure: true; supportFetchAPI: true; stream: true; corsEnabled: true }
 }> {
   return [
     {
       scheme: 'plugin',
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+      // corsEnabled: sandboxed panel frames fetch module scripts cross-origin.
+      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
     }
   ]
 }

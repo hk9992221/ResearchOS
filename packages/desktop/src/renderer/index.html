@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ros-asset:; connect-src 'self' ros-asset: ws://localhost:* http://localhost:*"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ros-asset:; frame-src 'self' plugin:; connect-src 'self' ros-asset: ws://localhost:* http://localhost:*"
     />
     <title>ResearchOS</title>
   </head>

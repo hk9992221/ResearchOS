@@ -134,10 +134,14 @@ export function resolvePluginAsset(
     throw new PluginProtocolError(400, 'plugin URLs carry no credentials or port')
   }
   const relative = decodeAssetPath(parsed.pathname)
+  // The panel iframe is sandboxed (opaque origin), so `type="module"` scripts
+  // are fetched cross-origin and must pass CORS. Without ACAO the browser
+  // silently blocks the module and the plugin panel renders blank.
   const headers = {
     'Content-Security-Policy': PLUGIN_CSP,
     'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'no-store'
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*'
   }
   if (relative === `${HOST_PREFIX}/iframe.html`) {
     const entry = parsed.searchParams.get('entry') ?? ''
