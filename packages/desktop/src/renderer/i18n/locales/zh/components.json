@@ -1,0 +1,21 @@
+{
+  "components.breadcrumb.aria_label": "面包屑导航",
+  "components.btn.confirm": "确认",
+  "components.confirm.issue_failed": "无法发出确认凭据：{error}",
+  "components.error_state.code": "错误代码：{code}",
+  "components.formula.error": "LaTeX 错误：第 {line} 行，第 {column} 列",
+  "components.gen.companion": "生成伙伴",
+  "components.gen.elapsed_minutes": "{m} 分 {s} 秒",
+  "components.gen.elapsed_seconds": "{s} 秒",
+  "components.gen.phase_done": "已完成",
+  "components.gen.phase_failed": "已中断",
+  "components.gen.phase_preparing": "准备中",
+  "components.gen.phase_thinking": "思考中",
+  "components.gen.phase_writing": "书写中",
+  "components.toast.dismiss": "关闭",
+  "components.tone.accent": "进行中",
+  "components.tone.danger": "错误",
+  "components.tone.info": "信息",
+  "components.tone.success": "成功",
+  "components.tone.warning": "警告"
+}

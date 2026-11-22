@@ -1,0 +1,62 @@
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.popup {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 50;
+  min-width: 200px;
+  padding: var(--space-1);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-body-size);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-hover) var(--motion-ease);
+}
+
+.item:hover {
+  background: var(--bg-hover);
+}
+
+.item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  background: transparent;
+}
+
+.itemDanger {
+  color: var(--status-danger);
+}
+
+.itemIcon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.itemDanger .itemIcon {
+  color: var(--status-danger);
+}

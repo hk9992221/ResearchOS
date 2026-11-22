@@ -1,0 +1,11 @@
+{
+  "pages.external.btn_relocate": "重新定位",
+  "pages.external.message": "{path} · {reason}",
+  "pages.external.reason_denied": "权限拒绝",
+  "pages.external.reason_missing": "不存在",
+  "pages.external.reason_not_file": "不是文件",
+  "pages.external.reason_not_folder": "不是目录",
+  "pages.external.reason_not_git": "不是 git 仓库",
+  "pages.external.reason_unknown_kind": "未知引用类型",
+  "pages.external.title": "引用的文件夹未找到"
+}

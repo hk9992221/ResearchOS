@@ -1,0 +1,89 @@
+{
+  "name": "@researchos/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ResearchOS Node library: database, migrations, workspace, services, AI gateway, MCP policy",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./modules/ai": {
+      "types": "./dist/modules/ai/index.d.ts",
+      "default": "./dist/modules/ai/index.js"
+    },
+    "./modules/kanban": {
+      "types": "./dist/modules/kanban/index.d.ts",
+      "default": "./dist/modules/kanban/index.js"
+    },
+    "./modules/weekly": {
+      "types": "./dist/modules/weekly/index.d.ts",
+      "default": "./dist/modules/weekly/index.js"
+    },
+    "./modules/search": {
+      "types": "./dist/modules/search/index.d.ts",
+      "default": "./dist/modules/search/index.js"
+    },
+    "./modules/mcp": {
+      "types": "./dist/modules/mcp/sdk-server.d.ts",
+      "default": "./dist/modules/mcp/sdk-server.js"
+    },
+    "./modules/export": {
+      "types": "./dist/modules/export/index.d.ts",
+      "default": "./dist/modules/export/index.js"
+    },
+    "./modules/notes": {
+      "types": "./dist/modules/notes/index.d.ts",
+      "default": "./dist/modules/notes/index.js"
+    },
+    "./modules/ideas": {
+      "types": "./dist/modules/ideas/index.d.ts",
+      "default": "./dist/modules/ideas/index.js"
+    },
+    "./modules/literature": {
+      "types": "./dist/modules/literature/index.d.ts",
+      "default": "./dist/modules/literature/index.js"
+    },
+    "./modules/project": {
+      "types": "./dist/modules/project/service.d.ts",
+      "default": "./dist/modules/project/service.js"
+    },
+    "./modules/*": {
+      "types": "./dist/modules/*.d.ts",
+      "default": "./dist/modules/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@napi-rs/keyring": "2.1.2",
+    "@researchos/shared": "workspace:*",
+    "ajv": "8.20.0",
+    "better-sqlite3": "13.2.0",
+    "chokidar": "4.0.3",
+    "drizzle-orm": "0.45.4",
+    "fflate": "0.8.3",
+    "smol-toml": "1.9.1",
+    "sqlite-vec": "0.1.9",
+    "tar-stream": "3.2.2",
+    "uuid": "11.1.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/tar-stream": "3.1.5"
+  }
+}

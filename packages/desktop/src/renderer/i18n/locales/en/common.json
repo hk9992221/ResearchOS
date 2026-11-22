@@ -1,0 +1,11 @@
+{
+  "language.name": "English",
+  "common.cancel": "Cancel",
+  "common.save": "Save",
+  "common.saved_at": "Saved {time}",
+  "common.undo": "Undo",
+  "common.undo_task": "Undo deletion",
+  "common.undo_failed": "Could not undo the deletion",
+  "common.undone": "Restored",
+  "common.close": "Close"
+}

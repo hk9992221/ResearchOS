@@ -1,0 +1,528 @@
+/* Experiments module styling. Colors, spacing and radii come from tokens.css
+ * only; no literal palette value belongs here. */
+
+.toolbarSearch {
+  min-width: 240px;
+  flex: 1 1 240px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.checkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary-size);
+  color: var(--text-secondary);
+}
+
+.cellStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cellTitle {
+  font-weight: var(--text-numeric-weight);
+  color: var(--text-primary);
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: var(--text-secondary-size);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  overflow-wrap: anywhere;
+}
+
+.reason {
+  color: var(--text-secondary);
+  font-size: var(--text-caption-size);
+}
+
+.badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------- detail page */
+
+.detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.breadcrumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary-size);
+  color: var(--text-secondary);
+}
+
+.crumbLink {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-default);
+  cursor: pointer;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.statusBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-secondary-size);
+  color: var(--text-secondary);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rowBetween {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --------------------------------------------------------------- file tree */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.treeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-default);
+  font-size: var(--text-secondary-size);
+  cursor: pointer;
+  background: var(--bg-surface);
+  text-align: left;
+  width: 100%;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  color: inherit;
+}
+
+.treeRow:last-child {
+  border-bottom: none;
+}
+
+.treeRow:hover {
+  background: var(--bg-subtle);
+}
+
+.treeRowSelected {
+  background: var(--bg-subtle);
+  box-shadow: inset 3px 0 0 var(--accent-default);
+}
+
+.treePath {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.treeMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.prunedRow {
+  padding: var(--space-1) var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-default);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+}
+
+.hash {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.emptyBlock {
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-secondary-size);
+}
+
+/* ---------------------------------------------------------------- run tabs */
+
+.runList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.runCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.runParams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.paramGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.paramRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.paramRemove {
+  align-self: center;
+}
+
+/* --------------------------------------------------------------- snapshots */
+
+.snapshotList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.snapshotRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.snapshotRowActive {
+  box-shadow: inset 3px 0 0 var(--accent-default);
+}
+
+.snapshotMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+}
+
+.manifest {
+  max-height: 320px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+}
+
+.sectionText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.sectionSources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sourceButton {
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--accent-default);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.sourceButton:hover {
+  border-color: var(--accent-default);
+}
+
+.editorArea {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary-size);
+  line-height: var(--line-height-body);
+}
+
+/* ------------------------------------------------------------------ matrix */
+
+.matrixWrap {
+  overflow: auto;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.matrixTable {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--text-secondary-size);
+}
+
+.matrixTable th,
+.matrixTable td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-width) solid var(--border-default);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.matrixTable thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  font-weight: var(--text-card-title-weight);
+  color: var(--text-primary);
+}
+
+.matrixTable th:first-child,
+.matrixTable td:first-child {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+}
+
+.matrixSection td {
+  font-weight: var(--text-card-title-weight);
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+}
+
+.best {
+  font-weight: var(--text-card-title-weight);
+  color: var(--accent-default);
+}
+
+.second {
+  text-decoration: underline;
+}
+
+.delta {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  color: var(--text-secondary);
+}
+
+.previewBox {
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- markdown */
+
+.markdownBody {
+  font-size: var(--text-body-size);
+  line-height: var(--line-height-body);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.markdownBody h1,
+.markdownBody h2,
+.markdownBody h3 {
+  font-size: var(--text-card-title-size);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.markdownBody p,
+.markdownBody ul,
+.markdownBody ol {
+  margin: var(--space-2) 0;
+}
+
+.markdownBody pre {
+  overflow: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+}
+
+.linkRef {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-default);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.refPlain {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .formGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dirRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dirList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+} 
+
+.errorText {
+  color: var(--status-danger);
+  font-size: var(--text-secondary-size);
+}
+.compareGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .compareGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.directionButton {
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--text-caption-size);
+  padding: 1px var(--space-2);
+  cursor: pointer;
+}
+
+.directionButton:hover {
+  border-color: var(--accent-default);
+  color: var(--accent-default);
+}
+
+.diffValue {
+  color: var(--text-primary);
+  font-weight: var(--text-numeric-weight);
+}

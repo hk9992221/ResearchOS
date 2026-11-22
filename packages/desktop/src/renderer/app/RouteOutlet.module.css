@@ -1,0 +1,21 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-block-gap);
+  min-height: 100%;
+  padding: var(--page-padding);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--component-gap);
+  min-height: var(--space-8);
+}
+
+.title {
+  font-size: var(--text-page-title-size);
+  font-weight: var(--text-page-title-weight);
+  line-height: var(--line-height-title);
+  color: var(--text-primary);
+}

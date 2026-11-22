@@ -1,0 +1,9 @@
+{
+  "pages.workspace.gate_title": "No workspace is open",
+  "pages.workspace.gate_reason": "ResearchOS keeps every project inside a workspace folder. Set one up to continue.",
+  "pages.workspace.btn_open": "Open workspace setup",
+  "pages.workspace.error_title": "The workspace could not be read",
+  "pages.workspace.bridge_unavailable": "This window is not connected to the desktop process. Start ResearchOS from the app window.",
+  "pages.workspace.entity_id": "ID",
+  "pages.workspace.percent": "{percent}%"
+}

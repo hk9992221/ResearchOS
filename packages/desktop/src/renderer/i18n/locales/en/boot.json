@@ -1,0 +1,13 @@
+{
+  "boot.dialog.select_workspace": "Select workspace folder",
+  "boot.dialog.select_image": "Select an image",
+  "boot.error.config_not_saved": "The workspace opened, but the configuration could not be saved: {error}",
+  "boot.error.not_a_folder": "{path} is not a folder",
+  "boot.inspect.empty": "The folder is empty and can be initialized.",
+  "boot.inspect.existing": "This is an existing ResearchOS workspace.",
+  "boot.inspect.foreign": "The folder is not empty and is not a ResearchOS workspace.",
+  "boot.inspect.global_missing": "The marker is present but global.db is missing.",
+  "boot.inspect.marker_corrupt": "The .researchos marker exists but cannot be read as a ResearchOS marker.",
+  "boot.inspect.marker_missing": "global.db exists but the .researchos marker is missing.",
+  "boot.inspect.not_exist": "The folder does not exist and will be created."
+}

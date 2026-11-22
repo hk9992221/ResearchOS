@@ -1,0 +1,5 @@
+.description {
+  font-size: var(--text-body-size);
+  color: var(--text-secondary);
+  max-width: 60ch;
+}

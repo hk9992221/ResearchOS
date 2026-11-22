@@ -1,0 +1,9 @@
+{
+  "pages.workspace.gate_title": "尚未打开工作区",
+  "pages.workspace.gate_reason": "ResearchOS 把所有项目放在一个工作区文件夹中。请先建立工作区再继续。",
+  "pages.workspace.btn_open": "打开工作区设置",
+  "pages.workspace.error_title": "无法读取工作区",
+  "pages.workspace.bridge_unavailable": "此窗口未连接到桌面进程。请从应用窗口启动 ResearchOS。",
+  "pages.workspace.entity_id": "ID",
+  "pages.workspace.percent": "{percent}%"
+}

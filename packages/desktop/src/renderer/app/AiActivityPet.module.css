@@ -1,0 +1,100 @@
+.pet {
+  position: fixed;
+  left: 50%;
+  bottom: var(--page-padding);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(560px, calc(100vw - var(--page-padding) * 2));
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 25%, var(--accent-subtle), var(--accent-default));
+  box-shadow: 0 0 0 0 var(--accent-subtle);
+  animation: pet-breathe 1.8s ease-in-out infinite;
+}
+
+.eye {
+  width: 4px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  animation: pet-blink 3.4s ease-in-out infinite;
+}
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-secondary-size);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-caption-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet[data-stale='true'] {
+  border-color: var(--status-warning);
+}
+
+.pet[data-stale='true'] .avatar {
+  background: radial-gradient(circle at 35% 25%, var(--bg-subtle), var(--status-warning));
+  animation: none;
+}
+
+.pet[data-stale='true'] .detail {
+  color: var(--status-warning);
+}
+
+@keyframes pet-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--accent-subtle);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 7px transparent;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes pet-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.15);
+  }
+}

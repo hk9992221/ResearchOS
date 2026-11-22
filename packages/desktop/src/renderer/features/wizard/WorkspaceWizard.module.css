@@ -1,0 +1,42 @@
+.bullets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bullet {
+  display: flex;
+  gap: var(--component-gap);
+  font-size: var(--text-body-size);
+  color: var(--text-secondary);
+}
+
+.glyph {
+  color: var(--accent-default);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--component-gap);
+}
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--component-gap);
+}
+
+.stateLabel {
+  font-size: var(--text-card-title-size);
+  font-weight: var(--text-card-title-weight);
+  color: var(--text-primary);
+}
+
+.stateMessage {
+  font-size: var(--text-body-size);
+  color: var(--text-secondary);
+}

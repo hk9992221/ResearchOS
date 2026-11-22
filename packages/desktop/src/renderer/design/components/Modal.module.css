@@ -1,0 +1,49 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: var(--scrim);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 480px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  outline: none;
+}
+
+.header {
+  padding: var(--panel-padding) var(--panel-padding) 0;
+}
+
+.title {
+  font-size: var(--text-card-title-size);
+  font-weight: var(--text-card-title-weight);
+  line-height: var(--line-height-title);
+  color: var(--text-primary);
+}
+
+.body {
+  overflow: auto;
+  padding: var(--space-3) var(--panel-padding);
+  font-size: var(--text-body-size);
+  color: var(--text-secondary);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--component-gap);
+  padding: var(--space-3) var(--panel-padding) var(--panel-padding);
+}

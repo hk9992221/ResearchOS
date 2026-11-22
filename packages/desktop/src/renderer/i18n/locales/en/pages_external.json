@@ -1,0 +1,11 @@
+{
+  "pages.external.btn_relocate": "Relocate",
+  "pages.external.message": "{path} · {reason}",
+  "pages.external.reason_denied": "Permission denied",
+  "pages.external.reason_missing": "Missing",
+  "pages.external.reason_not_file": "Not a file",
+  "pages.external.reason_not_folder": "Not a folder",
+  "pages.external.reason_not_git": "Not a git repository",
+  "pages.external.reason_unknown_kind": "Unknown reference type",
+  "pages.external.title": "Referenced folder not found"
+}

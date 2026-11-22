@@ -1,0 +1,11 @@
+{
+  "language.name": "简体中文",
+  "common.cancel": "取消",
+  "common.save": "保存",
+  "common.saved_at": "已保存 {time}",
+  "common.undo": "撤销",
+  "common.undo_task": "撤销删除",
+  "common.undo_failed": "撤销失败",
+  "common.undone": "已恢复",
+  "common.close": "关闭"
+}

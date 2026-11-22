@@ -1,0 +1,25 @@
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.line {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+
+.line:nth-child(odd) {
+  width: 100%;
+}
+
+.line:nth-child(even) {
+  width: 72%;
+}
+
+.block {
+  min-height: 120px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+}

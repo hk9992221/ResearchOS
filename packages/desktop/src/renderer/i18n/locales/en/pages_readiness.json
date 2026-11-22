@@ -1,0 +1,21 @@
+{
+  "pages.readiness.title": "Readiness check & task suggestions",
+  "pages.readiness.task_check": "Running readiness check",
+  "pages.readiness.task_suggest": "Generating AI suggestions",
+  "pages.readiness.task_create": "Creating selected tasks",
+  "pages.readiness.failed": "Readiness check failed",
+  "pages.readiness.ai_failed": "AI suggestions failed",
+  "pages.readiness.no_gaps": "No readiness gaps found.",
+  "pages.readiness.idea_complete": "Evidence chain complete {passed}/{total}",
+  "pages.readiness.idea_gaps": "{count} gaps to close",
+  "pages.readiness.badge_complete": "Evidence chain {passed}/{total}",
+  "pages.readiness.badge_gaps": "{count} gaps",
+  "pages.readiness.btn_suggest": "Generate AI suggestions",
+  "pages.readiness.ai_disabled": "chat_main is not configured; AI suggestions are unavailable",
+  "pages.readiness.btn_create": "Create selected tasks ({count})",
+  "pages.readiness.created": "Tasks created",
+  "pages.readiness.created_count": "{count} created",
+  "pages.readiness.create_failed": "Failed to create tasks",
+  "pages.readiness.link_failed": "Failed to link the target entity",
+  "pages.readiness.row_title": "Task title"
+}

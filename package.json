@@ -1,0 +1,27 @@
+{
+  "name": "researchos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ResearchOS desktop application (Electron + TypeScript monorepo)",
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm run build:libs && pnpm --filter @researchos/desktop dev",
+    "build": "pnpm run build:libs && pnpm --filter @researchos/desktop build",
+    "dist": "pnpm run build && electron-builder --win --x64 --publish never",
+    "dist:dir": "pnpm run build && electron-builder --win --x64 --dir --publish never",
+    "build:libs": "pnpm --filter @researchos/shared build && pnpm --filter @researchos/core build",
+    "typecheck": "pnpm run build:libs && pnpm --filter @researchos/shared typecheck && pnpm --filter @researchos/core typecheck && pnpm --filter @researchos/desktop typecheck",
+    "test": "vitest run",
+    "rebuild": "pnpm --filter @researchos/desktop run rebuild",
+    "rebuild:node": "pnpm rebuild better-sqlite3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "electron-builder": "^26.18.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

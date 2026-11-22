@@ -1,0 +1,334 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+
+.marketToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.searchField {
+  flex: 1 1 240px;
+  min-width: 160px;
+}
+
+.tagField {
+  flex: 0 0 140px;
+}
+
+.nameField {
+  flex: 0 0 180px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chip {
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-caption-size);
+  cursor: pointer;
+  transition: border-color var(--motion-hover) var(--motion-ease);
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--accent-default);
+  background: var(--accent-subtle);
+  color: var(--accent-default);
+}
+
+.marketCard {
+  cursor: pointer;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cardName {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-card-title-size);
+  font-weight: var(--text-card-title-weight);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardName:hover {
+  color: var(--accent-default);
+}
+
+.author {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption-size);
+}
+
+.description {
+  display: -webkit-box;
+  margin: var(--space-2) 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  line-height: var(--line-height-body);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-caption-size);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+}
+
+.scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: var(--text-caption-size);
+}
+
+.nameCell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pluginName {
+  font-weight: var(--text-card-title-weight);
+  color: var(--text-primary);
+}
+
+.rowError {
+  margin: var(--space-1) 0 0;
+  color: var(--status-danger);
+  font-size: var(--text-caption-size);
+}
+
+.warnings {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--status-warning);
+  font-size: var(--text-caption-size);
+}
+
+/* ------------------------------------------------------------- drawer */
+
+.drawerScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--scrim);
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  height: 100%;
+  border-left: var(--border-width) solid var(--border-default);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--panel-padding);
+  border-bottom: var(--border-width) solid var(--border-default);
+}
+
+.drawerTitle {
+  margin: 0;
+  font-size: var(--text-card-title-size);
+  font-weight: var(--text-card-title-weight);
+  color: var(--text-primary);
+}
+
+.drawerBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow: auto;
+  padding: var(--panel-padding);
+}
+
+.readme {
+  color: var(--text-primary);
+  font-size: var(--text-body-size);
+}
+
+.drawerSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-body-size);
+  font-weight: 600;
+}
+
+.drawerFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--component-gap);
+  padding: var(--space-3) var(--panel-padding);
+  border-top: var(--border-width) solid var(--border-default);
+}
+
+.domainList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------ dialogs */
+
+.lookupRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.dialogText {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  line-height: var(--line-height-body);
+}
+
+.grantList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.grantRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body-size);
+}
+
+.writeFlag {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--status-warning);
+  color: var(--bg-canvas);
+  font-size: var(--text-caption-size);
+}
+
+.domains {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-body-size);
+}
+
+.domains textarea {
+  min-height: 72px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--border-default);
+}
+
+.intervalRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.hostPage {
+  height: 100%;
+  padding: 16px;
+  overflow: auto;
+}
+
+.pluginBadge {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.promptInput {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  font: inherit;
+}

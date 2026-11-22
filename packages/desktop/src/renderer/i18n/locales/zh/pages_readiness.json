@@ -1,0 +1,21 @@
+{
+  "pages.readiness.title": "完备度检查与任务建议",
+  "pages.readiness.task_check": "完备度检查",
+  "pages.readiness.task_suggest": "生成 AI 任务建议",
+  "pages.readiness.task_create": "创建所选任务",
+  "pages.readiness.failed": "完备度检查失败",
+  "pages.readiness.ai_failed": "AI 建议失败",
+  "pages.readiness.no_gaps": "当前没有发现完备度缺口。",
+  "pages.readiness.idea_complete": "证据链完整 {passed}/{total}",
+  "pages.readiness.idea_gaps": "{count} 项待完善",
+  "pages.readiness.badge_complete": "证据链完整 {passed}/{total}",
+  "pages.readiness.badge_gaps": "{count} 项待完善",
+  "pages.readiness.btn_suggest": "生成 AI 深入建议",
+  "pages.readiness.ai_disabled": "未配置 chat_main 模型，无法生成 AI 建议",
+  "pages.readiness.btn_create": "创建所选任务（{count}）",
+  "pages.readiness.created": "已创建任务",
+  "pages.readiness.created_count": "共 {count} 项",
+  "pages.readiness.create_failed": "创建任务失败",
+  "pages.readiness.link_failed": "关联目标实体失败",
+  "pages.readiness.row_title": "任务标题"
+}

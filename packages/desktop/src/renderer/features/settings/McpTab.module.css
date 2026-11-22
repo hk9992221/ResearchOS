@@ -1,0 +1,156 @@
+/* Confirmation history is dense; keep the table inside the card while preserving
+   readable summary wrapping at 1440px. */
+.tableScroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tableScroll table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1040px;
+}
+
+.tableScroll th,
+.tableScroll td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.tableScroll th:nth-child(1) {
+  width: 15%;
+}
+
+.tableScroll th:nth-child(2) {
+  width: 11%;
+}
+
+.tableScroll th:nth-child(3) {
+  width: 22%;
+}
+
+.tableScroll th:nth-child(4) {
+  width: 14%;
+}
+
+.tableScroll th:nth-child(5) {
+  width: 9%;
+}
+
+.tableScroll th:nth-child(6) {
+  width: 19%;
+}
+
+.tableScroll th:nth-child(7) {
+  width: 10%;
+}
+
+.note {
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.scopeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--component-gap);
+}
+
+.scopeLabel {
+  font-size: var(--text-secondary-size);
+  color: var(--text-secondary);
+}
+
+.access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--related-gap);
+  border-top: var(--border-width) solid var(--border-default);
+  padding-top: var(--space-3);
+}
+
+.accessToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--text-body-size);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.accessChevron {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.accessChevron[data-open='true'] {
+  transform: rotate(45deg);
+}
+
+.accessNote {
+  margin-left: auto;
+  font-size: var(--text-caption-size);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.accessHint {
+  margin: 0;
+  font-size: var(--text-secondary-size);
+  color: var(--text-secondary);
+}
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.codeBlock {
+  position: relative;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: var(--space-3);
+  padding-right: 2.5rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary-size);
+  color: var(--text-primary);
+}
+
+.codeBlock button {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+}
+
+.details summary {
+  cursor: pointer;
+}
+
+.details pre {
+  margin: 0.25rem 0 0;
+  max-height: 12rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

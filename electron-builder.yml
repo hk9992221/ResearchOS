@@ -1,0 +1,75 @@
+# electron-builder packaging (W17 wires the release pipeline).
+#
+# The application code lives in packages/desktop; native modules (better-sqlite3
+# N-API prebuild, sqlite-vec's loadable extension, @napi-rs/keyring) are covered
+# by asarUnpack below, so runtime resolution works from app.asar.unpacked without
+# extraResources copies.
+#
+# Windows icon: electron-builder converts resources/appicon.png automatically.
+# To ship a real multi-size .ico (installer + shortcuts), run:
+#   python scripts/make-ico.py resources/appicon.png build/icon.ico
+# and point win.icon at build/icon.ico.
+
+appId: com.researchos.app
+productName: ResearchOS
+copyright: Copyright © ResearchOS
+
+asar: true
+electronVersion: 45.3.4
+npmRebuild: true
+# No release server: never attempt an implicit GitHub publish (fails without GH_TOKEN in CI).
+publish: null
+
+directories:
+  app: packages/desktop
+  output: release
+  buildResources: resources
+
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+  - '!**/*.ts'
+
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+  - '**/node_modules/sqlite-vec/**'
+  - '**/node_modules/sqlite-vec-*/**'
+  - '**/node_modules/@napi-rs/keyring/**'
+  - '**/*.node'
+
+extraResources:
+  - from: resources/appicon.png
+    to: appicon.png
+
+win:
+  icon: resources/appicon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
+mac:
+  icon: resources/appicon.png
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+
+linux:
+  icon: resources/appicon.png
+  category: Science
+  target:
+    - target: AppImage
+      arch: [x64]
