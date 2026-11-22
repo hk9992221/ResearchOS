@@ -1,0 +1,265 @@
+name: ResearchOS - Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing immutable source tag (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
+      mode:
+        description: 'Build only, or create a GitHub Release draft'
+        required: true
+        default: 'build-only'
+        type: choice
+        options:
+          - build-only
+          - draft
+
+permissions:
+  contents: read
+
+concurrency:
+  group: researchos-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify tag and release permissions
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.inspect.outputs.version }}
+      commit: ${{ steps.inspect.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect immutable release tag
+        id: inspect
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo 'Invalid release tag'; exit 1
+          fi
+          if [[ "$RELEASE_MODE" == draft && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Draft releases must be dispatched from main'; exit 1
+          fi
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG" || { echo 'Tag does not exist'; exit 1; }
+          SOURCE_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          VERSION="${RELEASE_TAG#v}"
+          for manifest in package.json packages/desktop/package.json packages/core/package.json packages/shared/package.json; do
+            SOURCE_VERSION="$(git show "$RELEASE_TAG:$manifest" | node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>console.log(JSON.parse(s).version))")"
+            if [[ "$SOURCE_VERSION" != "$VERSION" ]]; then
+              echo "Version mismatch in $manifest: tag $VERSION, manifest $SOURCE_VERSION"; exit 1
+            fi
+          done
+          if [[ "$RELEASE_MODE" == draft ]]; then
+            if gh release view "$RELEASE_TAG" --json tagName >/dev/null 2>&1; then
+              echo 'A release already exists for this tag. Refusing to overwrite it.'; exit 1
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Pinned source commit: $SOURCE_SHA"
+
+  build:
+    name: Build ${{ matrix.platform }} / ${{ matrix.arch }}
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            platform: win
+            arch: x64
+          - runner: macos-15-intel
+            platform: mac
+            arch: x64
+          - runner: macos-15
+            platform: mac
+            arch: arm64
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout reviewed release tooling from workflow commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+      - name: Checkout immutable application source tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          path: source
+      - name: Verify source commit
+        env:
+          EXPECTED_SHA: ${{ needs.preflight.outputs.commit }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: source/pnpm-lock.yaml
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Install dependencies from tagged source
+        working-directory: source
+        run: pnpm install --frozen-lockfile
+      - name: Include approved Apache license and notices
+        working-directory: source
+        run: |
+          cp ../tooling/LICENSE ./LICENSE
+          cp ../tooling/NOTICE ./NOTICE
+      - name: TypeScript verification
+        working-directory: source
+        run: pnpm typecheck
+      - name: Run tests if any are tracked in this tag
+        working-directory: source
+        run: |
+          if git ls-files | grep -Eq '(\.test|\.spec)\.[cm]?[jt]sx?$'; then
+            pnpm test
+          else
+            echo 'No test files are tracked in this release tag; typecheck still runs.'
+          fi
+      - name: Build app and package native platform formats
+        working-directory: source
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -euo pipefail
+          pnpm build
+          case '${{ matrix.platform }}' in
+            win) pnpm exec electron-builder --config ../tooling/electron-builder.yml --win nsis portable --x64 --publish never ;;
+            mac) pnpm exec electron-builder --config ../tooling/electron-builder.yml --mac dmg zip --${{ matrix.arch }} --publish never ;;
+            linux) pnpm exec electron-builder --config ../tooling/electron-builder.yml --linux deb rpm AppImage --x64 --publish never ;;
+          esac
+      - name: Verify expected files and stage only distribution assets
+        working-directory: source
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: node ../tooling/scripts/validate-release-assets.mjs release "$RELEASE_VERSION" '${{ matrix.platform }}' '${{ matrix.arch }}'
+      - name: Upload per-platform artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: researchos-${{ matrix.platform }}-${{ matrix.arch }}
+          path: source/release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    name: Combine, verify, and checksum all nine packages
+    needs: [preflight, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout reviewed release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+      - name: Download all four platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: researchos-*
+          merge-multiple: true
+          path: release-assets
+      - name: Verify nine expected distribution files
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: node tooling/scripts/validate-release-assets.mjs release-assets "$RELEASE_VERSION" all
+      - name: Generate and verify SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-assets && sha256sum ResearchOS-* > SHA256SUMS.txt)
+          test "$(wc -l < release-assets/SHA256SUMS.txt)" -eq 9
+          (cd release-assets && sha256sum --check SHA256SUMS.txt)
+      - name: Upload checked release bundle for Build Only and Draft modes
+        uses: actions/upload-artifact@v4
+        with:
+          name: researchos-verified-bundle
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    name: Create unpublished Release for human approval
+    if: inputs.mode == 'draft'
+    needs: [preflight, verify]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout reviewed release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: tooling
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: researchos-verified-bundle
+          path: release-assets
+      - name: Recheck checksum manifest
+        shell: bash
+        run: |
+          (cd release-assets && sha256sum --check SHA256SUMS.txt)
+      - name: Verify tag still points at the pinned commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.commit }}
+        run: |
+          git -C tooling show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          test "$(git -C tooling rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"
+      - name: Combine handwritten highlights and GitHub-generated changes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HIGHLIGHTS="tooling/release-notes/${RELEASE_TAG}.md"
+          test -s "$HIGHLIGHTS" || { echo "Highlights file missing: $HIGHLIGHTS"; exit 1; }
+          cat "$HIGHLIGHTS" > release-notes.md
+          printf '\n\n' >> release-notes.md
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f "tag_name=$RELEASE_TAG" --jq '.body' > automatic-changes.md
+          if [[ -s automatic-changes.md ]]; then
+            cat automatic-changes.md >> release-notes.md
+          else
+            printf '## Changes\n\nNo merged pull requests were recorded for this release.\n' >> release-notes.md
+          fi
+      - name: Create unpublished draft with checked release assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --draft --verify-tag \
+            --title "ResearchOS $RELEASE_TAG" \
+            --notes-file release-notes.md
+          echo 'Draft created. Publishing is a separate manual GitHub action.'

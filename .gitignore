@@ -17,8 +17,7 @@ tmp_*.exe
 *.test
 *.prof
 
-# no GitHub Actions (AGENTS.md §3)
-.github/
+# GitHub Actions release tooling is intentionally tracked.
 
 # electron-rewrite (pnpm monorepo)
 node_modules/
